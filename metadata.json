@@ -1,0 +1,12 @@
+{
+  "name": "Portal Vip Brasil",
+  "description": "Central de Marketing Pessoal, Vitrine de Aplicativos e Automação Diária de Divulgação com Inteligência Artificial e Alta Disponibilidade.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+coverage/
+.data/
+.DS_Store
+*.log
+.env*
+!.env.example
+server/config/firebase-service-account.json
+**/*service-account*.json
+android/.gradle/
+android/local.properties
+
+.froc-backup-*/
+.vercel

@@ -1,0 +1,237 @@
+import React, { useEffect, useState } from 'react';
+import {
+  LayoutDashboard,
+  Building2,
+  Sparkles,
+  PenTool,
+  Image as ImageIcon,
+  Video,
+  FileText,
+  Search,
+  Compass,
+  Megaphone,
+  Calendar,
+  Share2,
+  FolderOpen,
+  BarChart3,
+  Coins,
+  CreditCard,
+  User,
+  Settings,
+  HelpCircle,
+  ShieldAlert,
+  ChevronLeft,
+  ChevronRight,
+  Bot,
+  Store,
+  Home,
+  Layers,
+  Camera,
+  Brain,
+  BookOpen
+} from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
+import { BRAND } from '../lib/brand';
+import { apiRequest } from '../lib/api';
+import { Company, User as UserType, Wallet } from '../types';
+
+interface SidebarProps {
+  currentTab: string;
+  onSelectTab: (tab: string) => void;
+  user: UserType | null;
+  wallet: Wallet | null;
+  selectedCompany?: Company | null;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
+  isAdmin: boolean;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({
+  currentTab,
+  onSelectTab,
+  user,
+  wallet,
+  selectedCompany,
+  isCollapsed,
+  onToggleCollapse,
+  isAdmin
+}) => {
+  const plan = wallet?.planId || 'free';
+  const isFree = plan === 'free' || plan === 'plan_free' || !wallet?.planId;
+  const hasAutopilotAccess = ['plan_pro', 'plan_business', 'plan_agency'].includes(plan);
+
+  const [apStatus, setApStatus] = useState<'blocked' | 'unconfigured' | 'active' | 'inactive'>('unconfigured');
+
+  useEffect(() => {
+    if (!hasAutopilotAccess) {
+      setApStatus('blocked');
+      return;
+    }
+    if (!user || !selectedCompany?.id) {
+      setApStatus('unconfigured');
+      return;
+    }
+    let isMounted = true;
+    apiRequest<{ config: any; persisted: boolean }>(`/api/autopilot/config?companyId=${encodeURIComponent(selectedCompany.id)}`)
+      .then((res) => {
+        if (!isMounted) return;
+        if (!res.persisted) {
+          setApStatus('unconfigured');
+        } else if (res.config?.enabled) {
+          setApStatus('active');
+        } else {
+          setApStatus('inactive');
+        }
+      })
+      .catch(() => {
+        if (isMounted) setApStatus('unconfigured');
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id, selectedCompany?.id, plan, hasAutopilotAccess, currentTab]);
+  const menuItems = [
+    // PORTAL & BLOG PRINCIPAL
+    { id: 'home', label: 'Blog & Início', icon: BookOpen, badge: 'PORTAL' },
+    { id: 'vitrine', label: 'Vitrine de Apps (7)', icon: Store, badge: 'VIP' },
+
+    // MARKETING & OPERAÇÕES DO PORTAL VIP BRASIL
+    { id: 'dashboard', label: 'Central de Marketing', icon: LayoutDashboard },
+    { id: 'empresa', label: 'Meus Projetos & Sites', icon: Building2 },
+    { id: 'autopilot', label: 'Automação Diária (1x/dia)', icon: Sparkles, badge: 'AUTO' },
+    { id: 'campanhas', label: 'Gerador de Campanhas', icon: Megaphone },
+    { id: 'criar-artigo', label: 'Artigo & Post Blog', icon: FileText },
+    { id: 'criar-conteudo', label: 'Criar Conteúdo IA', icon: PenTool },
+    { id: 'criar-imagem', label: 'Estúdio de Imagens', icon: ImageIcon },
+    { id: 'criar-video', label: 'Roteiros de Vídeo', icon: Video },
+    { id: 'seo', label: 'SEO Bing & Google', icon: Search },
+    { id: 'froc-ia', label: 'Froc Marketing IA', icon: Bot },
+    { id: 'redes-sociais', label: 'Redes Sociais', icon: Share2 },
+    { id: 'calendario', label: 'Calendário de Posts', icon: Calendar },
+    { id: 'conteudos', label: 'Biblioteca de Mídias', icon: FolderOpen },
+    { id: 'analytics', label: 'Métricas & Tráfego', icon: BarChart3 },
+    { id: 'perfil', label: 'Configurações & Perfil', icon: Settings },
+    { id: 'suporte', label: 'Central de Ajuda', icon: HelpCircle }
+  ];
+
+
+  return (
+    <aside
+      className={`fixed left-0 top-0 h-screen bg-[#080D1A]/95 backdrop-blur-xl border-r border-white/[0.08] flex flex-col z-30 transition-all duration-300 ${
+        isCollapsed ? 'w-20' : 'w-64'
+      }`}
+    >
+      {/* Top Header & Logo */}
+      <div className="h-16 flex items-center justify-between px-4 border-b border-white/[0.08] bg-[#070B14]/80 backdrop-blur-md">
+        <div
+          className="flex items-center gap-3 cursor-pointer overflow-hidden"
+          onClick={() => onSelectTab('dashboard')}
+        >
+          <BrandLogo size="md" showText={!isCollapsed} />
+        </div>
+
+        <button
+          onClick={onToggleCollapse}
+          className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/80 transition-colors shrink-0"
+          title={isCollapsed ? 'Expandir menu' : 'Recolher menu'}
+        >
+          {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+        </button>
+      </div>
+
+      {/* Navigation Links (Scrollable) */}
+      <div className="flex-1 overflow-y-auto py-3 px-2 space-y-1 custom-scrollbar">
+        {menuItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = currentTab === item.id;
+          return (
+            <button
+              key={item.id}
+              onClick={() => onSelectTab(item.id)}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
+                isActive
+                  ? 'bg-gradient-to-r from-blue-600/20 to-cyan-500/10 text-cyan-300 border border-cyan-500/40 shadow-sm shadow-cyan-500/10'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/50 hover:border-slate-700/50 border border-transparent'
+              } ${isCollapsed ? 'justify-center px-0' : ''}`}
+              title={isCollapsed ? item.label : undefined}
+            >
+              <Icon size={18} className={isActive ? 'text-cyan-400' : 'text-slate-400'} />
+              {!isCollapsed && (
+                <span className="flex-1 text-left truncate tracking-tight">{item.label}</span>
+              )}
+              {!isCollapsed && item.badge && (
+                <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-400/30">
+                  {item.badge}
+                </span>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Item exclusivo de Administrador */}
+        {isAdmin && (
+          <div className="pt-2 mt-2 border-t border-slate-800">
+            <button
+              onClick={() => onSelectTab('admin')}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                currentTab === 'admin'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                  : 'text-amber-400/90 hover:text-amber-300 hover:bg-amber-950/20 border border-transparent'
+              } ${isCollapsed ? 'justify-center px-0' : ''}`}
+              title="Painel Administrativo"
+            >
+              <ShieldAlert size={18} className="text-amber-400" />
+              {!isCollapsed && <span>Painel Admin</span>}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Bottom User & System Status Footer */}
+      <div className="p-3 border-t border-white/[0.08] bg-[#070B14]/80 backdrop-blur-md space-y-2">
+        {!isCollapsed && (
+          <>
+            {/* Status do Portal Vip Brasil */}
+            <div
+              onClick={() => onSelectTab('autopilot')}
+              className="p-2.5 rounded-xl bg-gradient-to-r from-blue-950/60 to-slate-900/80 border border-cyan-500/25 hover:border-cyan-500/50 cursor-pointer transition-all flex items-center justify-between shadow-sm"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <Sparkles size={14} />
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-[10px] text-slate-400">Automação 1x/dia</span>
+                  <span className="text-xs font-black text-cyan-300 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Ativa & Pronta
+                  </span>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+                SEO Bing/Google
+              </span>
+            </div>
+          </>
+        )}
+
+        {/* User Card */}
+        <div className="flex items-center gap-2.5 pt-1">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-600 to-blue-600 border border-cyan-400/40 flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm">
+            {user?.name ? user.name[0].toUpperCase() : 'U'}
+          </div>
+          {!isCollapsed && (
+            <div className="flex-1 min-w-0 flex flex-col">
+              <span className="text-xs font-bold text-white truncate">
+                {user?.name || 'Visitante'}
+              </span>
+              <span className="text-[10px] text-slate-400 truncate">
+                {user?.email || 'Faça login para salvar'}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </aside>
+  );
+};

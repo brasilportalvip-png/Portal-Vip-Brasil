@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function own(uid) { return signedIn() && request.auth.uid == uid; }
+
+    // Perfis: leitura restrita ao próprio usuário; criação e atualização exclusivamente via backend /api/auth
+    match /users/{uid} {
+      allow read: if own(uid);
+      allow write: if false;
+    }
+
+    // Carteiras: leitura restrita ao próprio usuário; controle de saldo e transações exclusivamente via backend
+    match /wallets/{uid} {
+      allow read: if own(uid);
+      allow write: if false;
+    }
+
+    // Empresas: proprietário autenticado pode ler seus dados; vitrine pública pode ser lida; escritas exclusivamente via backend
+    match /companies/{id} {
+      allow read: if resource.data.isPublicInVitrine == true || (signedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Artigos de blog públicos
+    match /blogPosts/{id} {
+      allow read: if resource.data.status == 'published';
+      allow write: if false;
+    }
+
+    // Conteúdos, campanhas e agendamentos: leitura restrita ao proprietário; escritas exclusivamente via backend
+    match /contentItems/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+    match /campaigns/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+    match /scheduledPosts/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Notificações: leitura restrita ao próprio usuário; escrita exclusivamente via backend
+    match /notifications/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Relatórios SEO: leitura restrita ao proprietário; escritas exclusivamente via backend
+    match /seoReports/{id} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Transações financeiras, claims de segurança, logs, idempotência, autopilot e conexões sociais permanecem backend-only
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

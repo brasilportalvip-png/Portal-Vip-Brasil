@@ -1,0 +1,591 @@
+import { CreditWalletService } from '../services/creditWalletService.js';
+import { SafetyService } from './safetyService.js';
+import { AIRequestOrchestrator } from './requestOrchestrator.js';
+import { ContextBuilder } from './contextBuilder.js';
+import { ExecutionTraceService } from './executionTraceService.js';
+import { CostService } from './costService.js';
+import { CitationService } from './citationService.js';
+import {
+  ExecutionParams,
+  KnowledgeChunk,
+  MessageCitation,
+} from './types/ai.js';
+import { adminDb } from '../lib/firebaseAdmin.js';
+import { FieldValue } from 'firebase-admin/firestore';
+import { FeatureFlagService } from '../services/featureFlagService.js';
+import { ExecutionAbortRegistry } from './executionAbortRegistry.js';
+import { ResearchEvidenceService } from './researchEvidenceService.js';
+import { ConversationContextService } from './conversationContextService.js';
+import { MemoryService } from './memoryService.js';
+import { recordOperationalEventBestEffort } from '../observability/operationalTelemetryRuntime.js';
+import {
+  SocialSearchReport,
+  SocialSearchService,
+} from './socialSearchService.js';
+import { SocialSearchPolicyService } from './socialSearchPolicyService.js';
+import { GeminiFailoverService } from './geminiFailoverService.js';
+import { SiteAuditReport, SiteAuditService } from '../services/siteAuditService.js';
+import { SiteAuditPolicyService } from './siteAuditPolicyService.js';
+import { CitationUrlResolver } from './citationUrlResolver.js';
+
+export class AIExecutionService {
+  /**
+   * Executes AI task synchronously with full credit reservation, fallback, and trace lifecycle
+   */
+  static async execute(
+    params: ExecutionParams,
+    correlationId: string
+  ): Promise<{
+    text: string;
+    modelUsed: string;
+    executionId: string;
+    consumedCredits: number;
+    citations: MessageCitation[];
+    fallbackUsed: boolean;
+    evidence: {
+      researchStatus: string;
+      ragStatus: string;
+      socialSearchStatus: string;
+      siteAuditStatus: string;
+      siteAuditPages: number;
+      sourceCount: number;
+      sourceDomains: string[];
+      socialPlatforms: string[];
+    };
+  }> {
+    await FeatureFlagService.assertEnabled('ai_chat');
+
+    if (params.mode === 'image') {
+      await FeatureFlagService.assertEnabled(
+        'image_generation'
+      );
+    }
+
+    if (params.mode === 'video') {
+      await FeatureFlagService.assertEnabled(
+        'video_generation'
+      );
+    }
+
+    const {
+      userId,
+      tenantId = `user:${userId}`,
+      userDisplayName,
+      conversationId,
+      projectId,
+      mode,
+      prompt,
+      attachments = [],
+      systemInstruction,
+      responseFormat = 'text',
+      idempotencyKey: providedKey,
+      knowledgeBaseIds = [],
+      modelOverride,
+    } = params;
+
+    // 1. Safety Check
+    const safety = SafetyService.inspectPrompt(prompt);
+    if (!safety.safe) {
+      throw new Error(safety.reason || 'Prompt rejeitado por questoes de seguranca.');
+    }
+
+    const sanitizedPrompt = SafetyService.sanitizeInput(prompt);
+
+    if (projectId) {
+      await MemoryService.assertScopeAccess(userId, tenantId, 'project', projectId);
+    }
+    if (conversationId) {
+      await MemoryService.assertScopeAccess(
+        userId,
+        tenantId,
+        'conversation',
+        conversationId
+      );
+    }
+
+    // Validate conversation existence & ownership if conversationId is provided
+    if (adminDb && conversationId) {
+      const convSnap = await adminDb.collection('conversations').doc(conversationId).get();
+      if (!convSnap.exists || convSnap.data()?.userId !== userId) {
+        throw new Error('Conversa não encontrada ou não pertence ao usuário.');
+      }
+    }
+
+    // 2. Classify, authorize tools and route the request
+    const plan = AIRequestOrchestrator.plan({
+      mode,
+      prompt: sanitizedPrompt,
+      hasImages: attachments.some(
+        (attachment) => attachment.type === 'image'
+      ),
+      hasFiles: attachments.length > 0,
+      requestedTools: params.tools,
+      knowledgeBaseIds,
+      preferredModel: modelOverride
+    });
+    const route = plan.route;
+
+    const idempotencyKey = providedKey || `aiexec-${userId}-${Date.now()}`;
+
+    // 3. Reserve Credits
+    const reserveResult = await CreditWalletService.reserveCredits({
+      userId,
+      amount: route.estimatedCredits,
+      operation: `Reserva para execução IA (${mode})`,
+      idempotencyKey,
+    });
+
+    const reservationId = reserveResult.reservationId;
+    let executionId: string | null = null;
+    let modelToUse = route.selectedModel;
+    let fallbackUsed = false;
+    let aiResponseText = '';
+    let inputTokens = 0;
+    let outputTokens = 0;
+    const attemptedModels: string[] = [];
+    let startTime = Date.now();
+    const citations: MessageCitation[] = [];
+    let ragChunksUsed: KnowledgeChunk[] = [];
+    let socialSearchReport: SocialSearchReport | null = null;
+    let siteAuditReport: SiteAuditReport | null = null;
+    let contextTruncated = false;
+    let omittedHistoryCount = 0;
+    let longTermSegmentsUsed = 0;
+    let longTermMessagesUsed = 0;
+    const enableSearchGrounding =
+      plan.classification.requiresSearch ||
+      route.reasonCode === 'mode_research_grounded';
+
+    try {
+      // 4. Create Execution Trace
+      executionId = await ExecutionTraceService.createTrace({
+        userId,
+        conversationId: conversationId || null,
+        projectId: projectId || null,
+        mode,
+        selectedModel: route.selectedModel,
+        fallbackModels: route.fallbackModels,
+        attemptedModels: [route.selectedModel],
+        status: 'running',
+        promptVersion: 'v1.0.0',
+        inputTokens: null,
+        outputTokens: null,
+        cachedTokens: null,
+        estimatedCredits: route.estimatedCredits,
+        consumedCredits: null,
+        reservationId,
+        latencyMs: null,
+        fallbackUsed: false,
+        correlationId,
+        errorCode: null,
+        createdAt: new Date().toISOString(),
+        startedAt: new Date().toISOString(),
+        completedAt: null,
+        requestDomain:
+          plan.classification.domain,
+        requestComplexity:
+          plan.classification.complexity,
+        requestSensitivity:
+          plan.classification.sensitivity,
+        requiresSearch:
+          plan.classification.requiresSearch,
+        toolsRequested: plan.tools.map(
+          (tool) => tool.name
+        ),
+      });
+
+
+
+
+
+
+
+
+const abortSignal =
+  ExecutionAbortRegistry.register(executionId);
+
+const abortFromRequest = () => {
+  ExecutionAbortRegistry.cancel(
+    executionId!,
+    'Conexão encerrada pelo cliente.'
+  );
+};
+
+if (params.abortSignal?.aborted) {
+  abortFromRequest();
+} else {
+  params.abortSignal?.addEventListener(
+    'abort',
+    abortFromRequest,
+    { once: true }
+  );
+}
+
+
+
+
+
+
+
+
+
+
+      // 5. Assemble Context
+      const conversationContext = await ConversationContextService.load({
+        userId,
+        tenantId,
+        conversationId,
+        projectId,
+        prompt: sanitizedPrompt,
+      });
+      const assembled = await ContextBuilder.assemble({
+        userId,
+        tenantId,
+        userDisplayName,
+        mode,
+        prompt: sanitizedPrompt,
+        conversationId,
+        projectId,
+        knowledgeBaseIds,
+        systemInstructionOverride: systemInstruction,
+        requestPolicy: plan.systemPolicy,
+        recentMessages: conversationContext.recentMessages,
+        conversationSummary: conversationContext,
+      });
+
+      ragChunksUsed = assembled.ragChunksUsed;
+      contextTruncated = assembled.contextTruncated;
+      omittedHistoryCount = assembled.omittedHistoryCount;
+      longTermSegmentsUsed = assembled.longTermSegmentsUsed;
+      longTermMessagesUsed = assembled.longTermMessagesUsed;
+
+      // Add RAG Citations
+      for (const chunk of assembled.ragChunksUsed) {
+        citations.push(CitationService.buildRAGCitationPill(chunk));
+      }
+
+      if (plan.classification.siteAuditUrl) {
+        await SiteAuditPolicyService.assertAllowed({ userId, tenantId });
+        siteAuditReport = await SiteAuditService.audit(
+          { url: plan.classification.siteAuditUrl, maxPages: 8 },
+          { maxDurationMs: 18_000 }
+        );
+        citations.push(...CitationService.buildSiteAuditCitations(siteAuditReport));
+      }
+
+      if (
+        SocialSearchService.shouldSearch(
+          sanitizedPrompt,
+          mode
+        )
+      ) {
+        await SocialSearchPolicyService.assertAllowed({
+          userId,
+          tenantId,
+        });
+        socialSearchReport =
+          await SocialSearchService.search({
+            query: sanitizedPrompt,
+            platforms:
+              SocialSearchService.extractRequestedPlatforms(
+                sanitizedPrompt
+              ),
+            limit: SocialSearchService.requestedLimit(sanitizedPrompt),
+          });
+        citations.push(
+          ...CitationService.buildSocialCitations(
+            socialSearchReport.items
+          )
+        );
+      }
+
+      const modelUserMessage = [
+        assembled.userMessage,
+        siteAuditReport ? SiteAuditService.toGroundingContext(siteAuditReport) : '',
+        socialSearchReport ? SocialSearchService.toGroundingContext(socialSearchReport) : ''
+      ].join('');
+
+      startTime = Date.now();
+      // 6. Execute across the complete, deduplicated and health-aware chain.
+      const generation = await GeminiFailoverService.generate(
+        {
+          model: modelToUse,
+          systemInstruction: assembled.systemInstruction,
+          userMessage: modelUserMessage,
+          attachments,
+          responseFormat,
+          enableSearchGrounding,
+          abortSignal,
+        },
+        route.fallbackModels
+      );
+      const generatedResponse = generation.response;
+      modelToUse = generation.model;
+      attemptedModels.push(...generation.attemptedModels);
+      fallbackUsed = generation.fallbackUsed;
+
+      aiResponseText = generatedResponse.text;
+      inputTokens = generatedResponse.inputTokens;
+      outputTokens = generatedResponse.outputTokens;
+
+      if (generatedResponse.groundingMetadata) {
+        citations.push(
+          ...CitationService.extractSearchGroundingCitations(
+            generatedResponse.groundingMetadata
+          )
+        );
+      }
+      } catch (execErr: any) {
+  if (executionId) {
+    ExecutionAbortRegistry.clear(executionId);
+  }
+
+  // Execution failed: Release Reservation!
+      try {
+  await CreditWalletService.releaseReservation({
+    userId,
+    reservationId,
+    operation: `Estorno por falha na execucao de IA (${execErr.message || 'erro desconhecido'})`,
+    idempotencyKey: `rel-${idempotencyKey}`,
+  });
+} catch (releaseError) {
+  console.warn(
+    'A reserva já estava liberada ou o estorno falhou:',
+    releaseError
+  );
+}
+
+      if (executionId) {
+        await ExecutionTraceService.updateTrace(executionId, {
+          status: 'failed',
+          attemptedModels,
+          errorCode: execErr.message || 'ai_execution_failed',
+          completedAt: new Date().toISOString(),
+        });
+      }
+
+      await recordOperationalEventBestEffort({
+        category: 'ai',
+        operation: `ai.${mode}`,
+        resource: 'ai-execution',
+        status: 'error',
+        correlationId,
+        traceId: executionId,
+        tenantId,
+        userId,
+        projectId: projectId || null,
+        durationMs: Math.max(0, Date.now() - startTime),
+        errorCode: execErr?.code || execErr?.name || 'ai_execution_failed',
+        model: modelToUse,
+      });
+
+      throw execErr;
+   }
+
+const resolvedCitationPayload =
+  await CitationUrlResolver.resolve({
+    text: aiResponseText,
+    citations,
+  });
+
+aiResponseText = resolvedCitationPayload.text;
+citations.splice(
+  0,
+  citations.length,
+  ...resolvedCitationPayload.citations
+);
+
+const mergedCitations = CitationService.mergeCitations(
+  citations.filter(
+    (citation) => citation.sourceType === 'web'
+  ),
+  citations.filter(
+    (citation) => citation.sourceType === 'social'
+  ),
+  citations.filter(
+    (citation) =>
+      citation.sourceType === 'knowledge_base'
+  )
+);
+
+citations.splice(
+  0,
+  citations.length,
+  ...mergedCitations
+);
+
+const evidence = ResearchEvidenceService.finalize({
+  text: aiResponseText,
+  citations,
+  requiresSearch: enableSearchGrounding,
+  sensitivity: plan.classification.sensitivity,
+  knowledgeBaseRequested:
+    knowledgeBaseIds.length > 0,
+  ragChunksUsed,
+  minimumSourceDomains:
+    SocialSearchService.requestedLimit(sanitizedPrompt) === 10 ? 2 : 1,
+});
+
+aiResponseText = evidence.text;
+
+if (executionId) {
+  ExecutionAbortRegistry.clear(executionId);
+}
+
+// 7. Calculate Actual Consumed Credits
+const consumedCredits = CostService.calculateCreditCost(
+  modelToUse,
+  inputTokens,
+  outputTokens,
+  plan.tools.length > 0,
+  plan.classification.requiresSearch,
+  mode
+);
+
+    const latencyMs = Date.now() - startTime;
+
+    // 8. Confirm Credit Consumption
+    try {
+      await CreditWalletService.confirmConsumption({
+        userId,
+        reservationId,
+        amountConsumed: Math.min(consumedCredits, route.estimatedCredits),
+        operation: `Consumo de IA (${mode} - ${modelToUse})`,
+        idempotencyKey: `cnf-${idempotencyKey}`,
+      });
+    } catch (confErr: any) {
+      console.error('CRITICAL: AI output delivered but wallet confirmation failed:', confErr);
+      // Record in financial_reconciliation_cases
+      if (adminDb) {
+        await adminDb.collection('financial_reconciliation_cases').add({
+          userId,
+          reservationId,
+          reason: 'wallet_confirmation_failed',
+          amountBrl: 0,
+          creditsOriginallyGranted: 0,
+          consumedCredits,
+          correlationId,
+          status: 'open',
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    // 9. Persist messages in conversation if conversationId is set
+    if (adminDb && conversationId) {
+      try {
+        const batch = adminDb.batch();
+
+        const userMsgRef = adminDb.collection('messages').doc(`msg_usr_${executionId}`);
+        batch.set(userMsgRef, {
+          conversationId,
+          userId,
+          tenantId,
+          role: 'user',
+          content: prompt,
+          attachments: attachments || [],
+          executionId,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+
+        const aiMsgRef = adminDb.collection('messages').doc(`msg_ast_${executionId}`);
+        batch.set(aiMsgRef, {
+          conversationId,
+          userId,
+          tenantId,
+          role: 'assistant',
+          content: aiResponseText,
+          citations: citations || [],
+          executionId,
+          model: modelToUse,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+
+        const convRef = adminDb.collection('conversations').doc(conversationId);
+        batch.update(convRef, {
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        await batch.commit();
+      } catch (msgErr: any) {
+        console.error('⚠️ Error saving conversation messages in AIExecutionService:', msgErr);
+      }
+    }
+
+    // 10. Finalize Trace
+    await ExecutionTraceService.updateTrace(executionId, {
+      status: 'completed',
+      inputTokens,
+      outputTokens,
+      consumedCredits,
+      latencyMs,
+      fallbackUsed,
+      attemptedModels,
+      researchEvidenceStatus:
+        evidence.researchStatus,
+      ragEvidenceStatus: evidence.ragStatus,
+      sourceCount: evidence.sourceCount,
+      sourceDomains: evidence.sourceDomains,
+      socialPlatforms:
+        socialSearchReport?.requestedPlatforms || [],
+      socialSearchStatus:
+        SocialSearchService.evidenceStatus(
+          socialSearchReport
+        ),
+      siteAuditStatus:
+        siteAuditReport?.status || 'not_requested',
+      siteAuditPages:
+        siteAuditReport?.summary.pagesAnalyzed || 0,
+      contextTruncated,
+      omittedHistoryCount,
+      longTermSegmentsUsed,
+      longTermMessagesUsed,
+      completedAt: new Date().toISOString(),
+    });
+
+    await recordOperationalEventBestEffort({
+      category: 'ai',
+      operation: `ai.${mode}`,
+      resource: 'ai-execution',
+      status: 'success',
+      correlationId,
+      traceId: executionId,
+      tenantId,
+      userId,
+      projectId: projectId || null,
+      durationMs: latencyMs,
+      inputTokens,
+      outputTokens,
+      cachedTokens: null,
+      costCredits: consumedCredits,
+      attempts: attemptedModels.length,
+      model: modelToUse,
+    });
+
+    return {
+      text: aiResponseText,
+      modelUsed: modelToUse,
+      executionId,
+      consumedCredits,
+      citations,
+      fallbackUsed,
+      evidence: {
+        researchStatus: evidence.researchStatus,
+        ragStatus: evidence.ragStatus,
+        socialSearchStatus:
+          SocialSearchService.evidenceStatus(
+            socialSearchReport
+          ),
+        siteAuditStatus:
+          siteAuditReport?.status || 'not_requested',
+        siteAuditPages:
+          siteAuditReport?.summary.pagesAnalyzed || 0,
+        sourceCount: evidence.sourceCount,
+        sourceDomains: evidence.sourceDomains,
+        socialPlatforms:
+          socialSearchReport?.requestedPlatforms || [],
+      },
+    };
+  }
+}
