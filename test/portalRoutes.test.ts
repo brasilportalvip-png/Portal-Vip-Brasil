@@ -26,10 +26,26 @@ test('Regressão de Rotas da API Portal Vip Brasil: Endpoints montados corretame
     assert.ok(Array.isArray(projectsData.projects), 'Deve retornar lista de projetos');
     assert.ok(projectsData.brand, 'Deve retornar assets oficiais da marca');
 
-    // 3. GET /api/portal/blog/settings NÃO deve retornar 404
+    // 3. Configurações editoriais são administrativas e devem falhar fechadas sem autenticação
     const resSettings = await fetch(`${baseUrl}/api/portal/blog/settings`);
     assert.notEqual(resSettings.status, 404, 'GET /api/portal/blog/settings não deve retornar 404');
-    assert.equal(resSettings.status, 200, 'GET /api/portal/blog/settings deve retornar 200');
+    assert.equal(resSettings.status, 401, 'GET /api/portal/blog/settings deve exigir autenticação');
+
+    const protectedMutations = [
+      ['/api/portal/daily-pulse', 'POST'],
+      ['/api/portal/blog/settings', 'POST'],
+      ['/api/portal/blog/generate-project-article', 'POST'],
+      ['/api/portal/blog/daily-cycle', 'POST'],
+      ['/api/portal/blog/articles/test/status', 'PATCH']
+    ] as const;
+    for (const [pathname, method] of protectedMutations) {
+      const response = await fetch(`${baseUrl}${pathname}`, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      assert.equal(response.status, 401, `${method} ${pathname} deve exigir autenticação`);
+    }
 
     // 4. GET /api/api/portal/projects DEVE retornar 404 (garantindo que rota duplicada não existe)
     const resDuplicate = await fetch(`${baseUrl}/api/api/portal/projects`);

@@ -426,6 +426,7 @@ let cloudHealthExpiresAt = 0;
 let cloudHealthProbe: Promise<DatabaseHealth> | null = null;
 
 export async function probeDatabaseHealth(): Promise<DatabaseHealth> {
+  if (cachedCloudHealth && Date.now() < cloudHealthExpiresAt) return cachedCloudHealth;
   if (cloudHealthProbe) return cloudHealthProbe;
 
   cloudHealthProbe = (async () => {
@@ -453,7 +454,10 @@ export async function probeDatabaseHealth(): Promise<DatabaseHealth> {
 
     try {
       // Leitura real e limitada: configuração presente, por si só, não significa readiness.
-      await adminFirestore.collection(COLLECTIONS.systemSettings).limit(1).get();
+      await Promise.race([
+        adminFirestore.collection(COLLECTIONS.systemSettings).limit(1).get(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Firestore health check timeout')), 4_000))
+      ]);
       const result: DatabaseHealth = {
         status: 'healthy',
         mode: 'firestore_cloud',
