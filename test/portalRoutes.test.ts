@@ -26,6 +26,15 @@ test('Regressão de Rotas da API Portal Vip Brasil: Endpoints montados corretame
     assert.ok(Array.isArray(projectsData.projects), 'Deve retornar lista de projetos');
     assert.ok(projectsData.brand, 'Deve retornar assets oficiais da marca');
 
+    const resTracking = await fetch(`${baseUrl}/api/portal/blog/track`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ articleId: 'public-test', metric: 'views' })
+    });
+    assert.equal(resTracking.status, 202, 'Tracking público deve ser aceito sem gravar no Firestore');
+    const trackingData = await resTracking.json();
+    assert.equal(trackingData.persisted, false, 'Tracking público deve permanecer best-effort');
+
     // 3. Configurações editoriais são administrativas e devem falhar fechadas sem autenticação
     const resSettings = await fetch(`${baseUrl}/api/portal/blog/settings`);
     assert.notEqual(resSettings.status, 404, 'GET /api/portal/blog/settings não deve retornar 404');

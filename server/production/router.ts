@@ -2006,15 +2006,6 @@ router.get('/portal/blog/articles/:slug', asyncRoute(async (req: Request, res: R
   const article = await getBlogArticleBySlug(req.params.slug);
   if (!article) return res.status(404).json({ error: 'Artigo não encontrado no Blog do Portal Vip Brasil.' });
 
-  // Incrementa visualizações
-  try {
-    const db = firestore();
-    await db.collection(COLLECTIONS.blogArticles).doc(article.id).set({
-      views: (article.views || 0) + 1
-    }, { merge: true });
-    article.views = (article.views || 0) + 1;
-  } catch {}
-
   res.json({ article });
 }));
 
@@ -2076,19 +2067,9 @@ router.post('/portal/blog/track', asyncRoute(async (req: Request, res: Response)
   const validMetrics = ['views', 'likes', 'shares', 'clicksWebsite', 'clicksPlayStore'];
   if (!validMetrics.includes(metric)) return res.status(400).json({ error: 'Métrica inválida.' });
 
-  try {
-    const db = firestore();
-    const docRef = db.collection(COLLECTIONS.blogArticles).doc(articleId);
-    const snap = await docRef.get();
-    if (snap.exists) {
-      const current = (snap.data() as any)[metric] || 0;
-      await docRef.set({ [metric]: current + 1 }, { merge: true });
-    }
-  } catch (err) {
-    console.warn('[BlogEngine] Erro ao registrar tracking:', err);
-  }
-
-  res.json({ success: true, articleId, metric });
+  // Métricas públicas permanecem best-effort no cliente. Persistir cada acesso
+  // no Firestore permitia que bots consumissem toda a cota diária de gravações.
+  res.status(202).json({ success: true, persisted: false, articleId, metric });
 }));
 
 export { router };

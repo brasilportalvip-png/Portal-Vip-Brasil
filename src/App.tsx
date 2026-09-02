@@ -281,7 +281,10 @@ export function App() {
           const epoch = ++sessionEpochRef.current;
           sessionControllerRef.current = controller;
 
-          const data = await apiRequest<{ user: User; wallet: Wallet }>('/api/auth/me', { signal: controller.signal });
+          const data = await apiRequest<{ user: User; wallet: Wallet }>('/api/auth/me', {
+            signal: controller.signal,
+            timeoutMs: 12_000
+          });
           if (epoch !== sessionEpochRef.current) return;
 
           if (data?.user) {
