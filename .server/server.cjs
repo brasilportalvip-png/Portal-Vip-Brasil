@@ -8588,9 +8588,19 @@ router.post("/auth/accept-terms", requireAuth, asyncRoute(async (req, res) => {
   });
 }));
 router.get("/auth/me", requireAuth, asyncRoute(async (req, res) => {
+  const isAdmin = req.user?.role === "admin" || req.user?.id === "portal_vip_admin" || req.user?.email === "brasilportalvip@gmail.com";
+  let wallet = null;
+  if (!isAdmin && req.user?.id) {
+    try {
+      wallet = await getWallet(req.user.id);
+    } catch (err) {
+      console.warn("[Auth/Me] Falha silenciosa ao carregar carteira legado:", err);
+      wallet = null;
+    }
+  }
   res.json({
     user: req.user,
-    wallet: await getWallet(req.user.id),
+    wallet,
     needsTermsConsent: !hasAcceptedLatestTerms(req.user),
     currentTermsVersion: CURRENT_TERMS_VERSION
   });
@@ -9992,7 +10002,7 @@ ${blocked2.map((path2) => `Disallow: ${path2}`).join("\n")}
 Sitemap: ${config.appUrl.replace(/\/$/, "")}/sitemap.xml
 `;
 }
-router.get("/api/portal/projects", asyncRoute(async (_req, res) => {
+router.get("/portal/projects", asyncRoute(async (_req, res) => {
   let projects = await listAllPortalProjectsFromDb();
   if (!projects.length) {
     const seeded = await seedPortalProjectsIfEmpty();
@@ -10004,26 +10014,26 @@ router.get("/api/portal/projects", asyncRoute(async (_req, res) => {
     total: projects.length
   });
 }));
-router.post("/api/portal/projects/seed", requireAuth, requireAdmin, asyncRoute(async (_req, res) => {
+router.post("/portal/projects/seed", requireAuth, requireAdmin, asyncRoute(async (_req, res) => {
   const result = await seedPortalProjectsIfEmpty();
   res.json({ success: true, ...result });
 }));
-router.get("/api/portal/projects/:slug", asyncRoute(async (req, res) => {
+router.get("/portal/projects/:slug", asyncRoute(async (req, res) => {
   const project = await getPortalProjectFromDb(req.params.slug);
   if (!project) return res.status(404).json({ error: "Projeto n\xE3o encontrado na Vitrine Portal Vip Brasil." });
   res.json({ project });
 }));
-router.patch("/api/portal/projects/:id", requireAuth, requireAdmin, asyncRoute(async (req, res) => {
+router.patch("/portal/projects/:id", requireAuth, requireAdmin, asyncRoute(async (req, res) => {
   const updated = await updatePortalProjectInDb(req.params.id, req.body || {});
   if (!updated) return res.status(404).json({ error: "Projeto n\xE3o encontrado para atualiza\xE7\xE3o." });
   res.json({ success: true, project: updated });
 }));
-router.post("/api/portal/daily-pulse", asyncRoute(async (req, res) => {
+router.post("/portal/daily-pulse", asyncRoute(async (req, res) => {
   const userId = req.user?.id || "portal_vip_admin";
   const result = await runDailyPortalMarketingCycle(userId);
   res.json(result);
 }));
-router.get("/api/portal/antifall-status", asyncRoute(async (req, res) => {
+router.get("/portal/antifall-status", asyncRoute(async (req, res) => {
   const testStart = Date.now();
   const testResult = await executeAiWith2SecAntiFall({
     prompt: "Verifica\xE7\xE3o r\xE1pida de integridade da esteira de IA com failover 2s.",
@@ -10046,7 +10056,7 @@ router.get("/api/portal/antifall-status", asyncRoute(async (req, res) => {
     timestamp: nowIso()
   });
 }));
-router.get("/api/portal/blog/articles", asyncRoute(async (req, res) => {
+router.get("/portal/blog/articles", asyncRoute(async (req, res) => {
   const category = req.query.category ? String(req.query.category) : void 0;
   const projectId = req.query.projectId ? String(req.query.projectId) : void 0;
   const query = req.query.q ? String(req.query.q) : void 0;
@@ -10056,7 +10066,7 @@ router.get("/api/portal/blog/articles", asyncRoute(async (req, res) => {
   const result = await listBlogArticles({ category, projectId, query, status, limit, offset });
   res.json(result);
 }));
-router.get("/api/portal/blog/articles/:slug", asyncRoute(async (req, res) => {
+router.get("/portal/blog/articles/:slug", asyncRoute(async (req, res) => {
   const article = await getBlogArticleBySlug(req.params.slug);
   if (!article) return res.status(404).json({ error: "Artigo n\xE3o encontrado no Blog do Portal Vip Brasil." });
   try {
@@ -10069,16 +10079,16 @@ router.get("/api/portal/blog/articles/:slug", asyncRoute(async (req, res) => {
   }
   res.json({ article });
 }));
-router.get("/api/portal/blog/settings", asyncRoute(async (req, res) => {
+router.get("/portal/blog/settings", asyncRoute(async (req, res) => {
   const settings = await getBlogSettings();
   res.json({ settings });
 }));
-router.post("/api/portal/blog/settings", asyncRoute(async (req, res) => {
+router.post("/portal/blog/settings", asyncRoute(async (req, res) => {
   const partial = req.body || {};
   const settings = await updateBlogSettings(partial);
   res.json({ success: true, settings });
 }));
-router.post("/api/portal/blog/generate-project-article", asyncRoute(async (req, res) => {
+router.post("/portal/blog/generate-project-article", asyncRoute(async (req, res) => {
   const { projectId, customTopic, customIntent, forceApproval } = req.body || {};
   const project = PORTAL_VIP_PROJECTS.find((p) => p.id === projectId || p.slug === projectId);
   if (!project) {
@@ -10093,12 +10103,12 @@ router.post("/api/portal/blog/generate-project-article", asyncRoute(async (req, 
   });
   res.json(result);
 }));
-router.post("/api/portal/blog/daily-cycle", asyncRoute(async (req, res) => {
+router.post("/portal/blog/daily-cycle", asyncRoute(async (req, res) => {
   const userId = req.user?.id || "portal_vip_admin";
   const result = await runDailyBlogCycle(userId);
   res.json(result);
 }));
-router.patch("/api/portal/blog/articles/:id/status", asyncRoute(async (req, res) => {
+router.patch("/portal/blog/articles/:id/status", asyncRoute(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body || {};
   if (!["published", "pending_approval", "draft", "archived"].includes(status)) {
@@ -10111,7 +10121,7 @@ router.patch("/api/portal/blog/articles/:id/status", asyncRoute(async (req, res)
   }, { merge: true });
   res.json({ success: true, id, status });
 }));
-router.post("/api/portal/blog/track", asyncRoute(async (req, res) => {
+router.post("/portal/blog/track", asyncRoute(async (req, res) => {
   const { articleId, metric } = req.body || {};
   if (!articleId || !metric) return res.status(400).json({ error: "articleId e metric s\xE3o obrigat\xF3rios." });
   const validMetrics = ["views", "likes", "shares", "clicksWebsite", "clicksPlayStore"];
