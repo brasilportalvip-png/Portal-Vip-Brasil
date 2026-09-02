@@ -1,9 +1,9 @@
 {
   "id": "/",
-  "name": "ALMA X — O Regente Digital",
-  "short_name": "ALMA X",
-  "description": "Plataforma de Inteligência Artificial Pessoal, Operacional, Multimodal e Adaptativa.",
-  "start_url": "/alma",
+  "name": "Portal Vip Brasil",
+  "short_name": "Portal VIP",
+  "description": "Central de marketing, inteligência artificial, vitrine e divulgação do Portal Vip Brasil.",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#050811",
@@ -15,7 +15,7 @@
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
   "shortcuts": [
-    { "name": "ALMA X Regente", "url": "/alma", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Portal Vip Brasil", "url": "/", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Alma Home Hub", "url": "/alma/home", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "17 Agentes", "url": "/alma/agentes", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
   ]

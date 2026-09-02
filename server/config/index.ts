@@ -13,14 +13,6 @@ function env(name: string, fallback = ''): string {
   return val ? val : fallback;
 }
 
-function required(name: string, fallback = ''): string {
-  const value = env(name, fallback);
-  if (isProduction && !value) {
-    throw new Error(`[Froc.IA] Variável obrigatória ausente em produção: ${name}`);
-  }
-  return value;
-}
-
 const appUrl = (isProduction
   ? env('APP_URL')
   : env('APP_URL', 'http://localhost:3000')).replace(/\/$/, '');
@@ -51,35 +43,6 @@ const corsOrigins = resolveCorsOrigins(
   appUrl || 'http://localhost:3000'
 );
 
-const ALMA_DEFAULT_FIREBASE_KEY = `-----BEGIN PRIVATE KEY-----
-MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDJ+Z1B6x9Adz+w
-g5ZsGwYMSfeRAtNJXmvR1G7HTJYXnVk37lucShgwyqKrf+0MDmnLHtx24fg8Dt2g
-7/Ft5zC9yhMMl44/NtfjSfT6tKeUA8NHqRk/l6l6goUA38yYReAZ5yDyg6uXhTdS
-K4rE3wMuCzqUY4ujxMr+8eqHEUYjHVDUi1YJoG2F+kJ1un1tUiAKzOJuOq9s2HRE
-e9lC3dfNGtXMzZMTqauRztrfdBT4Le/JwHOkqkXL/LI/H/DFZZnEbj0YkpQt6XxC
-/1UQrm6TFzj6ve8Q/cNgHn3bCaNVhEMxJ/uQ8pNWe4ytJTwOL8gZNCMLR/UQV8Ia
-nUtC6imRAgMBAAECggEAUuR4LwKha+LFJ9uJk8qve8Grsj8Xmgf/djmaUX9UJlL0
-t+jCfm1Galfv1TUGg6kysCN1VfE94OA1A4UWcAWvUmUp1kQpJDaM+gJzYaVdFXlJ
-3xI+g4PqEZaZoZc4L9KVu+vI8N8rQF9zKe0m4c+pTW9cVmRYfhkZOvLsTwy+3U/C
-b8iP7zp5zulEzWn995yjDZvOuHc7m2NuYvX06uvxGvipf6Z4lBJ/VSB099VSOkn8
-vbDxdFPOvjYGWngYP4V+K3XzuBW9U1bgcf75VysYQmHL9K3mFq/oforqgQBbNZZk
-8F1SYwQ1r4AznEOaTjKwlT2JRZJ3cqzCpbaCIf0nJQKBgQD4AwRMH4mA+gTl4jz3
-4vrJAq3FL/iUamX9I/zK411sForMQIjpOlvL3+3FFUGCoGpprecepSRs1q9TAQlR
-6/aPOJUOQrhjldYq2AdwjR97va73/VIpllhMtGb9uRIYv57pa1Vs1nlCEnq0vkiI
-ee+awKxyD6bjT+ov4CO19dP4VwKBgQDQewBTnNbZkvZ6Wc4RK46pGe4/K+iK21Gy
-nnEkbUtUjDOAOOb1ajiqEM/KVuzCEZi42ec3k3lx9N3bMpFMSUK/kzk3Os2aeBzg
-PjYxYNLmygEgGfdaHOL5rcmrZr5sT1qTh2vfWbNquA4GSi7rlWviiWI75N/n1X+Y
-RvhmU3rcVwKBgQCCRFtifIIl66zc7mslrOQa5rxNQXgoxIYTY26pRqlQV7rJs+/1
-yQBkYpcqGJMTQJ0EKyKlVwp93Hm0eGvjyrPz4D1ygxsEu7QFRvkJZiauQSCBA16/
-l0eD6pHaHPZjZ2rZodX51+FTEg+/ld7VSG7Q8vjg5FW9OcGBKhK3xYpz+wKBgQDF
-+FdaDrAy0Yx+qLK2uU7yIy6LDE35NcTBwhUcizCia7QoCWDAIQsH64j10k9nBkCp
-IDqhGsiTPvxBvyYcc+EPfGUzngJJsc9x3YGmqBP9lks1SZMKHi4m/DFqMtmWjlAr
-kcgMwuhN6dNfg6hEi5Jz/xOqXm+Efcd5OcN9n74mZwKBgQCPSKMFVAktm2iO4Am5
-Yc1Lt9ZZ9iEOpjKBlpDEAxSTDCc6PlHvmH8v4K6I6M0Ac1wdf0RiaAQOOWrO531Q
-x7YIYmotGsK2WXPhRtAI8EWB6/e5JHhNhRha8jyOE3OHt7oJoJumODjX+C3Jd6Xm
-7Vk8LSvybh/FjzdUgxRxO10BHg==
------END PRIVATE KEY-----`;
-
 export const config = {
   port: Number(process.env.PORT || 3000),
   host: '0.0.0.0',
@@ -101,9 +64,9 @@ export const config = {
     veo: env('GEMINI_MODEL_VEO', 'veo-3.1-generate-preview')
   },
   firebase: {
-    projectId: env('FIREBASE_ADMIN_PROJECT_ID', 'almax-34709'),
-    clientEmail: env('FIREBASE_ADMIN_CLIENT_EMAIL', 'firebase-adminsdk-fbsvc@almax-34709.iam.gserviceaccount.com'),
-    privateKey: (env('FIREBASE_ADMIN_PRIVATE_KEY') || ALMA_DEFAULT_FIREBASE_KEY).replace(/\\n/g, '\n')
+    projectId: env('FIREBASE_ADMIN_PROJECT_ID'),
+    clientEmail: env('FIREBASE_ADMIN_CLIENT_EMAIL'),
+    privateKey: env('FIREBASE_ADMIN_PRIVATE_KEY').replace(/\\n/g, '\n')
   },
   mercadoPago: {
     accessToken: env('MERCADO_PAGO_ACCESS_TOKEN', isTest ? 'TEST-mock-access-token-123456' : ''),

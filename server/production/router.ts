@@ -308,7 +308,7 @@ router.post('/auth/accept-terms', requireAuth, asyncRoute(async (req: Authentica
 }));
 
 router.get('/auth/me', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const isAdmin = req.user?.role === 'admin' || req.user?.id === 'portal_vip_admin' || req.user?.email === 'brasilportalvip@gmail.com';
+  const isAdmin = req.user?.role === 'admin';
   let wallet = null;
   if (!isAdmin && req.user?.id) {
     try {
@@ -1607,7 +1607,7 @@ router.post('/cron/social', asyncRoute(async (req, res) => {
 // ==========================================
 
 // Parse intent using Alma Intent Engine
-router.post('/alma/intent', asyncRoute(async (req: Request, res: Response) => {
+router.post('/alma/intent', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
   const { prompt, context } = req.body || {};
   if (!prompt || typeof prompt !== 'string') {
     return res.status(400).json({ error: 'Prompt é obrigatório.' });
@@ -1617,23 +1617,22 @@ router.post('/alma/intent', asyncRoute(async (req: Request, res: Response) => {
 }));
 
 // Execute multi-agent orchestration
-router.post('/alma/orchestrate', asyncRoute(async (req: Request, res: Response) => {
-  const { intent, context, userId } = req.body || {};
+router.post('/alma/orchestrate', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const { intent, context } = req.body || {};
   if (!intent || !intent.goal) {
     return res.status(400).json({ error: 'Objeto de intenção válido é obrigatório.' });
   }
-  const effectiveUserId = (req as any).user?.uid || userId || 'anon_user';
-  const result = await executeAlmaOrchestration(intent, effectiveUserId, context);
+  const result = await executeAlmaOrchestration(intent, req.user!.id, context);
   res.json(result);
 }));
 
 // Smart Home: List connected devices
-router.get('/alma/devices', (_req: Request, res: Response) => {
+router.get('/alma/devices', requireAuth, (_req: Request, res: Response) => {
   res.json({ devices: getSmartDevicesList() });
 });
 
 // Smart Home: Mutate device state
-router.patch('/alma/devices/:id', asyncRoute(async (req: Request, res: Response) => {
+router.patch('/alma/devices/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   const { state } = req.body || {};
   if (!state || typeof state !== 'object') {
@@ -1644,12 +1643,18 @@ router.patch('/alma/devices/:id', asyncRoute(async (req: Request, res: Response)
 }));
 
 // Alma Multimodal Vision Inspection
-router.post('/alma/vision', asyncRoute(async (req: Request, res: Response) => {
+router.post('/alma/vision', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
   const { imageBase64, mimeType = 'image/jpeg', prompt = 'Analise visualmente e identifique objetos, ambiente e recomendações.' } = req.body || {};
-  if (!imageBase64) {
+  if (!imageBase64 || typeof imageBase64 !== 'string') {
     return res.status(400).json({ error: 'Imagem base64 é obrigatória.' });
   }
   const cleanBase64 = String(imageBase64).replace(/^data:image\/\w+;base64,/, '');
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(String(mimeType))) {
+    return res.status(400).json({ error: 'Formato de imagem não suportado.' });
+  }
+  if (cleanBase64.length > 2_700_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(cleanBase64)) {
+    return res.status(413).json({ error: 'Imagem inválida ou maior que 2 MB.' });
+  }
   const ai = textAiClient();
 
   const response = await ai.models.generateContent({
@@ -1676,8 +1681,8 @@ router.post('/alma/vision', asyncRoute(async (req: Request, res: Response) => {
 }));
 
 // Alma Memories: List, Create & Delete
-router.get('/alma/memories', asyncRoute(async (req: Request, res: Response) => {
-  const userId = (req as any).user?.uid || 'global_user';
+router.get('/alma/memories', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
   try {
     const snap = await firestore().collection('alma_memories').where('userId', '==', userId).get();
     const memories = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1709,8 +1714,8 @@ router.get('/alma/memories', asyncRoute(async (req: Request, res: Response) => {
   }
 }));
 
-router.post('/alma/memories', asyncRoute(async (req: Request, res: Response) => {
-  const userId = (req as any).user?.uid || 'global_user';
+router.post('/alma/memories', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
   const { type, category, key, value, importance = 5 } = req.body || {};
   if (!key || !value) {
     return res.status(400).json({ error: 'Chave e valor da memória são obrigatórios.' });
@@ -1733,10 +1738,15 @@ router.post('/alma/memories', asyncRoute(async (req: Request, res: Response) => 
   res.json({ memory: memoryDoc });
 }));
 
-router.delete('/alma/memories/:id', asyncRoute(async (req: Request, res: Response) => {
+router.delete('/alma/memories/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
   const { id } = req.params;
   try {
-    await firestore().collection('alma_memories').doc(id).delete();
+    const ref = firestore().collection('alma_memories').doc(id);
+    const snap = await ref.get();
+    if (!snap.exists || snap.data()?.userId !== req.user!.id) {
+      return res.status(404).json({ error: 'Memória não encontrada.' });
+    }
+    await ref.delete();
   } catch (err) {
     console.warn('[Alma Memory] Firestore delete fallback:', err);
   }
@@ -1780,10 +1790,13 @@ export async function buildSitemapXml(): Promise<string> {
   ];
 
   try {
-    const [blogSnap, articlesSnap, companiesSnap] = await Promise.all([
-      firestore().collection(COLLECTIONS.blogPosts).where('status', '==', 'published').get(),
-      firestore().collection(COLLECTIONS.blogArticles).where('status', '==', 'published').get(),
-      firestore().collection(COLLECTIONS.companies).get()
+    const [blogSnap, articlesSnap, companiesSnap] = await Promise.race([
+      Promise.all([
+        firestore().collection(COLLECTIONS.blogPosts).where('status', '==', 'published').get(),
+        firestore().collection(COLLECTIONS.blogArticles).where('status', '==', 'published').get(),
+        firestore().collection(COLLECTIONS.companies).get()
+      ]),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Sitemap Firestore timeout')), 4_000))
     ]);
     for (const doc of blogSnap.docs) {
       const item = doc.data() as any;
@@ -1942,13 +1955,13 @@ router.patch('/portal/projects/:id', requireAuth, requireAdmin, asyncRoute(async
   res.json({ success: true, project: updated });
 }));
 
-router.post('/portal/daily-pulse', asyncRoute(async (req: Request, res: Response) => {
-  const userId = (req as any).user?.id || 'portal_vip_admin';
+router.post('/portal/daily-pulse', requireAuth, requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
   const result = await runDailyPortalMarketingCycle(userId);
   res.json(result);
 }));
 
-router.get('/portal/antifall-status', asyncRoute(async (req: Request, res: Response) => {
+router.get('/portal/antifall-status', requireAuth, requireAdmin, asyncRoute(async (_req: Request, res: Response) => {
   const testStart = Date.now();
   const testResult = await executeAiWith2SecAntiFall({
     prompt: 'Verificação rápida de integridade da esteira de IA com failover 2s.',
@@ -1981,7 +1994,7 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
   const category = req.query.category ? String(req.query.category) : undefined;
   const projectId = req.query.projectId ? String(req.query.projectId) : undefined;
   const query = req.query.q ? String(req.query.q) : undefined;
-  const status = req.query.status ? String(req.query.status) : undefined;
+  const status = 'published';
   const limit = req.query.limit ? Number(req.query.limit) : 50;
   const offset = req.query.offset ? Number(req.query.offset) : 0;
 
@@ -2005,25 +2018,25 @@ router.get('/portal/blog/articles/:slug', asyncRoute(async (req: Request, res: R
   res.json({ article });
 }));
 
-router.get('/portal/blog/settings', asyncRoute(async (req: Request, res: Response) => {
+router.get('/portal/blog/settings', requireAuth, requireAdmin, asyncRoute(async (_req: Request, res: Response) => {
   const settings = await getBlogSettings();
   res.json({ settings });
 }));
 
-router.post('/portal/blog/settings', asyncRoute(async (req: Request, res: Response) => {
+router.post('/portal/blog/settings', requireAuth, requireAdmin, asyncRoute(async (req: Request, res: Response) => {
   const partial = req.body || {};
   const settings = await updateBlogSettings(partial);
   res.json({ success: true, settings });
 }));
 
-router.post('/portal/blog/generate-project-article', asyncRoute(async (req: Request, res: Response) => {
+router.post('/portal/blog/generate-project-article', requireAuth, requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
   const { projectId, customTopic, customIntent, forceApproval } = req.body || {};
   const project = PORTAL_VIP_PROJECTS.find((p) => p.id === projectId || p.slug === projectId);
   if (!project) {
     return res.status(404).json({ error: 'Projeto não encontrado na vitrine do Portal Vip Brasil.' });
   }
 
-  const userId = (req as any).user?.id || 'portal_vip_admin';
+  const userId = req.user!.id;
   const result = await generateArticleForProject(project, {
     customTopic,
     customIntent,
@@ -2034,13 +2047,13 @@ router.post('/portal/blog/generate-project-article', asyncRoute(async (req: Requ
   res.json(result);
 }));
 
-router.post('/portal/blog/daily-cycle', asyncRoute(async (req: Request, res: Response) => {
-  const userId = (req as any).user?.id || 'portal_vip_admin';
+router.post('/portal/blog/daily-cycle', requireAuth, requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const userId = req.user!.id;
   const result = await runDailyBlogCycle(userId);
   res.json(result);
 }));
 
-router.patch('/portal/blog/articles/:id/status', asyncRoute(async (req: Request, res: Response) => {
+router.patch('/portal/blog/articles/:id/status', requireAuth, requireAdmin, asyncRoute(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body || {};
   if (!['published', 'pending_approval', 'draft', 'archived'].includes(status)) {
