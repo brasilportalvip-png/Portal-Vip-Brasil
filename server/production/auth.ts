@@ -228,7 +228,10 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 
   let profile: FrocUser;
   try {
-    profile = await ensureUserProfile(decoded);
+    profile = await Promise.race([
+      ensureUserProfile(decoded),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Firestore profile timeout')), 8_000))
+    ]);
   } catch (error) {
     console.error(
       '[Froc Auth] Falha ao sincronizar perfil autenticado:',

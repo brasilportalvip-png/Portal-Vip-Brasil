@@ -31,6 +31,10 @@ function rateLimitPolicy(req: Request): RateLimitPolicy | null {
   if (req.method === 'OPTIONS') return null;
   const path = req.path.replace(/\/{2,}/g, '/').replace(/\/$/, '') || '/';
 
+  // Métricas públicas são best-effort e não podem consumir uma gravação no
+  // Firestore apenas para controlar o próprio rate limit.
+  if (path === '/api/portal/blog/track') return null;
+
   if (path === '/api/webhooks/mercadopago') {
     return { group: 'webhook-mercadopago', limit: 600, windowMs: 60_000 };
   }
