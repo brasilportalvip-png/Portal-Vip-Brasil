@@ -1762,8 +1762,11 @@ export async function buildSitemapXml(): Promise<string> {
     { loc: `${base}/vitrine`, lastmod: now, changefreq: 'daily', priority: '0.90' },
     { loc: `${base}/blog`, lastmod: now, changefreq: 'daily', priority: '0.90' },
     { loc: `${base}/planos`, lastmod: now, changefreq: 'weekly', priority: '0.80' },
-    { loc: `${base}/termos`, lastmod: now, changefreq: 'monthly', priority: '0.50' },
-    { loc: `${base}/privacidade`, lastmod: now, changefreq: 'monthly', priority: '0.50' }
+    { loc: `${base}/termos`, lastmod: now, changefreq: 'monthly', priority: '0.60' },
+    { loc: `${base}/privacidade`, lastmod: now, changefreq: 'monthly', priority: '0.60' },
+    { loc: `${base}/cookies`, lastmod: now, changefreq: 'monthly', priority: '0.50' },
+    { loc: `${base}/exclusao-de-dados`, lastmod: now, changefreq: 'monthly', priority: '0.50' },
+    { loc: `${base}/apps-compliance`, lastmod: now, changefreq: 'monthly', priority: '0.50' }
   ];
 
   try {

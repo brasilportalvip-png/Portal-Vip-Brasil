@@ -1524,6 +1524,37 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
             </div>
 
             <div>
+              <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Conformidade & Jurídico</h5>
+              <ul className="space-y-2 text-xs text-slate-400">
+                <li>
+                  <button onClick={() => onNavigate('privacidade')} className="hover:text-cyan-400 transition-colors">
+                    Política de Privacidade (LGPD)
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => onNavigate('termos')} className="hover:text-cyan-400 transition-colors">
+                    Termos de Uso
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => onNavigate('cookies')} className="hover:text-cyan-400 transition-colors">
+                    Política de Cookies
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => onNavigate('exclusao-de-dados')} className="hover:text-cyan-400 transition-colors">
+                    Exclusão de Dados & DPO
+                  </button>
+                </li>
+                <li>
+                  <button onClick={() => onNavigate('apps-compliance')} className="hover:text-cyan-400 transition-colors">
+                    Conformidade Google Play
+                  </button>
+                </li>
+              </ul>
+            </div>
+
+            <div>
               <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Vitrine & Links</h5>
               <ul className="space-y-2 text-xs text-slate-400">
                 <li>
@@ -1534,11 +1565,6 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 <li>
                   <button onClick={() => onNavigate('planos')} className="hover:text-cyan-400 transition-colors">
                     Planos & Preços
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => onNavigate('legal')} className="hover:text-cyan-400 transition-colors">
-                    Termos & Privacidade
                   </button>
                 </li>
                 <li>

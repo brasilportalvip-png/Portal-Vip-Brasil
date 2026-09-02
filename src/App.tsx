@@ -61,6 +61,12 @@ const TAB_PATH: Record<string, string> = {
   perfil: '/perfil',
   suporte: '/suporte',
   legal: '/termos',
+  privacidade: '/privacidade',
+  termos: '/termos',
+  cookies: '/cookies',
+  lgpd: '/exclusao-de-dados',
+  'exclusao-de-dados': '/exclusao-de-dados',
+  'apps-compliance': '/apps-compliance',
   admin: '/admin'
 };
 
@@ -70,11 +76,26 @@ const TAB_ALIASES: Record<string, string> = {
   estrategia: 'froc-ia',
   configuracoes: 'perfil',
   redes: 'redes-sociais',
-  privacidade: 'legal',
-  termos: 'legal'
+  privacy: 'privacidade',
+  terms: 'termos',
+  'exclusao-dados': 'exclusao-de-dados',
+  'data-deletion': 'exclusao-de-dados',
+  'direitos-lgpd': 'lgpd'
 };
 
-const PUBLIC_TABS = new Set(['home', 'blog', 'vitrine', 'planos', 'legal']);
+const PUBLIC_TABS = new Set([
+  'home',
+  'blog',
+  'vitrine',
+  'planos',
+  'legal',
+  'privacidade',
+  'termos',
+  'cookies',
+  'lgpd',
+  'exclusao-de-dados',
+  'apps-compliance'
+]);
 
 interface RouteResolution {
   tab: string;
@@ -490,7 +511,13 @@ export function App() {
       case 'suporte':
         return <SupportPage onNavigate={navigate} />;
       case 'legal':
-        return <LegalPage />;
+      case 'privacidade':
+      case 'termos':
+      case 'cookies':
+      case 'lgpd':
+      case 'exclusao-de-dados':
+      case 'apps-compliance':
+        return <LegalPage initialSection={currentTab} onNavigate={navigate} />;
       case 'admin':
         return isAdmin ? <AdminPage onNavigate={navigate} /> : null;
       default:

@@ -231,6 +231,31 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
         </div>
+
+        {!isCollapsed && (
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2 text-[10px] text-slate-500">
+            <button
+              onClick={() => onSelectTab('privacidade')}
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Privacidade
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => onSelectTab('termos')}
+              className="hover:text-cyan-400 transition-colors"
+            >
+              Termos
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => onSelectTab('exclusao-de-dados')}
+              className="hover:text-cyan-400 transition-colors"
+            >
+              LGPD
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

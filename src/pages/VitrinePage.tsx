@@ -18,6 +18,7 @@ import {
   Copy
 } from 'lucide-react';
 import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND, PortalProject } from '../data/portalProjects';
+import { BRAND } from '../lib/brand';
 import { apiRequest } from '../lib/api';
 
 interface VitrinePageProps {
@@ -494,6 +495,94 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
           </div>
         </div>
       )}
+      {/* Footer Institucional e Jurídico */}
+      <footer className="mt-16 pt-10 border-t border-slate-800 text-slate-400">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-10">
+          <div className="md:col-span-2 space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-base font-black text-white">{BRAND.name}</span>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed max-w-md">
+              Central oficial de projetos, vitrine de aplicativos da Google Play Store, sabedoria ancestral, tecnologia e automação de marketing digital em conformidade integral com a LGPD.
+            </p>
+            <div className="text-xs text-slate-500">
+              Encarregado de Dados (DPO): <a href="mailto:brasilportalvip@gmail.com" className="text-cyan-400 hover:underline font-semibold">brasilportalvip@gmail.com</a>
+            </div>
+          </div>
+
+          <div>
+            <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Conformidade & Jurídico</h5>
+            <ul className="space-y-2 text-xs">
+              <li>
+                <button onClick={() => onNavigate('privacidade')} className="hover:text-cyan-400 transition-colors">
+                  Política de Privacidade (LGPD)
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onNavigate('termos')} className="hover:text-cyan-400 transition-colors">
+                  Termos de Uso
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onNavigate('cookies')} className="hover:text-cyan-400 transition-colors">
+                  Política de Cookies
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onNavigate('exclusao-de-dados')} className="hover:text-cyan-400 transition-colors">
+                  Direitos LGPD & Exclusão de Dados
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onNavigate('apps-compliance')} className="hover:text-cyan-400 transition-colors">
+                  Conformidade Google Play
+                </button>
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <h5 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Navegação & Ecossistema</h5>
+            <ul className="space-y-2 text-xs">
+              <li>
+                <button onClick={() => onNavigate('home')} className="hover:text-cyan-400 transition-colors">
+                  Blog Oficial & Artigos
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onNavigate('planos')} className="hover:text-cyan-400 transition-colors">
+                  Planos & Assinaturas
+                </button>
+              </li>
+              <li>
+                <button onClick={() => onNavigate('froc-ia')} className="hover:text-cyan-400 transition-colors">
+                  Froc IA Marketing Engine
+                </button>
+              </li>
+              <li>
+                <a
+                  href="https://portalvipbrasil.com.br"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-cyan-400 transition-colors flex items-center gap-1"
+                >
+                  <span>Portal Principal</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="pt-6 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          <div>© {new Date().getFullYear()} Portal Vip Brasil. Todos os direitos reservados.</div>
+          <div className="flex items-center gap-4 text-[11px]">
+            <span>Proteção TLS 1.3 / HTTPS</span>
+            <span>•</span>
+            <span>Lei Geral de Proteção de Dados (Lei 13.709/2018)</span>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }
