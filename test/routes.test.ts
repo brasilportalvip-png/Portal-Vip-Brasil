@@ -251,7 +251,7 @@ test('Vitrine & Sitemap: parseStrictBoolean e consistência de valores legados',
   assert.equal(parseStrictBoolean(0), false);
 });
 
-test('Social Connect & OAuth: Regra de acesso por plano e bypass autorizado para role === "admin"', async () => {
+test('Social Connect & OAuth: acesso administrativo não depende de plano e exige conexão real', async () => {
   resetMemoryDb();
   const db = firestore();
   const express = (await import('express')).default;
@@ -380,21 +380,21 @@ test('Social Connect & OAuth: Regra de acesso por plano e bypass autorizado para
 
   try {
     // -------------------------------------------------------------------------
-    // TESTE 1: Usuário FREE comum => deve receber HTTP 403 em ambas as rotas
+    // TESTE 1: conexão social não depende de plano ou carteira
     // -------------------------------------------------------------------------
     const resFreeConnect = await fetch(`${baseUrl}/api/social/tiktok/connect?companyId=${freeCompanyId}`, {
       headers: { Authorization: 'Bearer token_free_user' }
     });
-    assert.equal(resFreeConnect.status, 403, 'FREE comum deve receber 403 em /social/:provider/connect');
+    assert.equal(resFreeConnect.status, 200, 'Conexão social não deve exigir plano em /social/:provider/connect');
     const dataFreeConnect = await resFreeConnect.json();
-    assert.ok(dataFreeConnect.error.includes('plano PRO'), 'Mensagem de upgrade deve ser retornada para FREE comum');
+    assert.ok(dataFreeConnect.url, 'Usuário autenticado deve receber URL de autenticação');
 
     const resFreeStart = await fetch(`${baseUrl}/api/social/oauth/tiktok/start?companyId=${freeCompanyId}`, {
       headers: { Authorization: 'Bearer token_free_user' }
     });
-    assert.equal(resFreeStart.status, 403, 'FREE comum deve receber 403 em /social/oauth/:provider/start');
+    assert.equal(resFreeStart.status, 200, 'OAuth social não deve exigir plano em /social/oauth/:provider/start');
     const dataFreeStart = await resFreeStart.json();
-    assert.ok(dataFreeStart.error.includes('plano PRO'), 'Mensagem de upgrade deve ser retornada para FREE comum');
+    assert.ok(dataFreeStart.authUrl, 'Usuário autenticado deve receber authUrl');
 
     // -------------------------------------------------------------------------
     // TESTE 2: Usuário ADMIN FREE => pode iniciar OAuth / conectar (HTTP 200)
@@ -471,7 +471,7 @@ test('Social Connect & OAuth: Regra de acesso por plano e bypass autorizado para
       status: 'draft'
     });
 
-    // 5.1 Free user tenta agendar -> 403
+    // 5.1 Usuário autenticado sem conexão não é bloqueado por plano, mas falha com segurança
     const resSchedFree = await fetch(`${baseUrl}/api/content/schedule`, {
       method: 'POST',
       headers: {
@@ -485,7 +485,7 @@ test('Social Connect & OAuth: Regra de acesso por plano e bypass autorizado para
         scheduledFor: new Date(Date.now() + 3600_000).toISOString()
       })
     });
-    assert.equal(resSchedFree.status, 403, 'Usuário Free deve receber 403 ao agendar');
+    assert.equal(resSchedFree.status, 400, 'Agendamento sem conexão deve falhar sem exigir plano');
 
     // 5.2 Pro user tenta agendar sem rede conectada -> 400
     const resSchedNoConn = await fetch(`${baseUrl}/api/content/schedule`, {
@@ -675,4 +675,3 @@ test('Social Connect & OAuth: Regra de acesso por plano e bypass autorizado para
     firebaseAdminProvider.setAdminAuthForTesting(undefined);
   }
 });
-

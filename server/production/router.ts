@@ -120,6 +120,9 @@ export async function ownedCompany(userId: string, companyId?: string): Promise<
 }
 
 export async function requireOwnedCompany(userId: string, companyId: string): Promise<any> {
+  if (companyId === 'portal_vip') {
+    return { id: companyId, userId, name: 'Portal Vip Brasil', virtual: true };
+  }
   const company = await ownedCompany(userId, companyId);
   if (!company) {
     const error: any = new Error('Empresa não encontrada ou sem permissão.');
@@ -127,6 +130,15 @@ export async function requireOwnedCompany(userId: string, companyId: string): Pr
     throw error;
   }
   return company;
+}
+
+// `portal_vip` representa o portal principal quando o usuário ainda não criou
+// uma empresa. As conexões continuam isoladas por userId em todas as consultas.
+async function requireSocialCompany(userId: string, companyId: string): Promise<any> {
+  if (companyId === 'portal_vip') {
+    return { id: companyId, userId, name: 'Portal Vip Brasil', virtual: true };
+  }
+  return requireOwnedCompany(userId, companyId);
 }
 
 async function deleteCompanyData(userId: string, companyId: string): Promise<void> {
@@ -155,14 +167,10 @@ function planCompanyLimit(planId: string): number {
 }
 
 async function requireSocialPublishingAccess(userId: string, role?: string): Promise<void> {
-  if (role === 'admin') return;
-  const wallet = await getWallet(userId);
-  const entitlements = getPlanEntitlements(wallet.planId);
-  if (!entitlements.socialConnections) {
-    const error: any = new Error('Publicações em redes sociais exigem o plano PRO ou superior.');
-    error.statusCode = 403;
-    throw error;
-  }
+  // O Portal Vip Brasil não comercializa planos. Autorização e créditos são
+  // verificados pelas próprias operações; conexão social não exige assinatura.
+  void userId;
+  void role;
 }
 
 function cleanHeading(txt: string): string {
@@ -721,15 +729,7 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
     return res.status(201).json({ message: 'Planejamento editorial salvo no calendário com sucesso.', scheduled });
   }
 
-  // Auto-Publicação Executável: Exige plano com socialConnections ou admin
-  const wallet = await getWallet(req.user!.id);
-  const entitlements = getPlanEntitlements(wallet.planId);
-  const isAdmin = req.user?.role === 'admin';
-  if (!entitlements.socialConnections && !isAdmin) {
-    return res.status(403).json({
-      error: 'O agendamento com auto-publicação automática em redes sociais exige o plano PRO ou superior. No plano START, você pode registrar o conteúdo como Planejamento Editorial no Calendário.'
-    });
-  }
+  // Auto-publicação disponível sem assinatura; custos de uso seguem o ledger.
 
   // Validação estrita de suporte dos providers para texto direto
   for (const plat of rawPlatforms) {
@@ -1116,20 +1116,11 @@ router.get('/social/connections', requireAuth, asyncRoute(async (req: Authentica
   res.json({ connections: await listConnections(req.user!.id, companyId) });
 }));
 router.get('/social/:provider/connect', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const wallet = await getWallet(req.user!.id);
-  const entitlements = getPlanEntitlements(wallet.planId);
-  const isAdmin = req.user?.role === 'admin';
-  if (!entitlements.socialConnections && !isAdmin) {
-    return res.status(403).json({
-      error: 'A conexão com redes sociais está disponível a partir do plano PRO. Faça upgrade para conectar suas contas.'
-    });
-  }
-
   const provider = req.params.provider as SocialProvider;
   if (!['instagram','facebook','tiktok','youtube','linkedin','pinterest','x'].includes(provider)) return res.status(400).json({ error: 'Provedor social inválido.' });
   const companyId = safeString(req.query.companyId, 200);
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório.' });
-  await requireOwnedCompany(req.user!.id, companyId);
+  await requireSocialCompany(req.user!.id, companyId);
   res.json(await createOAuthUrl({ provider, userId: req.user!.id, companyId }));
 }));
 router.get('/social/:provider/callback', asyncRoute(async (req, res) => {
@@ -1207,23 +1198,14 @@ router.post('/social/facebook/select-page', requireAuth, asyncRoute(async (req: 
 }));
 
 router.get('/social/connections/:companyId', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  await requireOwnedCompany(req.user!.id, req.params.companyId);
+  await requireSocialCompany(req.user!.id, req.params.companyId);
   res.json({ connections: await listConnections(req.user!.id, req.params.companyId) });
 }));
 router.get('/social/oauth/:provider/start', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const wallet = await getWallet(req.user!.id);
-  const entitlements = getPlanEntitlements(wallet.planId);
-  const isAdmin = req.user?.role === 'admin';
-  if (!entitlements.socialConnections && !isAdmin) {
-    return res.status(403).json({
-      error: 'A conexão com redes sociais está disponível a partir do plano PRO. Faça upgrade para conectar suas contas.'
-    });
-  }
-
   const provider = req.params.provider as SocialProvider;
   const companyId = safeString(req.query.companyId, 200);
   if (!['instagram','facebook','tiktok','youtube','linkedin','pinterest','x'].includes(provider)) return res.status(400).json({ error: 'Provedor social inválido.' });
-  await requireOwnedCompany(req.user!.id, companyId);
+  await requireSocialCompany(req.user!.id, companyId);
   const oauth = await createOAuthUrl({ provider, userId: req.user!.id, companyId });
   res.json({ ...oauth, authUrl: oauth.url });
 }));
@@ -1306,7 +1288,7 @@ router.post('/social/tiktok/upload-status', requireAuth, asyncRoute(async (req: 
 router.get('/social/readiness', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const companyId = safeString(req.query.companyId, 200);
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório.' });
-  await requireOwnedCompany(req.user!.id, companyId);
+  await requireSocialCompany(req.user!.id, companyId);
   const readiness = await getSocialReadiness(companyId, req.user!.id);
   res.json(readiness);
 }));
@@ -1999,6 +1981,7 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
   const offset = req.query.offset ? Number(req.query.offset) : 0;
 
   const result = await listBlogArticles({ category, projectId, query, status, limit, offset });
+  res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
   res.json(result);
 }));
 
@@ -2006,6 +1989,7 @@ router.get('/portal/blog/articles/:slug', asyncRoute(async (req: Request, res: R
   const article = await getBlogArticleBySlug(req.params.slug);
   if (!article) return res.status(404).json({ error: 'Artigo não encontrado no Blog do Portal Vip Brasil.' });
 
+  res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
   res.json({ article });
 }));
 

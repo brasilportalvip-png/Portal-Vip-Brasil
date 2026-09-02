@@ -39,6 +39,7 @@ import {
 import { BLOG_ARTICLES, BLOG_CATEGORIES } from '../data/blogArticles';
 import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND } from '../data/portalProjects';
 import { apiRequest } from '../lib/api';
+import { trackAnalyticsEvent } from '../lib/firebase';
 import type { PortalBlogArticle, BlogArticleSection, BlogFaqItem } from '../types/blog';
 
 interface BlogPortalPageProps {
@@ -235,13 +236,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       prev.map((a) => (a.id === articleId ? { ...a, likes: a.likes + (isLiked ? -1 : 1) } : a))
     );
 
-    // Track on backend
-    try {
-      await apiRequest('/api/portal/blog/track', {
-        method: 'POST',
-        body: { articleId, metric: 'likes' }
-      });
-    } catch {}
+    void trackAnalyticsEvent(isLiked ? 'blog_unlike' : 'blog_like', { article_id: articleId });
   };
 
   const handleShare = async (article: PortalBlogArticle) => {
@@ -255,21 +250,11 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       setTimeout(() => setCopiedLink(false), 2500);
     }
 
-    try {
-      await apiRequest('/api/portal/blog/track', {
-        method: 'POST',
-        body: { articleId: article.id, metric: 'shares' }
-      });
-    } catch {}
+    void trackAnalyticsEvent('share', { content_type: 'blog_article', item_id: article.id });
   };
 
   const handleTrackCta = async (articleId: string, metric: 'clicksWebsite' | 'clicksPlayStore') => {
-    try {
-      await apiRequest('/api/portal/blog/track', {
-        method: 'POST',
-        body: { articleId, metric }
-      });
-    } catch {}
+    void trackAnalyticsEvent('blog_cta_click', { article_id: articleId, destination: metric });
   };
 
   const handleCopySnippet = (text: string, id: string) => {

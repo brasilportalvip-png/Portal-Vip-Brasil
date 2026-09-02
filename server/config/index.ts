@@ -69,6 +69,7 @@ export const config = {
     privateKey: env('FIREBASE_ADMIN_PRIVATE_KEY').replace(/\\n/g, '\n')
   },
   mercadoPago: {
+    enabled: env('PAYMENTS_ENABLED', isTest ? 'true' : 'false').toLowerCase() === 'true',
     accessToken: env('MERCADO_PAGO_ACCESS_TOKEN', isTest ? 'TEST-mock-access-token-123456' : ''),
     webhookSecret: env('MERCADO_PAGO_WEBHOOK_SECRET', isTest ? 'TEST-mock-webhook-secret-123456' : ''),
     publicKey: env('MERCADO_PAGO_PUBLIC_KEY', isTest ? 'TEST-mock-public-key-123456' : ''),
@@ -168,7 +169,7 @@ export function assertProductionConfig(): void {
     throw new Error(`[Froc.IA] APP_URL em produção não pode ser localhost ou 127.0.0.1 (atual: ${config.appUrl})`);
   }
 
-  if (config.mercadoPago.accessToken || config.mercadoPago.webhookSecret) {
+  if (config.mercadoPago.enabled) {
     if (!config.mercadoPago.accessToken) throw new Error('[Froc.IA] Configuração de produção incompleta: MERCADO_PAGO_ACCESS_TOKEN');
     if (!config.mercadoPago.webhookSecret) throw new Error('[Froc.IA] Configuração de produção incompleta: MERCADO_PAGO_WEBHOOK_SECRET');
   }

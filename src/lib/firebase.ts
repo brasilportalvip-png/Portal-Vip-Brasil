@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core';
 import {
   getAnalytics,
   isSupported,
+  logEvent,
   setAnalyticsCollectionEnabled,
   type Analytics
 } from 'firebase/analytics';
@@ -203,6 +204,17 @@ export async function setFrocAnalyticsConsent(
 
 export function hasFrocAnalyticsConsent(): boolean {
   return readStoredAnalyticsConsent() === 'granted';
+}
+
+export async function trackAnalyticsEvent(
+  name: string,
+  parameters: Record<string, string | number | boolean> = {}
+): Promise<boolean> {
+  if (!hasFrocAnalyticsConsent()) return false;
+  const instance = analytics || await initializeAnalyticsAfterConsent();
+  if (!instance) return false;
+  logEvent(instance, name, parameters);
+  return true;
 }
 
 // Reativa somente uma decisão positiva salva anteriormente. Primeiro acesso,

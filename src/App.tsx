@@ -28,7 +28,6 @@ import { SocialNetworksPage } from './pages/SocialNetworksPage';
 import { ContentsLibraryPage } from './pages/ContentsLibraryPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
 import { CreditsPage } from './pages/CreditsPage';
-import { PlansPage } from './pages/PlansPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SupportPage } from './pages/SupportPage';
 import { LegalPage } from './pages/LegalPage';
@@ -87,7 +86,6 @@ const PUBLIC_TABS = new Set([
   'home',
   'blog',
   'vitrine',
-  'planos',
   'legal',
   'privacidade',
   'termos',
@@ -508,7 +506,7 @@ export function App() {
       case 'creditos':
         return <CreditsPage wallet={wallet} onRefreshWallet={refreshWallet} onNavigate={navigate} />;
       case 'planos':
-        return <PlansPage wallet={wallet} onRefreshWallet={refreshWallet} onNavigate={navigate} />;
+        return <CreditsPage wallet={wallet} onRefreshWallet={refreshWallet} onNavigate={navigate} />;
       case 'perfil':
         return <ProfilePage user={user} wallet={wallet} onRefreshUser={reloadSession} onNavigate={navigate} />;
       case 'suporte':
