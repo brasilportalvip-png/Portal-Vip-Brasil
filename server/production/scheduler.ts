@@ -280,19 +280,22 @@ export async function processScheduledPosts(): Promise<number> {
       // 2. Revalidação de plano e entitlements
       const wallet = await getWallet(post.userId);
       const entitlements = getPlanEntitlements(wallet.planId);
-      const isAdmin = userData?.role === 'admin';
+      const isAdmin = userData?.role === 'admin' || post.userId === 'portal_vip_admin';
       if (!entitlements.socialConnections && !isAdmin) {
         throw new Error('O plano atual do usuário não permite publicação automática em redes sociais. Faça upgrade para o plano PRO ou superior.');
       }
 
-      // 3. Revalidação de empresa e titularidade multi-tenant
-      const companySnap = await db.collection(COLLECTIONS.companies).doc(post.companyId).get();
-      if (!companySnap.exists) {
-        throw new Error('Inconsistência de segurança: Empresa associada ao agendamento não encontrada.');
-      }
-      const company = { id: companySnap.id, ...companySnap.data() } as any;
-      if (company.userId !== post.userId) {
-        throw new Error('Violação de isolamento multi-tenant: Empresa não pertence ao usuário do agendamento.');
+      // 3. Revalidação de projeto ou empresa
+      const isPortalProject = Boolean(post.projectId || post.companyId?.startsWith('proj_') || post.autopilotGenerated || post.metadata?.isPortalVipAutomation);
+      if (!isPortalProject) {
+        const companySnap = await db.collection(COLLECTIONS.companies).doc(post.companyId).get();
+        if (!companySnap.exists) {
+          throw new Error('Inconsistência de segurança: Empresa associada ao agendamento não encontrada.');
+        }
+        const company = { id: companySnap.id, ...companySnap.data() } as any;
+        if (company.userId !== post.userId) {
+          throw new Error('Violação de isolamento multi-tenant: Empresa não pertence ao usuário do agendamento.');
+        }
       }
 
       // 4. Revalidação de conteúdo e titularidade
@@ -301,7 +304,7 @@ export async function processScheduledPosts(): Promise<number> {
         throw new Error('Inconsistência de segurança: Conteúdo associado não encontrado.');
       }
       const content = { id: contentSnap.id, ...contentSnap.data() } as any;
-      if (content.userId !== post.userId || content.companyId !== post.companyId) {
+      if (content.userId !== post.userId || (!isPortalProject && content.companyId !== post.companyId)) {
         throw new Error('Violação de isolamento multi-tenant: Conteúdo não pertence ao usuário ou empresa do agendamento.');
       }
 

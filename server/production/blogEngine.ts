@@ -1,5 +1,5 @@
 import { COLLECTIONS, firestore, newId, nowIso } from './store.js';
-import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug, PortalProjectItem } from './almaPortfolio.js';
+import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug, PortalProjectItem, listAllPortalProjectsFromDb, seedPortalProjectsIfEmpty } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall } from './antiFallEngine.js';
 
 function safeString(value: any, max = 5000): string {
@@ -51,6 +51,7 @@ export interface StoredBlogArticle {
   faqSection: BlogFaqItem[];
   conclusion: string;
   callToAction: string;
+  projectId?: string;
   relatedProjectId: string;
   relatedProjectName: string;
   relatedProjectUrl: string;
@@ -784,6 +785,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     faqSection: Array.isArray(parsed.faqSection) ? parsed.faqSection : [],
     conclusion: parsed.conclusion || '',
     callToAction: parsed.callToAction || '',
+    projectId: project.id,
     relatedProjectId: project.id,
     relatedProjectName: project.name,
     relatedProjectUrl: project.websiteUrl,
@@ -829,12 +831,21 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
   publishedCount: number;
   pendingCount: number;
 }> {
-  console.log(`[BlogEngine] Iniciando Ciclo Diário do Blog para todos os ${PORTAL_VIP_PROJECTS.length} projetos ativos.`);
+  let allProjects = await listAllPortalProjectsFromDb();
+  if (!allProjects.length) {
+    const seeded = await seedPortalProjectsIfEmpty();
+    allProjects = seeded.projects;
+  }
+
+  const activeProjects = allProjects.filter((p) => p.active !== false && p.dailyBlogEnabled !== false);
+  const projectsToProcess = activeProjects.length > 0 ? activeProjects : allProjects;
+
+  console.log(`[BlogEngine] Iniciando Ciclo Diário do Blog para todos os ${projectsToProcess.length} projetos ativos.`);
   const articlesGenerated: StoredBlogArticle[] = [];
   let publishedCount = 0;
   let pendingCount = 0;
 
-  for (const project of PORTAL_VIP_PROJECTS) {
+  for (const project of projectsToProcess) {
     try {
       const res = await generateArticleForProject(project, { userId });
       if (res.success && res.article) {
@@ -850,7 +861,7 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
   return {
     success: true,
     articlesGenerated,
-    totalProjects: PORTAL_VIP_PROJECTS.length,
+    totalProjects: projectsToProcess.length,
     publishedCount,
     pendingCount
   };

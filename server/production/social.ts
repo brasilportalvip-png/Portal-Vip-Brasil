@@ -770,8 +770,13 @@ export async function getFacebookPageSelectionCandidates(
   };
 }
 
-export async function listConnections(userId: string, companyId: string) {
-  const snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).where('companyId', '==', companyId).get();
+export async function listConnections(userId: string, companyId?: string) {
+  let snap;
+  if (!companyId || companyId === 'all' || companyId.startsWith('proj_')) {
+    snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).get();
+  } else {
+    snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).where('companyId', '==', companyId).get();
+  }
   return snap.docs.map((doc) => {
     const item = doc.data() as any;
     const {
@@ -1093,13 +1098,42 @@ export async function publishText(data: {
     };
   }
 
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', data.provider)
-    .limit(1)
-    .get();
+  let snap: any;
+  try {
+    snap = await firestore()
+      .collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', data.userId)
+      .where('companyId', '==', data.companyId)
+      .where('provider', '==', data.provider)
+      .limit(1)
+      .get();
+
+    if (snap.empty) {
+      snap = await firestore()
+        .collection(COLLECTIONS.socialConnections)
+        .where('userId', '==', data.userId)
+        .where('provider', '==', data.provider)
+        .limit(1)
+        .get();
+    }
+
+    if (snap.empty && data.userId !== 'portal_vip_admin') {
+      snap = await firestore()
+        .collection(COLLECTIONS.socialConnections)
+        .where('userId', '==', 'portal_vip_admin')
+        .where('provider', '==', data.provider)
+        .limit(1)
+        .get();
+    }
+  } catch (err: any) {
+    return {
+      provider: data.provider,
+      externalId: null,
+      externalState: 'confirmed_failed',
+      retrySafe: true,
+      error: `Erro ao consultar conexão social: ${err?.message || 'Falha no banco de dados'}`
+    };
+  }
 
   if (snap.empty) {
     return {
@@ -1107,7 +1141,7 @@ export async function publishText(data: {
       externalId: null,
       externalState: 'confirmed_failed',
       retrySafe: false,
-      error: `Conta ${data.provider} não conectada para esta empresa.`
+      error: `Conta ${data.provider} não conectada para este projeto ou usuário.`
     };
   }
 
@@ -1897,7 +1931,7 @@ export async function publishInstagramMedia(data: {
     throw new Error('É necessário fornecer imageUrl ou videoUrl para publicar no Instagram.');
   }
 
-  const snap = await firestore()
+  let snap = await firestore()
     .collection(COLLECTIONS.socialConnections)
     .where('userId', '==', data.userId)
     .where('companyId', '==', data.companyId)
@@ -1906,7 +1940,25 @@ export async function publishInstagramMedia(data: {
     .get();
 
   if (snap.empty) {
-    throw new Error('Conta Instagram não conectada para esta empresa.');
+    snap = await firestore()
+      .collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', data.userId)
+      .where('provider', '==', 'instagram')
+      .limit(1)
+      .get();
+  }
+
+  if (snap.empty && data.userId !== 'portal_vip_admin') {
+    snap = await firestore()
+      .collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', 'portal_vip_admin')
+      .where('provider', '==', 'instagram')
+      .limit(1)
+      .get();
+  }
+
+  if (snap.empty) {
+    throw new Error('Conta Instagram não conectada para este projeto ou usuário.');
   }
 
   const connection = snap.docs[0].data() as any;
@@ -1986,7 +2038,7 @@ export async function initYouTubeResumableUpload(data: {
     throw new Error('Título do vídeo no YouTube é obrigatório.');
   }
 
-  const snap = await firestore()
+  let snap = await firestore()
     .collection(COLLECTIONS.socialConnections)
     .where('userId', '==', data.userId)
     .where('companyId', '==', data.companyId)
@@ -1995,7 +2047,25 @@ export async function initYouTubeResumableUpload(data: {
     .get();
 
   if (snap.empty) {
-    throw new Error('Canal YouTube não conectado para esta empresa.');
+    snap = await firestore()
+      .collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', data.userId)
+      .where('provider', '==', 'youtube')
+      .limit(1)
+      .get();
+  }
+
+  if (snap.empty && data.userId !== 'portal_vip_admin') {
+    snap = await firestore()
+      .collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', 'portal_vip_admin')
+      .where('provider', '==', 'youtube')
+      .limit(1)
+      .get();
+  }
+
+  if (snap.empty) {
+    throw new Error('Canal YouTube não conectado para este projeto ou usuário.');
   }
 
   const token = await ensureValidSocialAccessToken(snap.docs[0].id);

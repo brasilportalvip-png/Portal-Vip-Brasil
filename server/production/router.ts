@@ -11,7 +11,7 @@ import { cancelSubscription, createCheckout, listUserSubscriptions, mercadoPagoC
 import { createOAuthUrl, createPinterestPin, disconnectSocial, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { getSchedulerHealth, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
-import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug } from './almaPortfolio.js';
+import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall, runDailyPortalMarketingCycle } from './antiFallEngine.js';
 import {
   listBlogArticles,
@@ -1809,13 +1809,16 @@ export async function buildSitemapXml(): Promise<string> {
       }
     }
     // Inclui projetos oficiais da vitrine
-    for (const project of PORTAL_VIP_PROJECTS) {
-      urls.push({
-        loc: `${base}/vitrine/${encodeURIComponent(project.slug)}`,
-        lastmod: now,
-        changefreq: 'daily',
-        priority: '0.85'
-      });
+    const sitemapProjects = await listAllPortalProjectsFromDb().catch(() => PORTAL_VIP_PROJECTS);
+    for (const project of sitemapProjects) {
+      if (project.active !== false) {
+        urls.push({
+          loc: `${base}/vitrine/${encodeURIComponent(project.slug)}`,
+          lastmod: project.updatedAt || now,
+          changefreq: 'daily',
+          priority: '0.85'
+        });
+      }
     }
     for (const doc of companiesSnap.docs) {
       const item = doc.data() as any;
@@ -1899,19 +1902,35 @@ Sitemap: ${config.appUrl.replace(/\/$/, '')}/sitemap.xml
 // PORTAL VIP BRASIL — ROTAS OFICIAIS & MARKETING ENGINE
 // ==========================================
 
-router.get('/api/portal/projects', (req: Request, res: Response) => {
+router.get('/api/portal/projects', asyncRoute(async (_req: Request, res: Response) => {
+  let projects = await listAllPortalProjectsFromDb();
+  if (!projects.length) {
+    const seeded = await seedPortalProjectsIfEmpty();
+    projects = seeded.projects;
+  }
   res.json({
     brand: PORTAL_VIP_OFFICIAL_ASSETS,
-    projects: PORTAL_VIP_PROJECTS,
-    total: PORTAL_VIP_PROJECTS.length
+    projects,
+    total: projects.length
   });
-});
+}));
 
-router.get('/api/portal/projects/:slug', (req: Request, res: Response) => {
-  const project = getProjectBySlug(req.params.slug);
+router.post('/api/portal/projects/seed', requireAuth, requireAdmin, asyncRoute(async (_req: Request, res: Response) => {
+  const result = await seedPortalProjectsIfEmpty();
+  res.json({ success: true, ...result });
+}));
+
+router.get('/api/portal/projects/:slug', asyncRoute(async (req: Request, res: Response) => {
+  const project = await getPortalProjectFromDb(req.params.slug);
   if (!project) return res.status(404).json({ error: 'Projeto não encontrado na Vitrine Portal Vip Brasil.' });
   res.json({ project });
-});
+}));
+
+router.patch('/api/portal/projects/:id', requireAuth, requireAdmin, asyncRoute(async (req: Request, res: Response) => {
+  const updated = await updatePortalProjectInDb(req.params.id, req.body || {});
+  if (!updated) return res.status(404).json({ error: 'Projeto não encontrado para atualização.' });
+  res.json({ success: true, project: updated });
+}));
 
 router.post('/api/portal/daily-pulse', asyncRoute(async (req: Request, res: Response) => {
   const userId = (req as any).user?.id || 'portal_vip_admin';

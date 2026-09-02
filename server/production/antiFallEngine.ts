@@ -1,6 +1,6 @@
 import { config } from '../config/index.js';
 import { textAiClient } from './ai.js';
-import { PORTAL_VIP_PROJECTS, PortalProjectItem } from './almaPortfolio.js';
+import { PORTAL_VIP_PROJECTS, PortalProjectItem, listAllPortalProjectsFromDb, seedPortalProjectsIfEmpty } from './almaPortfolio.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
 
 export interface AntiFallModelAttempt {
@@ -135,11 +135,18 @@ export async function runDailyPortalMarketingCycle(userId?: string): Promise<{
   const todayDate = new Date().toISOString().slice(0, 10);
   const itemsGenerated: any[] = [];
 
-  // Seleciona o projeto do dia ou executa divulgação em rodízio inteligente de todos os 7
-  const dayIndex = Math.floor(Date.now() / (24 * 60 * 60 * 1000)) % PORTAL_VIP_PROJECTS.length;
-  const selectedProjects = [PORTAL_VIP_PROJECTS[dayIndex]];
+  // Carrega todos os projetos do Firestore (com auto-seeding idempotente caso a coleção esteja vazia)
+  let allProjects = await listAllPortalProjectsFromDb();
+  if (!allProjects.length) {
+    const seeded = await seedPortalProjectsIfEmpty();
+    allProjects = seeded.projects;
+  }
 
-  for (const project of selectedProjects) {
+  // Todos os projetos com dailyMarketingEnabled ativo participam integralmente do ciclo diário
+  const selectedProjects = allProjects.filter((p) => p.active !== false && p.dailyMarketingEnabled !== false);
+  const projectsToProcess = selectedProjects.length > 0 ? selectedProjects : allProjects;
+
+  for (const project of projectsToProcess) {
     const prompt = `Gere uma publicação de marketing de alto impacto e engajamento para o projeto "${project.name}" do Portal Vip Brasil.
 Informações Oficiais:
 - Categoria: ${project.category}

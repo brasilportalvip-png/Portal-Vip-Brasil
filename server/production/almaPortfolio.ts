@@ -1,3 +1,15 @@
+import { COLLECTIONS, firestore, nowIso, cleanObject, docData, queryData } from './store.js';
+
+export interface PortalProjectSocialSettings {
+  instagramEnabled?: boolean;
+  facebookEnabled?: boolean;
+  linkedinEnabled?: boolean;
+  xEnabled?: boolean;
+  pinterestEnabled?: boolean;
+  youtubeEnabled?: boolean;
+  tiktokEnabled?: boolean;
+}
+
 export interface PortalProjectItem {
   id: string;
   name: string;
@@ -17,6 +29,12 @@ export interface PortalProjectItem {
   targetAudience: string;
   socialMarketingAngles: string[];
   bingSeoKeywords: string[];
+  active?: boolean;
+  dailyMarketingEnabled?: boolean;
+  dailyBlogEnabled?: boolean;
+  socialSettings?: PortalProjectSocialSettings;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const PORTAL_VIP_OFFICIAL_ASSETS = {
@@ -229,3 +247,138 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
 export function getProjectBySlug(slug: string): PortalProjectItem | undefined {
   return PORTAL_VIP_PROJECTS.find((p) => p.slug === slug || p.id === slug);
 }
+
+/**
+ * Sincronização idempotente dos 7 Projetos Oficiais no Firestore (Collection: 'projects').
+ * Garante que a coleção 'projects' seja a única fonte da verdade, sem duplicar dados.
+ */
+export async function seedPortalProjectsIfEmpty(): Promise<{
+  seededCount: number;
+  totalProjects: number;
+  projects: PortalProjectItem[];
+}> {
+  const db = firestore();
+  const projectsRef = db.collection(COLLECTIONS.projects);
+  const existingSnap = await projectsRef.get().catch(() => null);
+
+  const existingMap = new Map<string, any>();
+  if (existingSnap && !existingSnap.empty) {
+    for (const doc of existingSnap.docs) {
+      existingMap.set(doc.id, doc.data());
+    }
+  }
+
+  let seededCount = 0;
+  const now = nowIso();
+
+  for (const proj of PORTAL_VIP_PROJECTS) {
+    if (!existingMap.has(proj.id)) {
+      const docToSave: PortalProjectItem = {
+        ...proj,
+        active: true,
+        dailyMarketingEnabled: true,
+        dailyBlogEnabled: true,
+        socialSettings: {
+          instagramEnabled: true,
+          facebookEnabled: true,
+          linkedinEnabled: true,
+          xEnabled: true,
+          pinterestEnabled: false,
+          youtubeEnabled: Boolean(proj.hasApp),
+          tiktokEnabled: false
+        },
+        createdAt: now,
+        updatedAt: now
+      };
+      await projectsRef.doc(proj.id).set(cleanObject(docToSave), { merge: true }).catch((err) => {
+        console.warn(`[PortalPortfolio] Erro ao sincronizar projeto ${proj.id}:`, err);
+      });
+      seededCount++;
+    }
+  }
+
+  const allProjects = await listAllPortalProjectsFromDb();
+  return {
+    seededCount,
+    totalProjects: allProjects.length,
+    projects: allProjects
+  };
+}
+
+/**
+ * Retorna todos os projetos do Portal Vip Brasil a partir do Firestore,
+ * com fallback gracioso para os 7 projetos pré-configurados em caso de offline.
+ */
+export async function listAllPortalProjectsFromDb(): Promise<PortalProjectItem[]> {
+  try {
+    const db = firestore();
+    const snap = await db.collection(COLLECTIONS.projects).get();
+    if (!snap.empty) {
+      const docs = queryData<PortalProjectItem>(snap);
+      if (docs.length > 0) {
+        return docs.map((doc) => ({
+          active: true,
+          dailyMarketingEnabled: true,
+          dailyBlogEnabled: true,
+          ...doc
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('[PortalPortfolio] Erro ao consultar Firestore projects, usando lista oficial:', err);
+  }
+
+  return PORTAL_VIP_PROJECTS.map((p) => ({
+    ...p,
+    active: true,
+    dailyMarketingEnabled: true,
+    dailyBlogEnabled: true
+  }));
+}
+
+/**
+ * Consulta um projeto por ID ou Slug no banco Firestore (com fallback seguro).
+ */
+export async function getPortalProjectFromDb(idOrSlug: string): Promise<PortalProjectItem | undefined> {
+  const norm = String(idOrSlug || '').trim().toLowerCase();
+  if (!norm) return undefined;
+
+  try {
+    const db = firestore();
+    const docRef = db.collection(COLLECTIONS.projects).doc(idOrSlug);
+    const snap = await docRef.get();
+    if (snap.exists) {
+      const data = docData<PortalProjectItem>(snap);
+      if (data) return { active: true, dailyMarketingEnabled: true, dailyBlogEnabled: true, ...data };
+    }
+
+    const bySlugSnap = await db.collection(COLLECTIONS.projects).where('slug', '==', norm).limit(1).get();
+    if (!bySlugSnap.empty) {
+      const data = docData<PortalProjectItem>(bySlugSnap.docs[0]);
+      if (data) return { active: true, dailyMarketingEnabled: true, dailyBlogEnabled: true, ...data };
+    }
+  } catch (err) {
+    console.warn('[PortalPortfolio] Erro ao consultar projeto individual no Firestore:', err);
+  }
+
+  return PORTAL_VIP_PROJECTS.find((p) => p.id === idOrSlug || p.slug === norm);
+}
+
+/**
+ * Atualiza campos ou configurações de marketing/blog de um projeto no Firestore.
+ */
+export async function updatePortalProjectInDb(id: string, updates: Partial<PortalProjectItem>): Promise<PortalProjectItem | null> {
+  const db = firestore();
+  const docRef = db.collection(COLLECTIONS.projects).doc(id);
+  const now = nowIso();
+
+  const cleanUpdates = cleanObject({
+    ...updates,
+    updatedAt: now
+  });
+
+  await docRef.set(cleanUpdates, { merge: true });
+  const fresh = await getPortalProjectFromDb(id);
+  return fresh || null;
+}
+

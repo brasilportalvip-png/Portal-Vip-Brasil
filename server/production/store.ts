@@ -388,6 +388,7 @@ export const COLLECTIONS = {
   creditReservations: 'creditReservations',
   idempotency: 'idempotency',
   companies: 'companies',
+  projects: 'projects',
   contentItems: 'contentItems',
   campaigns: 'campaigns',
   scheduledPosts: 'scheduledPosts',
