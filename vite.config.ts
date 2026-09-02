@@ -21,6 +21,11 @@ export default defineConfig(({ mode }) => {
     build: {
       rollupOptions: {
         output: {
+          manualChunks(id) {
+            if (id.includes('node_modules/firebase')) return 'firebase';
+            if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) return 'react';
+            if (id.includes('node_modules/lucide-react') || id.includes('node_modules/motion')) return 'ui';
+          },
           entryFileNames: 'assets/app.js',
           chunkFileNames: 'assets/[name]-[hash].js',
           assetFileNames: (assetInfo) =>

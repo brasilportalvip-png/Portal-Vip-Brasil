@@ -8,7 +8,7 @@ export { recalculateUserPlan };
 export type BillingMode = 'subscription' | 'one_time';
 
 export function mercadoPagoConfigured(): boolean {
-  return Boolean(config.mercadoPago.accessToken && config.mercadoPago.webhookSecret);
+  return Boolean(config.mercadoPago.enabled && config.mercadoPago.accessToken && config.mercadoPago.webhookSecret);
 }
 
 function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
@@ -45,6 +45,11 @@ async function mpJson(url: string, init: RequestInit = {}): Promise<any> {
 }
 
 export async function createCheckout(data: { userId: string; userEmail: string; userName: string; planId: string; idempotencyKey?: string }) {
+  if (!mercadoPagoConfigured()) {
+    const error: any = new Error('Pagamentos não estão disponíveis neste portal.');
+    error.statusCode = 404;
+    throw error;
+  }
   const rawKey = data.idempotencyKey ? String(data.idempotencyKey).trim() : '';
   if (!/^[A-Za-z0-9._:-]{16,128}$/.test(rawKey)) {
   const error: any = new Error('Chave de idempotência inválida: use entre 16 e 128 caracteres seguros.');
