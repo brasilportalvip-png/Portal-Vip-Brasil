@@ -5156,12 +5156,23 @@ async function publishText(data) {
       error: getProviderAutoPublishReason(data.provider) || `Publica\xE7\xE3o textual n\xE3o suportada para ${data.provider}.`
     };
   }
-  let snap = await firestore().collection(COLLECTIONS.socialConnections).where("userId", "==", data.userId).where("companyId", "==", data.companyId).where("provider", "==", data.provider).limit(1).get();
-  if (snap.empty) {
-    snap = await firestore().collection(COLLECTIONS.socialConnections).where("userId", "==", data.userId).where("provider", "==", data.provider).limit(1).get();
-  }
-  if (snap.empty && data.userId !== "portal_vip_admin") {
-    snap = await firestore().collection(COLLECTIONS.socialConnections).where("userId", "==", "portal_vip_admin").where("provider", "==", data.provider).limit(1).get();
+  let snap;
+  try {
+    snap = await firestore().collection(COLLECTIONS.socialConnections).where("userId", "==", data.userId).where("companyId", "==", data.companyId).where("provider", "==", data.provider).limit(1).get();
+    if (snap.empty) {
+      snap = await firestore().collection(COLLECTIONS.socialConnections).where("userId", "==", data.userId).where("provider", "==", data.provider).limit(1).get();
+    }
+    if (snap.empty && data.userId !== "portal_vip_admin") {
+      snap = await firestore().collection(COLLECTIONS.socialConnections).where("userId", "==", "portal_vip_admin").where("provider", "==", data.provider).limit(1).get();
+    }
+  } catch (err) {
+    return {
+      provider: data.provider,
+      externalId: null,
+      externalState: "confirmed_failed",
+      retrySafe: true,
+      error: `Erro ao consultar conex\xE3o social: ${err?.message || "Falha no banco de dados"}`
+    };
   }
   if (snap.empty) {
     return {
@@ -6531,6 +6542,7 @@ Ou baixe na Play Store: ${project.playStoreUrl}` : ""}`,
   return {
     success: true,
     publishedCount: itemsGenerated.length,
+    totalProjects: projectsToProcess.length,
     itemsGenerated
   };
 }
@@ -7148,6 +7160,7 @@ Com foco em alta qualidade, a plataforma re\xFAne ${project.highlights.join(", "
     faqSection: Array.isArray(parsed.faqSection) ? parsed.faqSection : [],
     conclusion: parsed.conclusion || "",
     callToAction: parsed.callToAction || "",
+    projectId: project.id,
     relatedProjectId: project.id,
     relatedProjectName: project.name,
     relatedProjectUrl: project.websiteUrl,
@@ -7404,13 +7417,15 @@ async function processScheduledPosts() {
         throw new Error("Inconsist\xEAncia de seguran\xE7a: Usu\xE1rio associado ao agendamento n\xE3o encontrado.");
       }
       const userData = userSnap.data();
-      const wallet = await getWallet(post.userId);
-      const entitlements = getPlanEntitlements(wallet.planId);
-      const isAdmin = userData?.role === "admin" || post.userId === "portal_vip_admin";
-      if (!entitlements.socialConnections && !isAdmin) {
-        throw new Error("O plano atual do usu\xE1rio n\xE3o permite publica\xE7\xE3o autom\xE1tica em redes sociais. Fa\xE7a upgrade para o plano PRO ou superior.");
-      }
       const isPortalProject = Boolean(post.projectId || post.companyId?.startsWith("proj_") || post.autopilotGenerated || post.metadata?.isPortalVipAutomation);
+      const isAdmin = userData?.role === "admin" || post.userId === "portal_vip_admin" || isPortalProject;
+      if (!isAdmin) {
+        const wallet = await getWallet(post.userId);
+        const entitlements = getPlanEntitlements(wallet.planId);
+        if (!entitlements.socialConnections) {
+          throw new Error("O plano atual do usu\xE1rio n\xE3o permite publica\xE7\xE3o autom\xE1tica em redes sociais.");
+        }
+      }
       if (!isPortalProject) {
         const companySnap = await db.collection(COLLECTIONS.companies).doc(post.companyId).get();
         if (!companySnap.exists) {

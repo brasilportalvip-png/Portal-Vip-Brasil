@@ -277,16 +277,18 @@ export async function processScheduledPosts(): Promise<number> {
       }
       const userData = userSnap.data() as any;
 
-      // 2. Revalidação de plano e entitlements
-      const wallet = await getWallet(post.userId);
-      const entitlements = getPlanEntitlements(wallet.planId);
-      const isAdmin = userData?.role === 'admin' || post.userId === 'portal_vip_admin';
-      if (!entitlements.socialConnections && !isAdmin) {
-        throw new Error('O plano atual do usuário não permite publicação automática em redes sociais. Faça upgrade para o plano PRO ou superior.');
+      // 2. Revalidação de plano e entitlements (apenas para usuários legados não-administradores)
+      const isPortalProject = Boolean(post.projectId || post.companyId?.startsWith('proj_') || post.autopilotGenerated || post.metadata?.isPortalVipAutomation);
+      const isAdmin = userData?.role === 'admin' || post.userId === 'portal_vip_admin' || isPortalProject;
+      if (!isAdmin) {
+        const wallet = await getWallet(post.userId);
+        const entitlements = getPlanEntitlements(wallet.planId);
+        if (!entitlements.socialConnections) {
+          throw new Error('O plano atual do usuário não permite publicação automática em redes sociais.');
+        }
       }
 
       // 3. Revalidação de projeto ou empresa
-      const isPortalProject = Boolean(post.projectId || post.companyId?.startsWith('proj_') || post.autopilotGenerated || post.metadata?.isPortalVipAutomation);
       if (!isPortalProject) {
         const companySnap = await db.collection(COLLECTIONS.companies).doc(post.companyId).get();
         if (!companySnap.exists) {

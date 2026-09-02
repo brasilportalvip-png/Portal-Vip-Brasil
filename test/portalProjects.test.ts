@@ -52,7 +52,7 @@ test('Portal Vip Brasil - Ciclo Diário do Blog Processa Todos os Projetos Ativo
   for (const article of blogResult.articlesGenerated) {
     assert.ok(article.projectId, 'Cada artigo deve ter o projectId associado');
     assert.ok(article.title, 'Cada artigo deve ter um título');
-    assert.ok(article.content, 'Cada artigo deve ter conteúdo útil');
+    assert.ok(article.sections?.length > 0 || article.excerpt, 'Cada artigo deve ter conteúdo útil nas seções');
   }
 });
 

@@ -121,6 +121,7 @@ export async function executeAiWith2SecAntiFall(data: {
 export async function runDailyPortalMarketingCycle(userId?: string): Promise<{
   success: boolean;
   publishedCount: number;
+  totalProjects: number;
   itemsGenerated: Array<{
     projectName: string;
     headline: string;
@@ -256,6 +257,7 @@ Responda em formato JSON com as chaves: "headline", "body", "cta", "hashtags", "
   return {
     success: true,
     publishedCount: itemsGenerated.length,
+    totalProjects: projectsToProcess.length,
     itemsGenerated
   };
 }

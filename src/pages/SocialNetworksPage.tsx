@@ -185,8 +185,8 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
   };
 
   const handleSendTikTokDraft = async () => {
-    if (!selectedCompany?.id) {
-      setTiktokError('Selecione uma empresa antes de enviar o rascunho.');
+    if (!activeCompanyId) {
+      setTiktokError('Contexto da empresa ou Portal Vip Brasil não identificado.');
       return;
     }
     if (!tiktokVideoFile) {
@@ -201,7 +201,7 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
 
     try {
       const formData = new FormData();
-      formData.append('companyId', selectedCompany.id);
+      formData.append('companyId', activeCompanyId);
       formData.append('video', tiktokVideoFile);
       if (tiktokVideoTitle.trim()) {
         formData.append('title', tiktokVideoTitle.trim());
@@ -235,7 +235,7 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
   };
 
   const handleCheckTikTokStatus = async () => {
-    if (!selectedCompany?.id || !tiktokSuccessResult?.publishId) return;
+    if (!activeCompanyId || !tiktokSuccessResult?.publishId) return;
     setTiktokCheckingStatus(true);
     try {
       const res = await apiRequest<{
@@ -248,7 +248,7 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
       }>('/api/social/tiktok/upload-status', {
         method: 'POST',
         body: {
-          companyId: selectedCompany.id,
+          companyId: activeCompanyId,
           publishId: tiktokSuccessResult.publishId
         }
       });
@@ -285,7 +285,7 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
           body: {
             selectionToken: pageSelectToken,
             pageId: selectedPageId,
-            companyId: selectedCompany?.id
+            companyId: activeCompanyId
           }
         }
       );
