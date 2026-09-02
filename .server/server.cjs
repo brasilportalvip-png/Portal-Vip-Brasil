@@ -7063,7 +7063,12 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
   });
   let parsed;
   try {
-    parsed = JSON.parse(aiRes.text);
+    const rawParsed = JSON.parse(aiRes.text);
+    if (rawParsed && typeof rawParsed === "object" && (rawParsed.sections?.length > 0 || rawParsed.excerpt || rawParsed.title)) {
+      parsed = rawParsed;
+    } else {
+      throw new Error("Formato retornado pela IA incompleto");
+    }
   } catch {
     parsed = {
       title: topic,
@@ -7071,6 +7076,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
       seoTitle: `${topic} | Portal Vip Brasil`,
       metaDescription: `Confira o guia completo sobre ${project.name} no Portal Vip Brasil. Descubra benef\xEDcios, recursos e orienta\xE7\xF5es pr\xE1ticas.`,
       excerpt: `Tudo o que voc\xEA precisa saber sobre ${project.name}: orienta\xE7\xF5es, recursos e caminhos para potencializar seus resultados.`,
+      introduction: `Neste artigo, apresentamos todos os detalhes sobre ${project.name}, seus objetivos, funcionalidades essenciais e como ter acesso r\xE1pido.`,
       category: project.category,
       tags: project.keywords,
       primaryKeyword,
@@ -7109,26 +7115,40 @@ Com foco em alta qualidade, a plataforma re\xFAne ${project.highlights.join(", "
       }
     };
   }
+  const defaultExcerpt = `Tudo o que voc\xEA precisa saber sobre ${project.name}: orienta\xE7\xF5es, recursos e caminhos para potencializar seus resultados.`;
+  const articleExcerpt = parsed.excerpt || parsed.metaDescription || defaultExcerpt;
+  const articleSections = Array.isArray(parsed.sections) && parsed.sections.length > 0 ? parsed.sections : [
+    {
+      h2: `Conhe\xE7a ${project.name} e Seus Principais Benef\xEDcios`,
+      content: `${project.description}
+
+Com foco em alta qualidade, a plataforma re\xFAne ${project.highlights.join(", ")}.`
+    },
+    {
+      h2: "Como Come\xE7ar a Utilizar Hoje Mesmo",
+      content: `Para aproveitar ao m\xE1ximo todos os recursos dispon\xEDveis, acesse o website oficial ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? ` ou fa\xE7a o download do aplicativo oficial diretamente na Google Play Store (${project.playStoreUrl})` : ""}.`
+    }
+  ];
   const finalSlug = slugify2(parsed.suggestedSlug || parsed.title || topic);
   const articleId = newId("blog_art");
   const targetStatus = options?.forceApproval || settings.mode === "approval" ? "pending_approval" : "published";
   const articlePublicUrl = `https://portalvipbrasil.com.br/blog/${finalSlug}`;
   const socialCampaign = {
     instagram: {
-      caption: parsed.socialCampaign?.instagram?.caption || parsed.excerpt || "",
+      caption: parsed.socialCampaign?.instagram?.caption || articleExcerpt,
       hashtags: Array.isArray(parsed.socialCampaign?.instagram?.hashtags) ? parsed.socialCampaign.instagram.hashtags : ["#PortalVipBrasil"],
       utmUrl: `${articlePublicUrl}?utm_source=instagram&utm_medium=social&utm_campaign=daily_blog_seo`
     },
     facebook: {
-      postText: parsed.socialCampaign?.facebook?.postText || parsed.excerpt || "",
+      postText: parsed.socialCampaign?.facebook?.postText || articleExcerpt,
       utmUrl: `${articlePublicUrl}?utm_source=facebook&utm_medium=social&utm_campaign=daily_blog_seo`
     },
     linkedin: {
-      postText: parsed.socialCampaign?.linkedin?.postText || parsed.excerpt || "",
+      postText: parsed.socialCampaign?.linkedin?.postText || articleExcerpt,
       utmUrl: `${articlePublicUrl}?utm_source=linkedin&utm_medium=social&utm_campaign=daily_blog_seo`
     },
     x: {
-      tweetText: parsed.socialCampaign?.x?.tweetText || parsed.title || "",
+      tweetText: parsed.socialCampaign?.x?.tweetText || parsed.title || topic,
       utmUrl: `${articlePublicUrl}?utm_source=x&utm_medium=social&utm_campaign=daily_blog_seo`
     }
   };
@@ -7137,11 +7157,12 @@ Com foco em alta qualidade, a plataforma re\xFAne ${project.highlights.join(", "
     id: articleId,
     slug: finalSlug,
     title: parsed.title || topic,
-    seoTitle: parsed.seoTitle || `${parsed.title} | Portal Vip Brasil`,
-    metaDescription: parsed.metaDescription || parsed.excerpt || "",
-    excerpt: parsed.excerpt || "",
+    seoTitle: parsed.seoTitle || `${parsed.title || topic} | Portal Vip Brasil`,
+    metaDescription: parsed.metaDescription || articleExcerpt,
+    excerpt: articleExcerpt,
+    introduction: parsed.introduction || void 0,
     category: parsed.category || project.category,
-    tags: Array.isArray(parsed.tags) ? parsed.tags : project.keywords,
+    tags: Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : project.keywords,
     primaryKeyword: parsed.primaryKeyword || primaryKeyword,
     secondaryKeywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords : [],
     searchIntent,
@@ -7155,8 +7176,8 @@ Com foco em alta qualidade, a plataforma re\xFAne ${project.highlights.join(", "
     readTime: parsed.readTime || "5 min de leitura",
     featured: false,
     coverImage,
-    coverAlt: parsed.coverAlt || `Capa do artigo ${parsed.title}`,
-    sections: Array.isArray(parsed.sections) ? parsed.sections : [],
+    coverAlt: parsed.coverAlt || `Capa do artigo ${parsed.title || topic}`,
+    sections: articleSections,
     faqSection: Array.isArray(parsed.faqSection) ? parsed.faqSection : [],
     conclusion: parsed.conclusion || "",
     callToAction: parsed.callToAction || "",

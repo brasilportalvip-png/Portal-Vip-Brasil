@@ -1,3 +1,4 @@
+process.env.NODE_ENV = 'test';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -16,13 +17,13 @@ test('Portal Vip Brasil - 7 Projetos Oficiais Iniciais', async () => {
   const slugs = PORTAL_VIP_PROJECTS.map((p) => p.slug);
   assert.ok(slugs.includes('magia-das-crencas'));
   assert.ok(slugs.includes('exu-responde'));
-  assert.ok(slugs.includes('maria-padilha'));
+  assert.ok(slugs.includes('maria-padilha-rainha-das-7-encruzilhadas'));
   assert.ok(slugs.includes('manual-catolico'));
   assert.ok(slugs.includes('froc-ia'));
   assert.ok(slugs.includes('oraculos'));
   assert.ok(slugs.includes('froc-ia-marketing-engine'));
 
-  const mariaPadilha = getProjectBySlug('maria-padilha');
+  const mariaPadilha = getProjectBySlug('maria-padilha-rainha-das-7-encruzilhadas');
   assert.ok(mariaPadilha, 'Projeto Maria Padilha deve ser encontrado por slug');
   assert.equal(mariaPadilha?.name, 'Maria Padilha Rainha das 7 Encruzilhadas');
 });
