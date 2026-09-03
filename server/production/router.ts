@@ -111,8 +111,51 @@ function normalizeCompanyField(key: string, value: any): any {
   return safeString(value, limits[key] || 1000);
 }
 
+function portalProjectContext(userId: string, projectId?: string): any | undefined {
+  if (!projectId) return undefined;
+  if (projectId === 'portal_vip') {
+    return {
+      id: 'portal_vip',
+      userId,
+      name: 'Portal Vip Brasil',
+      category: 'Marketing & Automação',
+      description: 'Central privada de marketing e automação do Portal Vip Brasil.',
+      products: [],
+      services: [],
+      keywords: [],
+      isPublicInVitrine: false,
+      virtual: true,
+      portalProject: true
+    };
+  }
+  const project = PORTAL_VIP_PROJECTS.find((item) => item.id === projectId);
+  if (!project) return undefined;
+  return {
+    id: project.id,
+    userId,
+    name: project.name,
+    slug: project.slug,
+    category: project.category,
+    segment: project.segment,
+    description: project.description,
+    website: project.websiteUrl,
+    websiteUrl: project.websiteUrl,
+    androidApp: project.playStoreUrl,
+    targetAudience: project.targetAudience,
+    keywords: project.keywords || [],
+    products: [],
+    services: [],
+    socialLinks: {},
+    isPublicInVitrine: true,
+    virtual: true,
+    portalProject: true
+  };
+}
+
 export async function ownedCompany(userId: string, companyId?: string): Promise<any | undefined> {
-  if (!companyId) return undefined;
+  const portalProject = portalProjectContext(userId, companyId);
+  if (portalProject) return portalProject;
+  if (!companyId || config.privatePortalMode) return undefined;
   const snap = await firestore().collection(COLLECTIONS.companies).doc(companyId).get();
   if (!snap.exists) return undefined;
   const data = { id: snap.id, ...snap.data() } as any;
@@ -120,55 +163,20 @@ export async function ownedCompany(userId: string, companyId?: string): Promise<
 }
 
 export async function requireOwnedCompany(userId: string, companyId: string): Promise<any> {
-  if (companyId === 'portal_vip') {
-    return { id: companyId, userId, name: 'Portal Vip Brasil', virtual: true };
-  }
   const company = await ownedCompany(userId, companyId);
   if (!company) {
-    const error: any = new Error('Empresa não encontrada ou sem permissão.');
+    const error: any = new Error(config.privatePortalMode ? 'Projeto não encontrado ou não autorizado.' : 'Empresa não encontrada ou sem permissão.');
     error.statusCode = 404;
     throw error;
   }
   return company;
 }
 
-// `portal_vip` representa o portal principal quando o usuário ainda não criou
-// uma empresa. As conexões continuam isoladas por userId em todas as consultas.
 async function requireSocialCompany(userId: string, companyId: string): Promise<any> {
-  if (companyId === 'portal_vip') {
-    return { id: companyId, userId, name: 'Portal Vip Brasil', virtual: true };
-  }
   return requireOwnedCompany(userId, companyId);
 }
 
-async function deleteCompanyData(userId: string, companyId: string): Promise<void> {
-  const db = firestore();
-  const collections = [COLLECTIONS.contentItems, COLLECTIONS.campaigns, COLLECTIONS.scheduledPosts, COLLECTIONS.socialConnections, COLLECTIONS.seoReports, COLLECTIONS.autopilotConfigs];
-  for (const collection of collections) {
-    while (true) {
-      const snap = await db.collection(collection).where('userId', '==', userId).where('companyId', '==', companyId).limit(400).get();
-      if (snap.empty) break;
-      const batch = db.batch();
-      for (const doc of snap.docs) {
-        const data = doc.data() as any;
-        if (collection === COLLECTIONS.contentItems && data?.metadata?.storagePath) {
-          await getAdminStorage().bucket().file(String(data.metadata.storagePath)).delete({ ignoreNotFound: true }).catch(() => undefined);
-        }
-        batch.delete(doc.ref);
-      }
-      await batch.commit();
-      if (snap.size < 400) break;
-    }
-  }
-}
-
-function planCompanyLimit(planId: string): number {
-  return getPlanEntitlements(planId).maxCompanies;
-}
-
 async function requireSocialPublishingAccess(userId: string, role?: string): Promise<void> {
-  // O Portal Vip Brasil não comercializa planos. Autorização e créditos são
-  // verificados pelas próprias operações; conexão social não exige assinatura.
   void userId;
   void role;
 }
@@ -243,6 +251,16 @@ router.post('/auth/sync-profile', requireAuth, asyncRoute(async (req: Authentica
     avatarUrl: safeString(req.body?.avatarUrl, 1000) || req.user?.avatarUrl
   });
 
+  if (config.privatePortalMode) {
+    return res.json({
+      user: profile,
+      wallet: null,
+      needsTermsConsent: !hasAcceptedLatestTerms(profile),
+      currentTermsVersion: CURRENT_TERMS_VERSION,
+      security: { privatePortal: true, bonusEligible: false, bonusAmount: 0, reason: 'private_portal', message: 'Portal administrativo privado.' }
+    });
+  }
+
   const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
   const userAgent = safeString(req.headers['user-agent'], 300);
 
@@ -309,7 +327,7 @@ router.post('/auth/accept-terms', requireAuth, asyncRoute(async (req: Authentica
   res.json({
     message: 'Termos de Uso e Política de Privacidade aceitos com sucesso.',
     user: profile,
-    wallet: await getWallet(profile.id),
+    wallet: config.privatePortalMode ? null : await getWallet(profile.id),
     needsTermsConsent: false,
     currentTermsVersion: CURRENT_TERMS_VERSION
   });
@@ -370,17 +388,21 @@ router.get('/dashboard/status', requireAuth, asyncRoute(async (req: Authenticate
 
 // Companies
 router.get('/companies', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  if (config.privatePortalMode) {
+    return res.json({ companies: PORTAL_VIP_PROJECTS.map((p) => portalProjectContext(req.user!.id, p.id)) });
+  }
   const snap = await firestore().collection(COLLECTIONS.companies).where('userId', '==', req.user!.id).get();
   const companies = queryData<any>(snap).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
   res.json({ companies });
 }));
 
 router.post('/companies', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
   const name = safeString(req.body?.name, 120);
   if (!name) return res.status(400).json({ error: 'O nome da empresa é obrigatório.' });
   const current = await firestore().collection(COLLECTIONS.companies).where('userId', '==', req.user!.id).get();
   const wallet = await getWallet(req.user!.id);
-  if (current.size >= planCompanyLimit(wallet.planId)) return res.status(403).json({ error: 'Seu plano atingiu o limite de empresas. Faça upgrade para cadastrar outra marca.' });
+  if (!config.privatePortalMode && current.size >= getPlanEntitlements(wallet.planId).maxCompanies) return res.status(403).json({ error: 'Seu plano atingiu o limite de empresas. Faça upgrade para cadastrar outra marca.' });
   const id = newId('company');
   const baseSlug = slugify(name);
   const slug = `${baseSlug}-${id.slice(-6)}`;
@@ -429,6 +451,7 @@ router.get('/companies/:id', requireAuth, asyncRoute(async (req: AuthenticatedRe
 }));
 
 router.patch('/companies/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
   const current = await requireOwnedCompany(req.user!.id, req.params.id);
   const allowed = ['name','businessType','onlineChannels','logoUrl','description','website','androidApp','iosApp','phone','whatsapp','email','address','city','state','country','category','segment','products','services','targetAudience','coverageRegion','differentials','brandTone','goals','competitors','keywords','socialLinks','isPublicInVitrine','marketingProfile'];
   const patch: Record<string, any> = {};
@@ -441,6 +464,7 @@ router.patch('/companies/:id', requireAuth, asyncRoute(async (req: Authenticated
 }));
 
 router.post('/companies/:id/logo', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
   const company = await requireOwnedCompany(req.user!.id, req.params.id);
   const dataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl : '';
   const match = dataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
@@ -471,20 +495,25 @@ router.post('/companies/:id/logo', requireAuth, asyncRoute(async (req: Authentic
 }));
 
 router.delete('/companies/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
   const company = await requireOwnedCompany(req.user!.id, req.params.id);
   if (company.logoStoragePath) await getAdminStorage().bucket().file(String(company.logoStoragePath)).delete({ ignoreNotFound: true }).catch(() => undefined);
-  await deleteCompanyData(req.user!.id, req.params.id);
   await firestore().collection(COLLECTIONS.companies).doc(req.params.id).delete();
   res.json({ message: 'Empresa removida com sucesso.' });
 }));
 
-// Credits
+// Créditos legados: indisponíveis na central privada.
+router.use('/credits', (req, res, next) => {
+  if (config.privatePortalMode) return res.status(404).json({ error: 'Créditos não fazem parte do Portal Vip Brasil privado.' });
+  next();
+});
+
 router.get('/credits/balance', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => res.json({ wallet: await getWallet(req.user!.id) })));
 router.get('/credits/transactions', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => res.json({ transactions: await listCreditTransactions(req.user!.id, Number(req.query.limit || 50)) })));
 router.get('/credits/history', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => res.json({ transactions: await listCreditTransactions(req.user!.id, Number(req.query.limit || 50)) })));
 
 // AI
-router.get('/ai/costs', (_req, res) => res.json({ costs: config.creditCosts }));
+router.get('/ai/costs', (_req, res) => res.json({ costs: config.privatePortalMode ? {} : config.creditCosts }));
 
 router.post('/ai/generate-post', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const topic = safeString(req.body?.topic, 5000);
@@ -678,7 +707,7 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
   const scheduledFor = safeString(req.body?.scheduledFor, 100);
   const companyId = safeString(req.body?.companyId, 200);
   const isPlanning = Boolean(req.body?.isPlanning || req.body?.mode === 'planning');
-  if (!contentItemId || !scheduledFor || !companyId) return res.status(400).json({ error: 'Empresa, conteúdo e data são obrigatórios.' });
+  if (!contentItemId || !scheduledFor || !companyId) return res.status(400).json({ error: 'Projeto, conteúdo e data são obrigatórios.' });
 
   // 1. Ownership da empresa
   await requireOwnedCompany(req.user!.id, companyId);
@@ -691,9 +720,9 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
     if (isPlanning && itemData.companyId === 'default') {
       // Aceita default apenas para planejamento editorial
     } else if (!isPlanning && itemData.companyId === 'default') {
-      return res.status(400).json({ error: 'Associe este conteúdo a uma empresa antes de ativar a auto-publicação.' });
+      return res.status(400).json({ error: 'Associe este conteúdo a uma projeto antes de ativar a auto-publicação.' });
     } else {
-      return res.status(400).json({ error: 'O conteúdo selecionado pertence a outra empresa.' });
+      return res.status(400).json({ error: 'O conteúdo selecionado pertence a outro projeto.' });
     }
   }
 
@@ -749,7 +778,7 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
       .get();
 
     if (connSnap.empty) {
-      return res.status(400).json({ error: `A conta de ${plat} não está conectada para esta empresa. Conecte-a em Redes Sociais antes de agendar.` });
+      return res.status(400).json({ error: `A conta de ${plat} não está conectada para este projeto. Conecte-a em Redes Sociais antes de agendar.` });
     }
 
     const conn = connSnap.docs[0].data() as any;
@@ -891,13 +920,16 @@ router.get('/campaigns', requireAuth, asyncRoute(async (req: AuthenticatedReques
 }));
 
 router.post('/campaigns', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const wallet = await getWallet(req.user!.id);
-  const entitlements = getPlanEntitlements(wallet.planId);
-  if (!entitlements.campaigns) {
-    return res.status(403).json({
-      error: 'O recurso de Campanhas é exclusivo dos planos BUSINESS e AGENCY. Faça upgrade para criar campanhas.'
-    });
-  }
+  if (!config.privatePortalMode) {
+    const wallet = await getWallet(req.user!.id);
+    const entitlements = getPlanEntitlements(wallet.planId);
+    if (!entitlements.campaigns) {
+      return res.status(403).json({
+        error: 'O recurso de Campanhas é exclusivo dos planos BUSINESS e AGENCY. Faça upgrade para criar campanhas.'
+      });
+    }
+  
+    }
 
   const name = safeString(req.body?.name, 300);
   const companyId = safeString(req.body?.companyId, 200);
@@ -910,13 +942,16 @@ router.post('/campaigns', requireAuth, asyncRoute(async (req: AuthenticatedReque
 }));
 
 router.patch('/campaigns/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const wallet = await getWallet(req.user!.id);
-  const entitlements = getPlanEntitlements(wallet.planId);
-  if (!entitlements.campaigns) {
-    return res.status(403).json({
-      error: 'O recurso de Campanhas é exclusivo dos planos BUSINESS e AGENCY. Faça upgrade para editar campanhas.'
-    });
-  }
+  if (!config.privatePortalMode) {
+    const wallet = await getWallet(req.user!.id);
+    const entitlements = getPlanEntitlements(wallet.planId);
+    if (!entitlements.campaigns) {
+      return res.status(403).json({
+        error: 'O recurso de Campanhas é exclusivo dos planos BUSINESS e AGENCY. Faça upgrade para editar campanhas.'
+      });
+    }
+  
+    }
 
   const ref = firestore().collection(COLLECTIONS.campaigns).doc(req.params.id);
   const snap = await ref.get();
@@ -948,7 +983,12 @@ router.delete('/campaigns/:id', requireAuth, asyncRoute(async (req: Authenticate
   res.json({ message: 'Campanha removida.' });
 }));
 
-// Payments
+// Pagamentos legados: desativados no Portal privado.
+router.use('/payments', (req, res, next) => {
+  if (config.privatePortalMode) return res.status(404).json({ error: 'Planos e pagamentos não são oferecidos pelo Portal Vip Brasil.' });
+  next();
+});
+
 router.get('/payments/plans', (_req, res) => res.json({ plans: config.plans, gatewayConfigured: mercadoPagoConfigured() }));
 router.post('/payments/checkout', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const planId = safeString(req.body?.planId, 100);
@@ -980,6 +1020,7 @@ router.post('/payments/subscription/cancel', requireAuth, asyncRoute(async (req:
   res.json({ message: 'Renovação automática cancelada.', subscription: await cancelSubscription(req.user!.id, safeString(req.body?.orderId, 200) || undefined) });
 }));
 router.post('/webhooks/mercadopago', asyncRoute(async (req, res) => {
+  if (config.privatePortalMode) return res.status(404).json({ error: 'Webhook de pagamentos desativado.' });
   const result = await processMercadoPagoWebhook({ body: req.body, query: req.query, headers: req.headers as any });
   res.status(200).json(result);
 }));
@@ -1021,18 +1062,18 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório.' });
   await requireOwnedCompany(req.user!.id, companyId);
 
-  const wallet = await getWallet(req.user!.id);
-  const entitlements = getPlanEntitlements(wallet.planId);
   const requestedEnabled = Boolean(req.body?.enabled);
+  const wallet = config.privatePortalMode ? null : await getWallet(req.user!.id);
+  const entitlements = wallet ? getPlanEntitlements(wallet.planId) : null;
   const requestedMode = req.body?.mode === 'automatic' ? 'automatic' : 'manual_approval';
 
-  if (requestedEnabled && !entitlements.autopilotManual && !entitlements.autopilotAutomatic) {
+  if (!config.privatePortalMode && entitlements && requestedEnabled && !entitlements.autopilotManual && !entitlements.autopilotAutomatic) {
     return res.status(403).json({
       error: 'O recurso Autopilot não está disponível no seu plano atual. Faça upgrade para o plano PRO ou superior.'
     });
   }
 
-  if (requestedMode === 'automatic' && !entitlements.autopilotAutomatic) {
+  if (!config.privatePortalMode && entitlements && requestedMode === 'automatic' && !entitlements.autopilotAutomatic) {
     return res.status(403).json({
       error: 'O modo automático do Autopilot é exclusivo dos planos BUSINESS e AGENCY. No plano PRO, utilize aprovação manual ou faça upgrade.'
     });
@@ -1067,7 +1108,7 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
 
       if (connSnap.empty) {
         return res.status(400).json({
-          error: `O canal "${plat}" não está conectado para esta empresa. Conecte-o em Redes Sociais antes de ativar o modo automático.`
+          error: `O canal "${plat}" não está conectado para este projeto. Conecte-o em Redes Sociais antes de ativar o modo automático.`
         });
       }
       const conn = connSnap.docs[0].data() as any;
@@ -1105,7 +1146,7 @@ router.post('/autopilot/trigger-now', requireAuth, asyncRoute(async (req: Authen
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório para acionar o Autopilot.' });
   await requireOwnedCompany(req.user!.id, companyId);
   const result = await triggerUserAutopilot(req.user!.id, companyId);
-  res.json({ message: 'Autopilot executado para sua empresa.', result });
+  res.json({ message: 'Autopilot executado para seu projeto.', result });
 }));
 
 // Social OAuth

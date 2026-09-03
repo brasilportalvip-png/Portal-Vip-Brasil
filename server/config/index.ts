@@ -48,6 +48,7 @@ export const config = {
   host: '0.0.0.0',
   nodeEnv,
   isProduction,
+  privatePortalMode: env('PRIVATE_PORTAL_MODE', isProduction ? 'true' : 'false').toLowerCase() === 'true',
   appUrl,
   corsOrigins,
   geminiApiKey: env('GEMINI_API_KEY'),

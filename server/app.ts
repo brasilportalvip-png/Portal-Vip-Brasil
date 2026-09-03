@@ -35,9 +35,6 @@ function rateLimitPolicy(req: Request): RateLimitPolicy | null {
   // Firestore apenas para controlar o próprio rate limit.
   if (path === '/api/portal/blog/track') return null;
 
-  if (path === '/api/webhooks/mercadopago') {
-    return { group: 'webhook-mercadopago', limit: 600, windowMs: 60_000 };
-  }
   if (path.startsWith('/api/cron/')) {
     return { group: 'cron', limit: 120, windowMs: 60_000 };
   }
@@ -50,9 +47,6 @@ function rateLimitPolicy(req: Request): RateLimitPolicy | null {
     path === '/api/auth/profile'
   ) {
     return { group: 'auth-mutation', limit: 30, windowMs: 10 * 60_000 };
-  }
-  if (path === '/api/payments/checkout' || path === '/api/payments/subscription/cancel') {
-    return { group: 'payments-mutation', limit: 20, windowMs: 10 * 60_000 };
   }
   if (req.method === 'POST' && path.startsWith('/api/ai/')) {
     return { group: 'ai-generation', limit: 120, windowMs: 10 * 60_000 };
@@ -237,9 +231,11 @@ export function createApp() {
       '/vitrine/:slug',
       '/blog',
       '/blog/:slug',
-      '/planos',
       '/termos',
-      '/privacidade'
+      '/privacidade',
+      '/cookies',
+      '/exclusao-de-dados',
+      '/apps-compliance'
     ],
     async (req, res, next) => {
       if (!config.isProduction) return next();
@@ -254,6 +250,7 @@ export function createApp() {
 
   const privateAppRoutes = [
     '/dashboard',
+    '/projetos',
     '/empresa',
     '/froc-ia',
     '/autopilot',

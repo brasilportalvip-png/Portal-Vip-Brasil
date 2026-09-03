@@ -4,7 +4,6 @@ import {
   Bot,
   Send,
   Building2,
-  Coins,
   CheckCircle2,
   Calendar,
   Layers,
@@ -13,7 +12,7 @@ import {
   PenTool,
   Compass
 } from 'lucide-react';
-import { Company, Wallet, CREDIT_COSTS } from '../types';
+import { Company, Wallet } from '../types';
 import { apiRequest } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
 
@@ -33,15 +32,12 @@ export const FrocIaPage: React.FC<FrocIaPageProps> = ({
   const [promptInput, setPromptInput] = useState('');
   const [selectedGoal, setSelectedGoal] = useState('Vendas & Atração de Novos Clientes');
   const [timeframe, setTimeframe] = useState<'semana' | 'mes'>('semana');
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [generatedStrategy, setGeneratedStrategy] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const estimatedCredits = CREDIT_COSTS.strategy; // Custo oficial para estratégia completa com Gemini 3.7 & 3.1 Pro
-
   const quickPrompts = [
-    'Divulgue minha empresa com foco em atrair novos clientes nesta semana.',
+    'Divulgue minha projeto com foco em atrair novos clientes nesta semana.',
     'Crie uma estratégia de autoridade e diferenciais para redes sociais.',
     'Planeje 5 posts persuasivos para quebrar objeções de compra.',
     'Gere um plano de promoção agressiva para o final de semana.'
@@ -53,11 +49,10 @@ export const FrocIaPage: React.FC<FrocIaPageProps> = ({
       return;
     }
     setErrorMessage('');
-    setShowConfirmModal(true);
+    void handleConfirmAndGenerate();
   };
 
   const handleConfirmAndGenerate = async () => {
-    setShowConfirmModal(false);
     setLoading(true);
     setErrorMessage('');
 
@@ -72,7 +67,6 @@ export const FrocIaPage: React.FC<FrocIaPageProps> = ({
       });
 
       setGeneratedStrategy(data.strategy);
-      onRefreshWallet();
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro ao gerar com Froc IA Engine.');
     } finally {
@@ -101,9 +95,9 @@ export const FrocIaPage: React.FC<FrocIaPageProps> = ({
           </div>
         ) : (
           <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-center justify-between">
-            <span>Nenhuma empresa selecionada. Selecione ou cadastre uma empresa para hiper-personalização.</span>
+            <span>Nenhuma projeto selecionada. Selecione ou cadastre uma projeto para hiper-personalização.</span>
             <button
-              onClick={() => onNavigate('empresa')}
+              onClick={() => onNavigate('projeto')}
               className="px-3 py-1 rounded-lg bg-amber-500 text-black font-bold text-xs hover:bg-amber-400"
             >
               Configurar
@@ -186,48 +180,6 @@ export const FrocIaPage: React.FC<FrocIaPageProps> = ({
         <div className="p-4 rounded-2xl bg-rose-950/20 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
           <span>⚠️</span>
           <span>{errorMessage}</span>
-        </div>
-      )}
-
-      {/* Confirmation Modal */}
-      {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md bg-[#0F172A] border border-[#334155] rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                <Coins size={20} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Confirmar Execução de IA</h3>
-                <p className="text-[11px] text-slate-400">Verificação de saldo e ledger transacional.</p>
-              </div>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-[#1E293B] border border-slate-700 text-xs text-slate-300 space-y-2">
-              <p>
-                Essa ação utilizará aproximadamente <strong className="text-amber-400">{estimatedCredits} créditos</strong> do seu saldo.
-              </p>
-              <div className="flex items-center justify-between pt-2 border-t border-slate-700 text-[11px]">
-                <span className="text-slate-400">Seu saldo atual:</span>
-                <span className="font-bold text-white">{wallet?.balance ?? 0} créditos</span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className="px-4 py-2 rounded-xl bg-[#1E293B] text-slate-300 hover:text-white text-xs font-semibold"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleConfirmAndGenerate}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold text-xs shadow-md hover:opacity-95"
-              >
-                Confirmar e gerar
-              </button>
-            </div>
-          </div>
         </div>
       )}
 

@@ -202,14 +202,8 @@ export function App() {
   }, [commitNavigation]);
 
   const refreshWallet = useCallback(async () => {
-    if (!user) return;
-    try {
-      const data = await apiRequest<{ wallet: Wallet }>('/api/credits/balance');
-      if (data?.wallet) setWallet(data.wallet);
-    } catch (err) {
-      if (!isApiAbortError(err)) console.warn('Erro ao atualizar carteira:', err);
-    }
-  }, [user]);
+    setWallet(null);
+  }, []);
 
   const refreshContents = useCallback(async () => {
     if (!user || !selectedCompany) return;
@@ -252,9 +246,9 @@ export function App() {
   const reloadSession = useCallback(async () => {
     if (!auth.currentUser) return;
     try {
-      const data = await apiRequest<{ user: User; wallet: Wallet }>('/api/auth/me');
+      const data = await apiRequest<{ user: User; wallet?: Wallet | null }>('/api/auth/me');
       if (data?.user) setUser(data.user);
-      if (data?.wallet) setWallet(data.wallet);
+      setWallet(null);
     } catch (err) {
       if (!isApiAbortError(err)) console.warn('Erro ao recarregar sessão:', err);
     }
@@ -273,7 +267,7 @@ export function App() {
           const epoch = ++sessionEpochRef.current;
           sessionControllerRef.current = controller;
 
-          const data = await apiRequest<{ user: User; wallet: Wallet }>('/api/auth/me', {
+          const data = await apiRequest<{ user: User; wallet?: Wallet | null }>('/api/auth/me', {
             signal: controller.signal,
             timeoutMs: 12_000
           });
@@ -281,7 +275,7 @@ export function App() {
 
           if (data?.user) {
             setUser(data.user);
-            setWallet(data.wallet || null);
+            setWallet(null);
             await refreshCompanies(controller.signal, epoch);
           }
         } catch (err) {

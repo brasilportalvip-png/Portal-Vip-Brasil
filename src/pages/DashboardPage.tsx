@@ -103,10 +103,10 @@ export const DashboardPage: React.FC<Props> = ({
           count: res.publishedCount
         });
       }
-    } catch {
+    } catch (error: any) {
       setDailyFeedback({
-        success: true,
-        message: 'Ciclo diário executado com redundância anti-quedas da IA.'
+        success: false,
+        message: error?.message || 'O ciclo diário não foi confirmado pelo backend.'
       });
     } finally {
       setIsTriggeringDaily(false);
@@ -307,8 +307,8 @@ export const DashboardPage: React.FC<Props> = ({
           ['Posts na Fila', queued],
           ['Publicados no Mês', publishedMonth],
           ['Campanhas Ativas', active],
-          ['Alcance Estimado', totals.reach || '12.4k'],
-          ['Engajamento', totals.clicks || '1.8k']
+          ['Alcance registrado', totals.reach],
+          ['Cliques registrados', totals.clicks]
         ].map(([label, value]) => (
           <div key={label as string} className="froc-panel p-4 hover:border-cyan-500/30 transition-colors">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{label}</div>

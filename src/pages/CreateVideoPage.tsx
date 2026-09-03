@@ -19,7 +19,6 @@ import {
   Share2
 } from 'lucide-react';
 import type { Company, Wallet, VideoJob } from '../types';
-import { CREDIT_COSTS } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface CreateVideoPageProps {
@@ -76,12 +75,6 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
     caption: string;
   } | null>(null);
 
-  const currentPresetCost = useMemo(() => {
-    if (preset === 'cinema_4k') return CREDIT_COSTS.video_veo_4k || 200;
-    if (preset === 'pro_1080p') return CREDIT_COSTS.video_veo_1080p || 100;
-    return CREDIT_COSTS.video_veo_fast || 50;
-  }, [preset]);
-
   // Reset video script when company changes (E05)
   useEffect(() => {
     setGeneratedScript(null);
@@ -131,7 +124,6 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
         if (data.job) {
           setActiveJob(data.job);
           if (data.job.status === 'completed' || data.job.status === 'failed') {
-            onRefreshWallet();
             onRefreshContents?.();
             loadRecentJobs();
           }
@@ -156,7 +148,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
       return;
     }
     if (!selectedCompany?.id) {
-      setVideoError('Selecione uma empresa para aplicar a identidade da marca.');
+      setVideoError('Selecione uma projeto para aplicar a identidade da marca.');
       return;
     }
 
@@ -179,7 +171,6 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
       });
 
       setActiveJob(data.job);
-      onRefreshWallet();
       loadRecentJobs();
     } catch (err: any) {
       setVideoError(err.message || 'Erro ao iniciar geração de vídeo com Veo 3.1.');
@@ -209,7 +200,6 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
       });
 
       setGeneratedScript(data.videoScript);
-      onRefreshWallet();
       onRefreshContents?.();
     } catch (err: any) {
       setScriptError(err.message || 'Erro ao gerar roteiro de vídeo.');
@@ -236,11 +226,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
             Geração real de vídeo com Google Veo 3.1 (Full HD / 4K) e roteirizador estratégico com gancho magnético.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3.5 py-2 text-xs font-bold text-amber-200">
-            Saldo: {wallet?.balance ?? 0} créditos
-          </div>
-        </div>
+
       </header>
 
       {/* Tabs Selector */}
@@ -265,15 +251,15 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Film size={15} /> Roteirizador Estruturado ({CREDIT_COSTS.video_script} cr)
+          <Film size={15} /> Roteirizador Estruturado
         </button>
       </div>
 
       {!selectedCompany && (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-200">
-          Selecione uma empresa para aplicar as diretrizes e público da marca.{' '}
-          <button onClick={() => onNavigate('empresa')} className="ml-1 font-bold underline">
-            Configurar empresa
+          Selecione uma projeto para aplicar as diretrizes e público da marca.{' '}
+          <button onClick={() => onNavigate('projeto')} className="ml-1 font-bold underline">
+            Configurar projeto
           </button>
         </div>
       )}
@@ -315,14 +301,14 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
                   <span>Qualidade / Resolução</span>
-                  <span className="text-[10px] text-cyan-400 font-bold">{currentPresetCost} créditos</span>
+                  <span className="text-[10px] text-cyan-400 font-bold">Preset: {preset.replaceAll('_', ' ')}</span>
                 </label>
                 <div className="grid grid-cols-3 gap-2">
                   {(
                     [
-                      { key: 'demo_720p', label: 'Fast 720p', cost: CREDIT_COSTS.video_veo_fast || 50, desc: 'Mais rápido' },
-                      { key: 'pro_1080p', label: 'Pro 1080p', cost: CREDIT_COSTS.video_veo_1080p || 100, desc: 'Full HD Ideal' },
-                      { key: 'cinema_4k', label: 'Cinema 4K', cost: CREDIT_COSTS.video_veo_4k || 200, desc: 'Ultra HD' }
+                      { key: 'demo_720p', label: 'Fast 720p', desc: 'Mais rápido' },
+                      { key: 'pro_1080p', label: 'Pro 1080p', desc: 'Full HD Ideal' },
+                      { key: 'cinema_4k', label: 'Cinema 4K', desc: 'Ultra HD' }
                     ] as const
                   ).map((p) => (
                     <button
@@ -337,7 +323,6 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                     >
                       <span className="text-xs font-black">{p.label}</span>
                       <span className="text-[9px] text-slate-400">{p.desc}</span>
-                      <span className="text-[9px] font-bold text-cyan-300 mt-0.5">{p.cost} cr</span>
                     </button>
                   ))}
                 </div>
@@ -401,7 +386,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                 ) : (
                   <>
                     <Sparkles size={16} />
-                    Gerar Vídeo Real ({currentPresetCost} cr)
+                    Gerar Vídeo Real
                   </>
                 )}
               </button>
@@ -531,7 +516,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                 {/* Histórico Recente de Jobs */}
                 {recentJobs.length > 1 && (
                   <div className="border-t border-slate-800 pt-4 mt-6">
-                    <div className="text-xs font-bold text-slate-300 mb-2">Vídeos Recentes da Empresa</div>
+                    <div className="text-xs font-bold text-slate-300 mb-2">Vídeos Recentes da Projeto</div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {recentJobs.slice(0, 3).map((j) => (
                         <button
@@ -623,7 +608,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                 ) : (
                   <>
-                    <Film size={16} /> Gerar Roteiro Completo ({CREDIT_COSTS.video_script} cr)
+                    <Film size={16} /> Gerar Roteiro Completo
                   </>
                 )}
               </button>
