@@ -209,6 +209,12 @@ export function createApp() {
     parameterLimit: 100
   }));
 
+  app.get('/indexnow-key.txt', (req, res, next) => {
+    if (!config.indexNowKey) return next();
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.type('text/plain').send(config.indexNowKey);
+  });
+
   app.get('/sitemap.xml', async (_req, res, next) => {
     try {
       res.type('application/xml').send(await buildSitemapXml());

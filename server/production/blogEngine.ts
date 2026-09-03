@@ -1,9 +1,29 @@
-import { COLLECTIONS, firestore, newId, nowIso } from './store.js';
+import { config } from '../config/index.js';
+import { COLLECTIONS, firestore, newId, nowIso, stableId } from './store.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug, PortalProjectItem, listAllPortalProjectsFromDb, seedPortalProjectsIfEmpty } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall } from './antiFallEngine.js';
 
 function safeString(value: any, max = 5000): string {
   return String(value ?? '').trim().slice(0, max);
+}
+
+async function acquireDailyBlogClaim(projectId: string, date: string): Promise<any | null> {
+  const db = firestore();
+  const id = stableId(`portal-daily-blog:${projectId}:${date}`);
+  const ref = db.collection(COLLECTIONS.idempotency).doc(id);
+  const now = Date.now();
+  const acquired = await db.runTransaction(async (tx: any) => {
+    const snap = await tx.get(ref);
+    const current = snap.data() as any;
+    if (current?.status === 'completed') return false;
+    if (current?.status === 'processing' && Number(current?.lockedUntil || 0) > now) return false;
+    tx.set(ref, {
+      id, kind: 'portal_daily_blog', projectId, date, status: 'processing',
+      lockedUntil: now + 20 * 60 * 1000, startedAt: nowIso(), updatedAt: nowIso()
+    }, { merge: true });
+    return true;
+  });
+  return acquired ? ref : null;
 }
 
 export interface BlogArticleSection {
@@ -556,18 +576,52 @@ export async function getBlogArticleBySlug(slug: string): Promise<StoredBlogArti
 /**
  * Notificação via protocolo IndexNow para buscadores (Bing, Yandex, etc.)
  */
-export async function notifyIndexNow(urls: string[]): Promise<void> {
-  if (!urls || urls.length === 0) return;
+export async function notifyIndexNow(urls: string[]): Promise<{ submitted: boolean; status?: number; reason?: string }> {
+  if (!urls || urls.length === 0) return { submitted: false, reason: 'no_urls' };
+  if (!config.indexNowKey) return { submitted: false, reason: 'not_configured' };
+
+  let appUrl: URL;
   try {
-    const payload = {
-      host: 'portal-vip-brasil.vercel.app',
-      key: 'portalvipbrasil_indexnow_key_2026',
-      keyLocation: 'https://portal-vip-brasil.vercel.app/portalvipbrasil_indexnow_key_2026.txt',
-      urlList: urls
-    };
-    console.log('[IndexNow] Sinal de indexação rápida emitido com sucesso para:', urls);
-  } catch (err) {
-    console.warn('[IndexNow] Falha na emissão de sinal IndexNow (não bloqueante):', err);
+    appUrl = new URL(config.appUrl);
+  } catch {
+    return { submitted: false, reason: 'invalid_app_url' };
+  }
+
+  const uniqueUrls = [...new Set(urls.map((value) => String(value || '').trim()).filter(Boolean))]
+    .filter((value) => {
+      try { return new URL(value).host === appUrl.host; } catch { return false; }
+    })
+    .slice(0, 10_000);
+  if (!uniqueUrls.length) return { submitted: false, reason: 'no_same_host_urls' };
+
+  const payload = {
+    host: appUrl.host,
+    key: config.indexNowKey,
+    keyLocation: `${appUrl.origin}/indexnow-key.txt`,
+    urlList: uniqueUrls
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const response = await fetch('https://api.indexnow.org/indexnow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const accepted = response.status === 200 || response.status === 202;
+    if (accepted) {
+      console.info(`[IndexNow] ${uniqueUrls.length} URL(s) submetida(s). HTTP ${response.status}.`);
+      return { submitted: true, status: response.status };
+    }
+    console.warn(`[IndexNow] Envio rejeitado. HTTP ${response.status}.`);
+    return { submitted: false, status: response.status, reason: 'http_rejected' };
+  } catch (err: any) {
+    console.warn('[IndexNow] Falha de transporte (não bloqueante):', err?.name || err?.message || String(err));
+    return { submitted: false, reason: 'transport_error' };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -581,6 +635,7 @@ export async function generateArticleForProject(
     customIntent?: StoredBlogArticle['searchIntent'];
     forceApproval?: boolean;
     userId?: string;
+    articleId?: string;
   }
 ): Promise<{ success: boolean; article: StoredBlogArticle }> {
   const settings = await getBlogSettings();
@@ -753,7 +808,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
       ];
 
   const finalSlug = slugify(parsed.suggestedSlug || parsed.title || topic);
-  const articleId = newId('blog_art');
+  const articleId = options?.articleId || newId('blog_art');
   const targetStatus = (options?.forceApproval || settings.mode === 'approval') ? 'pending_approval' : 'published';
 
   // URLs com UTM tracking para redes sociais
@@ -832,12 +887,13 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
   try {
     await db.collection(COLLECTIONS.blogArticles).doc(articleId).set(newArticle);
   } catch (err) {
-    console.warn('[BlogEngine] Erro ao gravar artigo no Firestore:', err);
+    console.error('[BlogEngine] Erro ao gravar artigo no Firestore:', err);
+    throw new Error('Falha ao persistir o artigo diário no Firestore.');
   }
 
   // Notifica IndexNow se estiver publicado
   if (targetStatus === 'published' && settings.indexNowEnabled) {
-    notifyIndexNow([articlePublicUrl]);
+    await notifyIndexNow([articlePublicUrl]);
   }
 
   return { success: true, article: newArticle };
@@ -853,6 +909,8 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
   totalProjects: number;
   publishedCount: number;
   pendingCount: number;
+  skippedCount: number;
+  failedCount: number;
 }> {
   let allProjects = await listAllPortalProjectsFromDb();
   if (!allProjects.length) {
@@ -862,30 +920,52 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
 
   const activeProjects = allProjects.filter((p) => p.active !== false && p.dailyBlogEnabled !== false);
   const projectsToProcess = activeProjects.length > 0 ? activeProjects : allProjects;
+  const cycleDate = new Date().toISOString().slice(0, 10);
 
-  console.log(`[BlogEngine] Iniciando Ciclo Diário do Blog para todos os ${projectsToProcess.length} projetos ativos.`);
+  console.log(`[BlogEngine] Iniciando ciclo diário idempotente para ${projectsToProcess.length} projetos.`);
   const articlesGenerated: StoredBlogArticle[] = [];
   let publishedCount = 0;
   let pendingCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
 
   for (const project of projectsToProcess) {
+    const claimRef = await acquireDailyBlogClaim(project.id, cycleDate);
+    if (!claimRef) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const deterministicArticleId = `daily-blog-${stableId(`${cycleDate}:${project.id}`).slice(0, 48)}`;
     try {
-      const res = await generateArticleForProject(project, { userId });
-      if (res.success && res.article) {
-        articlesGenerated.push(res.article);
-        if (res.article.status === 'published') publishedCount++;
-        else pendingCount++;
-      }
-    } catch (err) {
-      console.error(`[BlogEngine] Falha ao gerar artigo para o projeto ${project.name}:`, err);
+      const res = await generateArticleForProject(project, { userId, articleId: deterministicArticleId });
+      if (!res.success || !res.article) throw new Error('Geração do artigo não retornou persistência confirmada.');
+
+      articlesGenerated.push(res.article);
+      if (res.article.status === 'published') publishedCount += 1;
+      else pendingCount += 1;
+
+      await claimRef.set({
+        status: 'completed', lockedUntil: 0, articleId: deterministicArticleId,
+        completedAt: nowIso(), updatedAt: nowIso()
+      }, { merge: true });
+    } catch (err: any) {
+      failedCount += 1;
+      const message = err?.message ? String(err.message).slice(0, 500) : String(err).slice(0, 500);
+      await claimRef.set({
+        status: 'failed', lockedUntil: 0, lastError: message, failedAt: nowIso(), updatedAt: nowIso()
+      }, { merge: true }).catch(() => undefined);
+      console.error(`[BlogEngine] Falha no projeto ${project.name}:`, message);
     }
   }
 
   return {
-    success: true,
+    success: failedCount === 0,
     articlesGenerated,
     totalProjects: projectsToProcess.length,
     publishedCount,
-    pendingCount
+    pendingCount,
+    skippedCount,
+    failedCount
   };
 }

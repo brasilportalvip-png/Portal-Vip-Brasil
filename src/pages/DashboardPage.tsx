@@ -50,6 +50,7 @@ export const DashboardPage: React.FC<Props> = ({
     autopilotEnabled: false,
     hasCreatedArticle: false
   });
+  const [systemHealth, setSystemHealth] = useState<any>(null);
   const [isTriggeringDaily, setIsTriggeringDaily] = useState(false);
   const [dailyFeedback, setDailyFeedback] = useState<{ success: boolean; message: string; count?: number } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -62,6 +63,7 @@ export const DashboardPage: React.FC<Props> = ({
         autopilotEnabled: false,
         hasCreatedArticle: false
       });
+      setSystemHealth(null);
       return;
     }
     apiRequest<{
@@ -74,6 +76,9 @@ export const DashboardPage: React.FC<Props> = ({
     )
       .then(setStatus)
       .catch(() => undefined);
+    apiRequest<any>('/api/health')
+      .then(setSystemHealth)
+      .catch(() => setSystemHealth(null));
   }, [user, selectedCompany?.id]);
 
   const month = new Date().toISOString().slice(0, 7);
@@ -83,6 +88,11 @@ export const DashboardPage: React.FC<Props> = ({
   const active = companyCampaigns.filter((c) => c.status === 'active').length;
   const queued = companyPosts.filter((p) => p.status === 'scheduled' || p.status === 'publishing').length;
   const publishedMonth = companyPosts.filter((p) => p.status === 'published' && String(p.publishedAt || p.scheduledFor).startsWith(month)).length;
+
+  const attention = companyPosts.filter((p) => p.status === 'failed' || p.status === 'requires_review').length;
+  const schedulerRuntime = systemHealth?.automation?.execution;
+  const cronObserved = Number(schedulerRuntime?.vercelCronCyclesRecorded || 0) > 0;
+  const lastCycleAt = schedulerRuntime?.lastCycleFinishedAt || schedulerRuntime?.lastCycleStartedAt || '';
 
   const totals = companyCampaigns.reduce(
     (a, c) => ({
@@ -106,16 +116,16 @@ export const DashboardPage: React.FC<Props> = ({
     setIsTriggeringDaily(true);
     setDailyFeedback(null);
     try {
-      const res = await apiRequest<{ success: boolean; publishedCount: number; itemsGenerated: any[] }>('/api/portal/daily-pulse', {
+      const res = await apiRequest<{ success: boolean; publishedCount: number; generatedCount: number; scheduledCount: number; skippedCount: number; itemsGenerated: any[]; errors?: any[] }>('/api/portal/daily-pulse', {
         method: 'POST'
       });
-      if (res?.success) {
-        setDailyFeedback({
-          success: true,
-          message: `Ciclo concluído! ${res.publishedCount} publicações com SEO geradas e programadas para divulgação.`,
-          count: res.publishedCount
-        });
-      }
+      setDailyFeedback({
+        success: Boolean(res?.success),
+        message: res?.success
+          ? `Ciclo concluído: ${res.generatedCount} conteúdo(s) gerado(s), ${res.scheduledCount} agendamento(s) em conexão válida e ${res.skippedCount} projeto(s) já processado(s) hoje.`
+          : `Ciclo concluído com falhas: ${res.generatedCount || 0} conteúdo(s) gerado(s). Consulte a saúde operacional.`,
+        count: res.generatedCount || 0
+      });
     } catch (error: any) {
       setDailyFeedback({
         success: false,
@@ -182,7 +192,7 @@ export const DashboardPage: React.FC<Props> = ({
                 <Zap size={13} className="text-cyan-400" /> Portal Vip Brasil • Central de Marketing
               </span>
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-300">
-                <ShieldCheck size={13} className="text-emerald-400" /> 7 Projetos Ativos
+                <ShieldCheck size={13} className="text-emerald-400" /> {USER_PORTFOLIO_PROJECTS.length} Projetos Oficiais
               </span>
             </div>
             <h2 className="text-2xl font-black text-white md:text-3xl">
@@ -335,6 +345,33 @@ export const DashboardPage: React.FC<Props> = ({
           </div>
         ))}
       </div>
+
+      <section className="froc-panel">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <h3 className="froc-section-title">Saúde operacional</h3>
+            <p className="mt-1 text-xs text-slate-400">Estado lido da API de produção; sem dados fictícios.</p>
+          </div>
+          <button onClick={() => apiRequest<any>('/api/health').then(setSystemHealth).catch(() => setSystemHealth(null))} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-bold text-slate-300 hover:border-cyan-500/40">
+            <RefreshCw size={13} className="mr-1 inline" /> Atualizar
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            ['API', systemHealth?.status || 'indisponível'],
+            ['Firestore', systemHealth?.database?.status ? `${systemHealth.database.status} · ${systemHealth.database.mode || ''}` : 'Ainda sem leitura'],
+            ['Cron Vercel', cronObserved ? `Comprovado · ${schedulerRuntime.vercelCronCyclesRecorded} ciclo(s)` : 'Ainda não observado'],
+            ['Último ciclo', lastCycleAt ? new Date(lastCycleAt).toLocaleString('pt-BR') : 'Ainda sem execução'],
+            ['Pendências / falhas', attention]
+          ].map(([label, value]) => (
+            <div key={String(label)} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{String(label)}</div>
+              <div className="mt-2 text-sm font-black text-white">{String(value)}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 text-[11px] text-slate-500">Agenda nativa configurada: diariamente às 10:00 em America/Sao_Paulo. Último gatilho: {schedulerRuntime?.lastTrigger || 'ainda não registrado'}.</div>
+      </section>
 
       {/* Quick Actions Grid */}
       <section className="froc-panel">

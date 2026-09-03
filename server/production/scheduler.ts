@@ -724,7 +724,7 @@ export async function processAutopilot(): Promise<number> {
       await db.collection(COLLECTIONS.contentItems).doc(contentId).set(content);
       if (ap.mode === 'automatic') {
         const scheduleId = newId('sched');
-        const scheduledFor = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+        const scheduledFor = nowIso();
         await db.collection(COLLECTIONS.scheduledPosts).doc(scheduleId).set({
           id: scheduleId,
           userId: ap.userId,
@@ -914,7 +914,7 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
   let scheduleId: string | undefined;
   if (ap.mode === 'automatic') {
     scheduleId = newId('sched');
-    const scheduledFor = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const scheduledFor = nowIso();
     await db.collection(COLLECTIONS.scheduledPosts).doc(scheduleId).set({
       id: scheduleId,
       userId,
@@ -971,7 +971,6 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
   let scheduledPosts = 0;
   let videoJobs: { checked: number; completed: number; failed: number } | number = 0;
   let autopilot = 0;
-  let autoBlog = 0;
 
   try {
     // Step 1: Recover stale publishing posts
@@ -1012,10 +1011,23 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     let portalMarketing = 0;
     try {
       const pmRes = await runDailyPortalMarketingCycle();
-      portalMarketing = pmRes.publishedCount;
+      portalMarketing = pmRes.generatedCount;
+      if (!pmRes.success) {
+        errors.portalMarketing = (pmRes.errors || []).map((item) => `${item.projectId}: ${item.message}`).join(' | ').slice(0, 1000) || 'Ciclo diário concluído com falhas.';
+      }
     } catch (err: any) {
       errors.portalMarketing = err?.message || String(err);
       console.error('[Scheduler] Erro em runDailyPortalMarketingCycle:', err);
+    }
+
+    // Step 5.15: processa também os agendamentos criados neste mesmo ciclo.
+    let scheduledPostsAfterGeneration = 0;
+    try {
+      scheduledPostsAfterGeneration = await processScheduledPosts();
+      scheduledPosts += scheduledPostsAfterGeneration;
+    } catch (err: any) {
+      errors.scheduledPostsAfterGeneration = err?.message || String(err);
+      console.error('[Scheduler] Erro em processScheduledPosts após geração:', err);
     }
 
     // Step 5.2: Process Daily Portal Vip Blog Engine (1 Artigo por dia para cada projeto ativo)
@@ -1028,13 +1040,7 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       console.error('[Scheduler] Erro em runDailyBlogCycle:', err);
     }
 
-    // Step 6: Process auto blog
-    try {
-      autoBlog = await processAutoBlog();
-    } catch (err: any) {
-      errors.autoBlog = err?.message || String(err);
-      console.error('[Scheduler] Erro em processAutoBlog:', err);
-    }
+    // O pipeline legado processAutoBlog não é executado: runDailyBlogCycle é a única automação diária do Blog.
 
     finalStatus = Object.keys(errors).length > 0 ? 'degraded' : 'ok';
     return {
@@ -1045,7 +1051,7 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       autopilot,
       portalMarketing,
       portalBlogCount,
-      autoBlog,
+      scheduledPostsAfterGeneration,
       errors: Object.keys(errors).length > 0 ? errors : undefined,
       processedAt: nowIso()
     };
