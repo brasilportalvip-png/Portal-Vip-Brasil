@@ -233,3 +233,30 @@ test('Blog público não oferece cadastro nem geração de artigo antes do acess
     'Gerar Artigo Agora deve existir somente dentro do ramo autenticado do Blog.'
   );
 });
+
+
+test('Login administrativo: proprietário configurado recupera acesso sem abrir cadastro público', () => {
+  const envExample = read('.env.example');
+  const config = read('server/config/index.ts');
+  const auth = read('server/production/auth.ts');
+  const modal = read('src/components/AuthModal.tsx');
+  const rules = read('firestore.rules');
+
+  assert.ok(envExample.includes('PORTAL_ADMIN_EMAILS='));
+  assert.ok(config.includes("env('PORTAL_ADMIN_EMAILS', supportEmail)"));
+  assert.ok(config.includes('privateAdminEmails'));
+  assert.ok(auth.includes('isConfiguredPortalAdmin'));
+  assert.ok(auth.includes("if (isConfiguredPortalAdmin(token)) return 'admin';"));
+  assert.ok(auth.includes('setCustomUserClaims(decoded.uid'));
+  assert.ok(auth.includes("role: 'admin'"));
+  assert.ok(auth.includes("frocRole: 'admin'"));
+
+  // A recuperação não pode virar cadastro público nem aceitar qualquer usuário.
+  assert.ok(!modal.includes('createUserWithEmailAndPassword'));
+  assert.ok(modal.includes('Não há cadastro público.'));
+  assert.ok(auth.includes("profile.role !== 'admin'"));
+
+  // O papel persistido não pode ser promovido diretamente pelo navegador.
+  assert.ok(rules.includes('match /users/{uid}'));
+  assert.ok(rules.includes('allow write: if false;'));
+});

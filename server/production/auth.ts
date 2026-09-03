@@ -84,6 +84,15 @@ function isFrocRole(value: unknown): value is FrocRole {
   return typeof value === 'string' && VALID_ROLES.has(value as FrocRole);
 }
 
+function tokenHasAdminClaim(token: DecodedIdToken): boolean {
+  return token.role === 'admin' || token.frocRole === 'admin';
+}
+
+function isConfiguredPortalAdmin(token: DecodedIdToken): boolean {
+  const email = normalizeEmail(token.email);
+  return Boolean(email && config.privateAdminEmails.includes(email));
+}
+
 /**
  * Custom claims do Firebase são a única fonte autoritativa de privilégios.
  * Um papel salvo no perfil ou enviado em extras nunca promove o usuário.
@@ -92,7 +101,11 @@ function roleFromToken(token: DecodedIdToken): FrocRole {
   const roleClaim = isFrocRole(token.role) ? token.role : undefined;
   const frocRoleClaim = isFrocRole(token.frocRole) ? token.frocRole : undefined;
 
-  // Claims conflitantes indicam token/configuração inconsistente: falha segura.
+  // O proprietário configurado é uma fonte autoritativa explícita do portal privado.
+  // Isso permite recuperar uma instalação que perdeu/nunca recebeu custom claims.
+  if (isConfiguredPortalAdmin(token)) return 'admin';
+
+  // Claims conflitantes para qualquer outra conta indicam token/configuração inconsistente: falha segura.
   if (roleClaim && frocRoleClaim && roleClaim !== frocRoleClaim) return 'user';
   return frocRoleClaim || roleClaim || 'user';
 }
@@ -240,6 +253,31 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     );
     res.status(503).json({ error: 'Serviço de perfil temporariamente indisponível.' });
     return;
+  }
+
+  // Auto-reparo seguro: se o e-mail é o proprietário explicitamente configurado,
+  // a requisição atual já recebe papel admin e as custom claims são restauradas
+  // para que tokens futuros também carreguem a autorização nativamente.
+  if (isConfiguredPortalAdmin(decoded) && !tokenHasAdminClaim(decoded)) {
+    try {
+      const userRecord = await adminAuth.getUser(decoded.uid);
+      const currentClaims = userRecord.customClaims || {};
+      await adminAuth.setCustomUserClaims(decoded.uid, {
+        ...currentClaims,
+        role: 'admin',
+        frocRole: 'admin'
+      });
+      console.info('[Portal Vip Auth] Custom claims de administrador restauradas para o proprietário configurado.', {
+        uid: decoded.uid
+      });
+    } catch (claimError: any) {
+      // A autorização desta requisição continua segura pelo e-mail configurado.
+      // A falha de persistência da claim é registrada sem bloquear o proprietário.
+      console.warn('[Portal Vip Auth] Não foi possível persistir o auto-reparo das custom claims:', {
+        uid: decoded.uid,
+        code: cleanText(claimError?.code, 100) || 'auth/claims-update-failed'
+      });
+    }
   }
 
   if (config.privatePortalMode && config.isProduction && profile.role !== 'admin') {
