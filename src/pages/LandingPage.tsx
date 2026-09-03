@@ -15,14 +15,12 @@ export const LandingPage: React.FC<Props> = ({
   return (
     <AlmaLivingCore
       user={null}
-      wallet={null}
       selectedCompany={null}
       companies={[]}
       campaigns={[]}
       scheduledPosts={[]}
       contentItems={[]}
       onSelectCompany={() => {}}
-      onRefreshWallet={async () => {}}
       onRefreshCompanies={async () => {}}
       onRefreshContents={async () => {}}
       onRefreshSchedule={async () => {}}

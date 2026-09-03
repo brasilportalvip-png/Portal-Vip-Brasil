@@ -12,21 +12,17 @@ import {
   PenTool,
   Compass
 } from 'lucide-react';
-import { Company, Wallet } from '../types';
+import { Company } from '../types';
 import { apiRequest } from '../lib/api';
 import { BrandLogo } from '../components/BrandLogo';
 
 interface FrocIaPageProps {
   selectedCompany: Company | null;
-  wallet: Wallet | null;
-  onRefreshWallet: () => void;
   onNavigate: (tab: string) => void;
 }
 
 export const FrocIaPage: React.FC<FrocIaPageProps> = ({
   selectedCompany,
-  wallet,
-  onRefreshWallet,
   onNavigate
 }) => {
   const [promptInput, setPromptInput] = useState('');
@@ -37,7 +33,7 @@ export const FrocIaPage: React.FC<FrocIaPageProps> = ({
   const [errorMessage, setErrorMessage] = useState('');
 
   const quickPrompts = [
-    'Divulgue minha projeto com foco em atrair novos clientes nesta semana.',
+    'Divulgue meu projeto com foco em atrair novos clientes nesta semana.',
     'Crie uma estratégia de autoridade e diferenciais para redes sociais.',
     'Planeje 5 posts persuasivos para quebrar objeções de compra.',
     'Gere um plano de promoção agressiva para o final de semana.'
@@ -95,9 +91,9 @@ export const FrocIaPage: React.FC<FrocIaPageProps> = ({
           </div>
         ) : (
           <div className="mt-4 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-center justify-between">
-            <span>Nenhuma projeto selecionada. Selecione ou cadastre uma projeto para hiper-personalização.</span>
+            <span>Nenhum projeto selecionado. Selecione um projeto oficial para hiperpersonalização.</span>
             <button
-              onClick={() => onNavigate('projeto')}
+              onClick={() => onNavigate('projetos')}
               className="px-3 py-1 rounded-lg bg-amber-500 text-black font-bold text-xs hover:bg-amber-400"
             >
               Configurar

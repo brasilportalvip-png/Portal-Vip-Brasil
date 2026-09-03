@@ -3,10 +3,10 @@ import { ArrowLeft, CheckCircle2, Eye, EyeOff, Lock, Mail, ShieldCheck, X } from
 import { sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { apiRequest } from '../lib/api';
-import type { User, Wallet } from '../types';
+import type { User } from '../types';
 import { BrandLogo } from './BrandLogo';
 
-interface Props { isOpen: boolean; onClose: () => void; onSuccess: (user: User, wallet?: Wallet | null) => void; }
+interface Props { isOpen: boolean; onClose: () => void; onSuccess: (user: User) => void; }
 type Mode = 'login' | 'forgot';
 
 export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
@@ -37,8 +37,8 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
         return;
       }
       await signInWithEmailAndPassword(auth, email.trim(), password);
-      const data = await apiRequest<{ user: User; wallet?: Wallet | null }>('/api/auth/me');
-      onSuccess(data.user, data.wallet || null);
+      const data = await apiRequest<{ user: User }>('/api/auth/me');
+      onSuccess(data.user);
       onClose();
     } catch (err:any) { await signOut(auth).catch(() => undefined); setError(friendlyError(err)); }
     finally { setLoading(false); }

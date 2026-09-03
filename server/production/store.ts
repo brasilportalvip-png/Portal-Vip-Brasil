@@ -130,7 +130,7 @@ export function resetMemoryDb(): void {
       author: 'Equipe Froc.IA',
       category: 'Marketing & IA',
       tags: ['Inteligência Artificial', 'Marketing Digital', 'SEO', 'Automação'],
-      seoTitle: 'Como a IA Transforma o Marketing — Froc Magazine',
+      seoTitle: 'Como a IA Transforma o Marketing — Portal Vip Brasil',
       seoDescription: 'Aprenda como utilizar IA no marketing digital com foco em resultados reais.',
       status: 'published',
       publishedAt: '2026-08-01T12:00:00.000Z',

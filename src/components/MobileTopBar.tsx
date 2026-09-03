@@ -1,11 +1,10 @@
 import React from 'react';
 import { Menu, ShieldCheck, X } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
-import type { User, Wallet } from '../types';
+import type { User } from '../types';
 
 interface Props {
   user: User | null;
-  wallet: Wallet | null;
   menuOpen: boolean;
   onToggleMenu: () => void;
   onOpenAuth: () => void;

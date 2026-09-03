@@ -102,7 +102,7 @@ function displayNameFromToken(token: DecodedIdToken): string {
   if (tokenName) return tokenName;
   const email = normalizeEmail(token.email);
   if (email) return cleanText(email.split('@')[0], 120);
-  return 'Usuário Froc';
+  return 'Administrador Portal Vip';
 }
 
 function normalizeRequestPath(value: unknown): string {
@@ -206,7 +206,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     adminAuth = null;
   }
   if (!adminAuth) {
-    console.error('[Froc Auth Security] Firebase Admin Auth não está configurado.');
+    console.error('[Portal Vip Auth Security] Firebase Admin Auth não está configurado.');
     res.status(503).json({ error: 'Serviço de autenticação temporariamente indisponível.' });
     return;
   }
@@ -215,7 +215,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
   try {
     decoded = await adminAuth.verifyIdToken(idToken, true);
   } catch (verifyError: any) {
-    console.warn('[Froc Auth Security] Token rejeitado pelo Firebase Admin:', {
+    console.warn('[Portal Vip Auth Security] Token rejeitado pelo Firebase Admin:', {
       code: cleanText(verifyError?.code, 100) || 'auth/invalid-token'
     });
     res.status(401).json({ error: 'Sessão inválida ou expirada. Faça login novamente.' });
@@ -235,7 +235,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
     ]);
   } catch (error) {
     console.error(
-      '[Froc Auth] Falha ao sincronizar perfil autenticado:',
+      '[Portal Vip Auth] Falha ao sincronizar perfil autenticado:',
       error instanceof Error ? cleanText(error.message, 200) : 'Falha desconhecida'
     );
     res.status(503).json({ error: 'Serviço de perfil temporariamente indisponível.' });

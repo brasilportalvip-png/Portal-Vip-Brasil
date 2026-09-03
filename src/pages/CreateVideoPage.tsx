@@ -18,21 +18,17 @@ import {
   Loader2,
   Share2
 } from 'lucide-react';
-import type { Company, Wallet, VideoJob } from '../types';
+import type { Company, VideoJob } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface CreateVideoPageProps {
   selectedCompany: Company | null;
-  wallet: Wallet | null;
-  onRefreshWallet: () => void;
   onRefreshContents?: () => void;
   onNavigate: (tab: string) => void;
 }
 
 export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
   selectedCompany,
-  wallet,
-  onRefreshWallet,
   onRefreshContents,
   onNavigate
 }) => {
@@ -148,7 +144,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
       return;
     }
     if (!selectedCompany?.id) {
-      setVideoError('Selecione uma projeto para aplicar a identidade da marca.');
+      setVideoError('Selecione um projeto para aplicar a identidade da marca.');
       return;
     }
 
@@ -220,7 +216,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Video className="text-cyan-400" /> Estúdio de Vídeos Froc.IA
+            <Video className="text-cyan-400" /> Estúdio de Vídeos do Portal Vip Brasil
           </h2>
           <p className="text-xs text-slate-400 mt-1">
             Geração real de vídeo com Google Veo 3.1 (Full HD / 4K) e roteirizador estratégico com gancho magnético.
@@ -257,8 +253,8 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
 
       {!selectedCompany && (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-200">
-          Selecione uma projeto para aplicar as diretrizes e público da marca.{' '}
-          <button onClick={() => onNavigate('projeto')} className="ml-1 font-bold underline">
+          Selecione um projeto para aplicar as diretrizes e público da marca.{' '}
+          <button onClick={() => onNavigate('projetos')} className="ml-1 font-bold underline">
             Configurar projeto
           </button>
         </div>
@@ -394,9 +390,9 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
 
             <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-[11px] leading-relaxed text-slate-400">
               <div className="flex items-center gap-1.5 font-bold text-slate-300 mb-0.5">
-                <Zap size={12} className="text-amber-400" /> Processamento Assíncrono com Reserva Segura
+                <Zap size={12} className="text-amber-400" /> Processamento Assíncrono com Confirmação Segura
               </div>
-              O vídeo é renderizado em segundo plano pelo Google Veo 3.1. Seus créditos ficam reservados e só são debitados quando o arquivo MP4 estiver pronto e disponível para download.
+              O vídeo é renderizado em segundo plano pelo Google Veo 3.1 e só é marcado como concluído quando o arquivo MP4 estiver pronto e disponível para download.
             </div>
           </div>
 
@@ -478,7 +474,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                           <CheckCircle2 size={14} /> Vídeo salvo na sua Biblioteca de Conteúdos
                         </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">
-                          Créditos utilizados: {activeJob.creditsCommitted || activeJob.creditsReserved}
+                          Processamento confirmado pelo Google Veo 3.1
                         </div>
                       </div>
 
@@ -508,7 +504,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                     <AlertTriangle size={36} className="text-rose-400 mx-auto" />
                     <div className="text-sm font-bold text-rose-200">Falha na geração do vídeo</div>
                     <p className="text-xs text-rose-300/80 max-w-md mx-auto">
-                      {activeJob.error || 'Ocorreu um erro no processamento. Seus créditos foram estornados automaticamente.'}
+                      {activeJob.error || 'Ocorreu um erro no processamento. Nenhuma conclusão foi registrada; tente novamente ou revise o job.'}
                     </p>
                   </div>
                 )}

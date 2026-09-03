@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 import { AlertTriangle, BarChart3, Calendar, CheckCircle2, Megaphone, Share2 } from 'lucide-react';
-import type { Campaign, Company, ScheduledPost, Wallet } from '../types';
+import type { Campaign, Company, ScheduledPost } from '../types';
 
-interface Props { selectedCompany: Company|null; wallet: Wallet|null; campaigns: Campaign[]; scheduledPosts: ScheduledPost[]; onNavigate:(tab:string)=>void; }
+interface Props { selectedCompany: Company|null; campaigns: Campaign[]; scheduledPosts: ScheduledPost[]; onNavigate:(tab:string)=>void; }
 
 export const AnalyticsPage: React.FC<Props> = ({ selectedCompany, campaigns, scheduledPosts, onNavigate }) => {
   const posts = useMemo(() => scheduledPosts.filter((p) => !selectedCompany || p.companyId === selectedCompany.id), [scheduledPosts, selectedCompany]);

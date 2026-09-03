@@ -574,14 +574,14 @@ Responda SOMENTE JSON válido no seguinte formato:
 }
 
 export async function generatePlatformArticle(topic: string): Promise<{ article: any; modelUsed: string }> {
-  const prompt = `Escreva um artigo editorial original para o Froc Magazine sobre "${topic}".
+  const prompt = `Escreva um artigo editorial original para o Portal Vip Brasil Magazine sobre "${topic}".
 Público: empreendedores, profissionais de marketing e pequenas/médias empresas no Brasil.
 O conteúdo deve ser útil por si só, sem depender de notícias ou estatísticas não fornecidas. Não invente fontes, números, pesquisas, depoimentos ou resultados. Evite promessas absolutas.
 Estruture para SEO e leitura mobile.
 Responda SOMENTE JSON: {"title":"","summary":"","metaDescription":"","content":"Markdown completo com H2/H3","category":"Marketing & IA","tags":["Marketing","IA"],"suggestedSlug":""}.`;
   const generated = await generateRaw({
     prompt,
-    systemInstruction: 'Você é a redação editorial do Froc Magazine. Escreva em português do Brasil, com rigor, clareza e sem fabricar fatos.',
+    systemInstruction: 'Você é a redação editorial do Portal Vip Brasil Magazine. Escreva em português do Brasil, com rigor, clareza e sem fabricar fatos.',
     useProModel: true,
     jsonOutput: true,
     maxTokens: 7000

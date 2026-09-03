@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { ShieldCheck, FileText, CheckCircle2, ArrowRight } from 'lucide-react';
 import { apiRequest } from '../lib/api';
-import type { User, Wallet } from '../types';
+import type { User } from '../types';
 
 interface TermsConsentModalProps {
   isOpen: boolean;
-  onConsentSuccess: (user: User, wallet: Wallet) => void;
+  onConsentSuccess: (user: User) => void;
   onLogout: () => void;
 }
 
@@ -25,7 +25,7 @@ export function TermsConsentModal({ isOpen, onConsentSuccess, onLogout }: TermsC
     setError('');
     setLoading(true);
     try {
-      const response = await apiRequest<{ user: User; wallet: Wallet }>('/api/auth/accept-terms', {
+      const response = await apiRequest<{ user: User }>('/api/auth/accept-terms', {
         method: 'POST',
         body: {
           termsAccepted: true,
@@ -34,7 +34,7 @@ export function TermsConsentModal({ isOpen, onConsentSuccess, onLogout }: TermsC
           privacyVersion: '2026.1'
         }
       });
-      onConsentSuccess(response.user, response.wallet);
+      onConsentSuccess(response.user);
     } catch (err: any) {
       setError(err?.message || 'Não foi possível registrar o consentimento. Tente novamente.');
     } finally {

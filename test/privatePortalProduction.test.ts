@@ -173,3 +173,47 @@ test('Identidade central: automação e shell privado usam Portal Vip Brasil, pr
   // Não proíbe Froc.IA como projeto oficial; este teste é deliberadamente específico
   // aos rótulos centrais acima.
 });
+
+
+test('Saneamento arquitetural final: Portal não reintroduz identidade central Froc, wallet ou créditos visíveis', () => {
+  assertAbsent('server/production/ai.ts', ['Froc Magazine']);
+  assertAbsent('server/production/auth.ts', ['[Froc Auth Security]', '[Froc Auth]', 'Usuário Froc']);
+  assertAbsent('src/lib/firebase.ts', [
+    '[Froc Firebase]',
+    'setFrocAnalyticsConsent',
+    'hasFrocAnalyticsConsent',
+    "const ANALYTICS_CONSENT_KEY = 'froc.analytics.consent.v1'"
+  ]);
+  assertAbsent('src/pages/AdminPage.tsx', ['Froc Magazine']);
+  assertAbsent('src/pages/CreateArticlePage.tsx', ['Froc Magazine']);
+  assertAbsent('src/pages/SeoPage.tsx', ['Froc SEO Inteligente', 'Score SEO Froc.IA']);
+  assertAbsent('src/pages/CreateVideoPage.tsx', ['Créditos utilizados:', 'créditos ficam reservados', 'créditos foram estornados']);
+  assertAbsent('src/pages/ContentsLibraryPage.tsx', ['cr consumidos', 'organizado por empresa.']);
+  assertAbsent('src/components/AuthModal.tsx', ['Wallet', 'data.wallet']);
+  assertAbsent('src/pages/AlmaLivingCore.tsx', ['Wallet', 'wallet={wallet}', "case 'planos':", 'onRefreshWallet']);
+  assertAbsent('src/pages/LandingPage.tsx', ['wallet={null}', 'onRefreshWallet']);
+
+  const firebase = read('src/lib/firebase.ts');
+  assert.ok(firebase.includes("portal_vip.analytics.consent.v1"));
+  assert.ok(firebase.includes("LEGACY_ANALYTICS_CONSENT_KEY = 'froc.analytics.consent.v1'"));
+  assert.ok(firebase.includes('setPortalAnalyticsConsent'));
+  assert.ok(firebase.includes('getPortalAnalyticsConsent'));
+
+  const banner = read('src/components/AnalyticsConsentBanner.tsx');
+  assert.ok(banner.includes('Recusar métricas'));
+  assert.ok(banner.includes('Permitir métricas'));
+
+  const app = read('src/App.tsx');
+  assert.ok(app.includes('AnalyticsConsentBanner'));
+  assert.ok(!app.includes('wallet={wallet}'));
+  assert.ok(!app.includes('refreshWallet'));
+
+  const types = read('src/types.ts');
+  assert.ok(!types.includes('export interface Wallet'));
+  assert.ok(!types.includes('export interface CreditTransaction'));
+  assert.ok(!types.includes('export interface Plan'));
+  assert.ok(!types.includes('creditsReserved:'));
+  assert.ok(!types.includes('creditsCommitted?:'));
+
+  assert.equal(existsSync('public/og-froc.png'), false);
+});

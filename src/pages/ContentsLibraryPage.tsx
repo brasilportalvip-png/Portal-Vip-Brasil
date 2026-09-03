@@ -74,7 +74,7 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
             Biblioteca de Conteúdos
           </h2>
           <p className="mt-1 text-xs text-slate-400">
-            Tudo que foi gerado e salvo pela IA (Imagens, Vídeos Veo 3.1, Posts e Artigos), organizado por empresa.
+            Tudo que foi gerado e salvo pela IA (Imagens, Vídeos Veo 3.1, Posts e Artigos), organizado por projeto.
           </p>
         </div>
         <button
@@ -144,7 +144,7 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
                 <div className="aspect-video w-full overflow-hidden bg-slate-950 border-b border-slate-800">
                   <img
                     src={item.imageUrl}
-                    alt={item.title || 'Imagem gerada pelo Froc.IA'}
+                    alt={item.title || 'Imagem gerada pelo Portal Vip Brasil'}
                     loading="lazy"
                     className="h-full w-full object-cover"
                   />
@@ -185,7 +185,7 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
 
                   <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500">
                     <span>{new Date(item.createdAt).toLocaleString('pt-BR')}</span>
-                    <span>{item.creditsUsed || 0} cr consumidos</span>
+                    <span>Registro operacional</span>
                   </div>
                 </div>
 

@@ -1,11 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Bot, CheckCircle2, Rocket, ShieldCheck, Zap } from 'lucide-react';
-import type { Company, Wallet } from '../types';
+import type { Company } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface Props {
   selectedCompany: Company | null;
-  wallet?: Wallet | null;
   onNavigate: (tab: string) => void;
 }
 
