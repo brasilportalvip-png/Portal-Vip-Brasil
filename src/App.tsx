@@ -77,12 +77,7 @@ const TAB_ALIASES: Record<string, string> = {
   terms: 'termos',
   'exclusao-dados': 'exclusao-de-dados',
   'data-deletion': 'exclusao-de-dados',
-  'direitos-lgpd': 'lgpd',
-  empresa: 'projetos',
-  company: 'projetos',
-  companies: 'projetos',
-  planos: 'dashboard',
-  creditos: 'dashboard'
+  'direitos-lgpd': 'lgpd'
 };
 
 const PUBLIC_TABS = new Set([
