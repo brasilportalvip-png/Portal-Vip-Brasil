@@ -43,7 +43,7 @@ export const BLOG_ARTICLES: BlogArticle[] = [
     category: 'Espiritualidade & Fé',
     author: {
       name: 'Equipe Magia das Crenças',
-      avatar: 'https://portalvipbrasil.com.br/wp-content/uploads/2026/05/cropped-507d5ca1-8ec9-481b-9a46-65d45528bc12-300x300-removebg-preview.png',
+      avatar: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
       role: 'Mentores Espirituais'
     },
     publishedAt: '2026-09-01',
@@ -92,7 +92,7 @@ Para manter sua conexão diária, o aplicativo oficial **Magia das Crenças** of
     category: 'Oráculos & Guardiões',
     author: {
       name: 'Guardião dos Caminhos',
-      avatar: 'https://portalvipbrasil.com.br/wp-content/uploads/2026/05/cropped-507d5ca1-8ec9-481b-9a46-65d45528bc12-300x300-removebg-preview.png',
+      avatar: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
       role: 'Estudos de Matriz Africana'
     },
     publishedAt: '2026-08-30',
@@ -136,7 +136,7 @@ Você pode realizar tiragens interativas instantâneas através do **Exu Respond
     category: 'Amor & Relacionamentos',
     author: {
       name: 'Círculo das Rainhas',
-      avatar: 'https://portalvipbrasil.com.br/wp-content/uploads/2026/05/cropped-507d5ca1-8ec9-481b-9a46-65d45528bc12-300x300-removebg-preview.png',
+      avatar: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
       role: 'Conselheira Afetiva'
     },
     publishedAt: '2026-08-28',
@@ -178,7 +178,7 @@ Conheça o aplicativo **Maria Padilha Rainha das 7 Encruzilhadas** para oraçõe
     category: 'Tradição Católica',
     author: {
       name: 'Redação Manual Católico',
-      avatar: 'https://portalvipbrasil.com.br/wp-content/uploads/2026/05/cropped-507d5ca1-8ec9-481b-9a46-65d45528bc12-300x300-removebg-preview.png',
+      avatar: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
       role: 'Estudos Litúrgicos'
     },
     publishedAt: '2026-08-27',
@@ -222,7 +222,7 @@ Baixe o aplicativo **Manual Católico** na Google Play Store e tenha um verdadei
     category: 'Inteligência Artificial',
     author: {
       name: 'Equipe Froc IA',
-      avatar: 'https://portalvipbrasil.com.br/wp-content/uploads/2026/05/cropped-507d5ca1-8ec9-481b-9a46-65d45528bc12-300x300-removebg-preview.png',
+      avatar: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
       role: 'IA & Engenharia de Prompts'
     },
     publishedAt: '2026-08-25',
@@ -261,7 +261,7 @@ Acesse a plataforma web **Froc IA 2** e descubra como criar meses de conteúdo e
     category: 'Oráculos & Guardiões',
     author: {
       name: 'Mestres dos Oráculos',
-      avatar: 'https://portalvipbrasil.com.br/wp-content/uploads/2026/05/cropped-507d5ca1-8ec9-481b-9a46-65d45528bc12-300x300-removebg-preview.png',
+      avatar: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
       role: 'Tarólogos & Simbolistas'
     },
     publishedAt: '2026-08-22',
@@ -300,7 +300,7 @@ Acesse **Oráculos TS** e faça sua tiragem de cartas com interpretações em te
     category: 'Marketing & SEO',
     author: {
       name: 'Redação Portal Vip Brasil',
-      avatar: 'https://portalvipbrasil.com.br/wp-content/uploads/2026/05/cropped-507d5ca1-8ec9-481b-9a46-65d45528bc12-300x300-removebg-preview.png',
+      avatar: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
       role: 'Especialista em Tráfego Orgânico'
     },
     publishedAt: '2026-08-20',
