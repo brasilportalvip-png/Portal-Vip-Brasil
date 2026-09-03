@@ -78,32 +78,12 @@ async function metaFor(pathname: string): Promise<PublicMeta> {
     }
   }
   if (vitrineMatch) {
-    try {
-      const slug = decodeURIComponent(vitrineMatch[1]);
-      const snap = await firestore().collection(COLLECTIONS.companies).where('slug', '==', slug).limit(1).get();
-      if (snap.empty) return { ...fallback, status: 404, title: 'Empresa não encontrada — Froc.IA', description: 'Esta empresa não está disponível na Vitrine Froc.IA.' };
-      const companyData = snap.docs[0].data() as any;
-      const isPublic = companyData.isPublicInVitrine === true || companyData.isPublicInVitrine === 'true';
-      if (!isPublic) return { ...fallback, status: 404, title: 'Empresa não encontrada — Froc.IA', description: 'Esta empresa não está disponível na Vitrine Froc.IA.' };
-      const company = { id: snap.docs[0].id, ...companyData } as any;
-      const canonical = `${base}/vitrine/${encodeURIComponent(company.slug)}`;
-      return {
-        title: `${company.name} — Vitrine Froc.IA`,
-        description: description(company.description, `${company.name} na Vitrine Froc.IA.`),
-        canonical, image: absolute(company.logoUrl), type: 'website', status: 200,
-        schema: {
-          '@context': 'https://schema.org',
-          '@type': company.businessType === 'online' ? 'OnlineBusiness' : company.businessType === 'physical' ? 'LocalBusiness' : 'Organization',
-          name: company.name, url: company.website || canonical,
-          description: company.description || undefined, logo: company.logoUrl || undefined,
-          email: company.email || undefined, telephone: company.phone || company.whatsapp || undefined,
-          address: company.businessType !== 'online' && (company.address || company.city) ? { '@type': 'PostalAddress', streetAddress: company.address || undefined, addressLocality: company.city || undefined, addressRegion: company.state || undefined, addressCountry: company.country || 'BR' } : undefined,
-          sameAs: Object.values(company.socialLinks || {}).filter(Boolean)
-        }
-      };
-    } catch {
-      return fallback;
-    }
+    return {
+      ...fallback,
+      status: 404,
+      title: 'Projeto não encontrado — Portal Vip Brasil',
+      description: 'Este projeto não faz parte da vitrine oficial do Portal Vip Brasil.'
+    };
   }
 
   const blogMatch = pathname.match(/^\/blog\/([^/]+)$/);

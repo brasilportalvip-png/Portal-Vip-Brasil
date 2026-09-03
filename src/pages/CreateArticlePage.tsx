@@ -10,7 +10,7 @@ import {
   ArrowRight,
   BookOpen
 } from 'lucide-react';
-import { Company, Wallet, CREDIT_COSTS } from '../types';
+import { Company, Wallet } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface CreateArticlePageProps {
@@ -85,7 +85,6 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
       });
 
       setGeneratedArticle(data.article);
-      onRefreshWallet();
       onRefreshContents?.();
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro ao gerar artigo com IA.');
@@ -170,7 +169,7 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
                 type="text"
                 value={targetAudience}
                 onChange={(e) => setTargetAudience(e.target.value)}
-                placeholder="Ex: Proprietários de pequenas empresas e gestores"
+                placeholder="Ex: Proprietários de pequenas projetos e gestores"
                 className="w-full bg-[#1E293B] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
               />
             </div>
@@ -202,7 +201,7 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
               ) : (
                 <>
-                  <Sparkles size={16} /> Gerar Artigo Completo ({CREDIT_COSTS.seo_article} cr)
+                  <Sparkles size={16} /> Gerar Artigo Completo
                 </>
               )}
             </button>
@@ -293,7 +292,7 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
               <BookOpen size={40} className="mb-3 text-slate-600" />
               <h4 className="text-sm font-semibold text-slate-400">Nenhum artigo produzido ainda</h4>
               <p className="text-xs text-slate-500 max-w-sm mt-1">
-                Configure o tema e a palavra-chave ao lado para gerar artigos de autoridade para o blog da sua empresa ou portal Froc Magazine.
+                Configure o tema e a palavra-chave ao lado para gerar artigos de autoridade para o blog da sua projeto ou portal Froc Magazine.
               </p>
             </div>
           )}

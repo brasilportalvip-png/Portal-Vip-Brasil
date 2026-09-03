@@ -16,7 +16,6 @@ import { SeoPage } from './SeoPage';
 import { FrocIaPage } from './FrocIaPage';
 import { ProfilePage } from './ProfilePage';
 import { DashboardPage } from './DashboardPage';
-import { PlansPage } from './PlansPage';
 import { VitrinePage } from './VitrinePage';
 
 interface AlmaLivingCoreProps {
@@ -238,7 +237,7 @@ export const AlmaLivingCore: React.FC<AlmaLivingCoreProps> = ({
       case 'perfil':
         return <ProfilePage user={user} wallet={wallet} onRefreshUser={reloadSession} onNavigate={onNavigate} />;
       case 'planos':
-        return <PlansPage wallet={wallet} onRefreshWallet={onRefreshWallet} onNavigate={onNavigate} />;
+        return <DashboardPage user={user} wallet={wallet} selectedCompany={selectedCompany} campaigns={campaigns} scheduledPosts={scheduledPosts} onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
       case 'dashboard':
         return <DashboardPage user={user} wallet={wallet} selectedCompany={selectedCompany} campaigns={campaigns} scheduledPosts={scheduledPosts} onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
       case 'vitrine':

@@ -57,7 +57,6 @@ export const SeoPage: React.FC<SeoPageProps> = ({
         }
       });
       setReport(data.report);
-      onRefreshWallet();
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro durante a análise de SEO.');
     } finally {
@@ -87,7 +86,7 @@ export const SeoPage: React.FC<SeoPageProps> = ({
               required
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
-              placeholder="https://suaempresa.com.br"
+              placeholder="https://seuprojeto.com.br"
               className="w-full bg-[#1E293B] border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
             />
           </div>
@@ -101,7 +100,7 @@ export const SeoPage: React.FC<SeoPageProps> = ({
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
             ) : (
               <>
-                <Sparkles size={15} /> Analisar Página (20 créditos)
+                <Sparkles size={15} /> Analisar Página
               </>
             )}
           </button>

@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { getAdminAuth } from '../providers/firebaseAdmin.js';
+import { config } from '../config/index.js';
 import { COLLECTIONS, firestore, nowIso } from './store.js';
 
 export type FrocRole = 'user' | 'admin' | 'support' | 'editor';
@@ -238,6 +239,12 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
       error instanceof Error ? cleanText(error.message, 200) : 'Falha desconhecida'
     );
     res.status(503).json({ error: 'Serviço de perfil temporariamente indisponível.' });
+    return;
+  }
+
+  if (config.privatePortalMode && config.isProduction && profile.role !== 'admin') {
+    console.warn('[Portal Vip Private Access] Usuário autenticado sem claim de administrador bloqueado.', { uid: decoded.uid });
+    res.status(403).json({ error: 'Acesso administrativo restrito ao proprietário do Portal Vip Brasil.' });
     return;
   }
 

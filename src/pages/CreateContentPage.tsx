@@ -13,7 +13,7 @@ import {
   ArrowRight,
   FolderPlus
 } from 'lucide-react';
-import { Company, Wallet, ContentItem, CREDIT_COSTS } from '../types';
+import { Company, Wallet, ContentItem } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface CreateContentPageProps {
@@ -98,14 +98,6 @@ export const CreateContentPage: React.FC<CreateContentPageProps> = ({
     setLastSavedContentItem(null);
   };
 
-  const currentCost = contentType === 'post'
-    ? CREDIT_COSTS.full_post
-    : contentType === 'carousel'
-    ? CREDIT_COSTS.carousel
-    : contentType === 'headline'
-    ? CREDIT_COSTS.headline
-    : CREDIT_COSTS.cta;
-
   // Invalidate previous saved item reference when parameters or company changes
   useEffect(() => {
     setLastSavedContentItem(null);
@@ -179,7 +171,6 @@ export const CreateContentPage: React.FC<CreateContentPageProps> = ({
         setGeneratedCarousel(null);
       }
 
-      onRefreshWallet();
       onRefreshContents?.();
     } catch (err: any) {
       setErrorMessage(err.message || 'Erro ao gerar conteúdo com IA.');
@@ -377,7 +368,7 @@ export const CreateContentPage: React.FC<CreateContentPageProps> = ({
               <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
             ) : (
               <>
-                <Sparkles size={16} /> Gerar Conteúdo ({currentCost} cr)
+                <Sparkles size={16} /> Gerar Conteúdo
               </>
             )}
           </button>

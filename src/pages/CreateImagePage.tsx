@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Check, Copy, Download, Image as ImageIcon, Sparkles, Wand2, Zap, Layers, RefreshCw } from 'lucide-react';
 import type { Company, Wallet } from '../types';
-import { CREDIT_COSTS } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface Props {
@@ -57,12 +56,6 @@ export const CreateImagePage: React.FC<Props> = ({
     return '1:1';
   }, [platform]);
 
-  const resolutionCost = useMemo(() => {
-    if (resolution === '4K') return CREDIT_COSTS.image_ai_4k || 40;
-    if (resolution === '2K') return CREDIT_COSTS.image_ai_2k || 25;
-    return CREDIT_COSTS.image_ai_1k || 15;
-  }, [resolution]);
-
   const briefing = `${style}. ${lighting}. Formato ${platform}, proporção ${aspectRatio}, resolução alvo ${resolution}.`;
 
   const requireTheme = () => {
@@ -71,7 +64,7 @@ export const CreateImagePage: React.FC<Props> = ({
       return false;
     }
     if (!selectedCompany?.id) {
-      setError('Selecione uma empresa para aplicar as diretrizes e identidade da marca.');
+      setError('Selecione uma projeto para aplicar as diretrizes e identidade da marca.');
       return false;
     }
     return true;
@@ -87,7 +80,6 @@ export const CreateImagePage: React.FC<Props> = ({
         body: { companyId: selectedCompany!.id, theme, style: briefing }
       });
       setGeneratedPrompt(data.imagePrompt);
-      onRefreshWallet();
     } catch (e: any) {
       setError(e.message || 'Falha ao criar direção visual.');
     } finally {
@@ -116,7 +108,6 @@ export const CreateImagePage: React.FC<Props> = ({
         ...data.image,
         resolution
       });
-      onRefreshWallet();
       onRefreshContents?.();
     } catch (e: any) {
       setError(e.message || 'Falha ao gerar imagem com IA.');
@@ -147,11 +138,7 @@ export const CreateImagePage: React.FC<Props> = ({
             Geração real de imagem pelo Gemini com controle de resolução (1K, 2K, 4K), salva diretamente na sua biblioteca.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3.5 py-2 text-xs font-bold text-amber-200">
-            Saldo: {wallet?.balance ?? 0} créditos
-          </div>
-        </div>
+
       </header>
 
       {error && (
@@ -162,9 +149,9 @@ export const CreateImagePage: React.FC<Props> = ({
 
       {!selectedCompany && (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-200">
-          Selecione uma empresa para que a IA respeite identidade, público, produtos e tom da marca.{' '}
-          <button onClick={() => onNavigate('empresa')} className="ml-1 font-bold underline">
-            Configurar empresa
+          Selecione uma projeto para que a IA respeite identidade, público, produtos e tom da marca.{' '}
+          <button onClick={() => onNavigate('projeto')} className="ml-1 font-bold underline">
+            Configurar projeto
           </button>
         </div>
       )}
@@ -190,14 +177,14 @@ export const CreateImagePage: React.FC<Props> = ({
           <div>
             <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
               <span>Qualidade / Resolução</span>
-              <span className="text-[10px] text-cyan-400 font-bold">{resolutionCost} créditos</span>
+              <span className="text-[10px] text-cyan-400 font-bold">Qualidade selecionada: {resolution}</span>
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(
                 [
-                  { key: '1K', label: '1K Standard', cost: CREDIT_COSTS.image_ai_1k || 15, desc: 'Rápida e leve' },
-                  { key: '2K', label: '2K High-Def', cost: CREDIT_COSTS.image_ai_2k || 25, desc: 'Alta nitidez' },
-                  { key: '4K', label: '4K Ultra HD', cost: CREDIT_COSTS.image_ai_4k || 40, desc: 'Publicitário' }
+                  { key: '1K', label: '1K Standard', desc: 'Rápida e leve' },
+                  { key: '2K', label: '2K High-Def', desc: 'Alta nitidez' },
+                  { key: '4K', label: '4K Ultra HD', desc: 'Publicitário' }
                 ] as const
               ).map((res) => (
                 <button
@@ -212,7 +199,6 @@ export const CreateImagePage: React.FC<Props> = ({
                 >
                   <span className="text-xs font-black">{res.key}</span>
                   <span className="text-[10px] text-slate-400">{res.desc}</span>
-                  <span className="text-[9px] font-bold text-cyan-300 mt-0.5">{res.cost} cr</span>
                 </button>
               ))}
             </div>
@@ -274,7 +260,7 @@ export const CreateImagePage: React.FC<Props> = ({
             >
               <span className="flex items-center justify-center gap-1.5">
                 <Wand2 size={14} />
-                {loadingPrompt ? 'Criando…' : `Direção visual · ${CREDIT_COSTS.image_prompt} cr`}
+                {loadingPrompt ? 'Criando…' : 'Criar direção visual'}
               </span>
             </button>
             <button
@@ -284,7 +270,7 @@ export const CreateImagePage: React.FC<Props> = ({
               className="froc-primary min-h-11 flex items-center justify-center gap-2 text-xs font-black"
             >
               <Sparkles size={15} />
-              {loadingImage ? 'Gerando imagem…' : `Gerar imagem · ${resolutionCost} cr`}
+              {loadingImage ? 'Gerando imagem…' : 'Gerar imagem'}
             </button>
           </div>
 
@@ -293,7 +279,7 @@ export const CreateImagePage: React.FC<Props> = ({
               <Zap size={12} className="text-amber-400" />
               Garantia de Entrega Froc.IA
             </div>
-            A cobrança ocorre somente após a imagem ser renderizada e salva com sucesso no Storage. Se houver falha, seus créditos são automaticamente estornados.
+            A imagem só é marcada como concluída depois de ser renderizada e salva com sucesso no Storage.
           </div>
         </section>
 
@@ -317,7 +303,7 @@ export const CreateImagePage: React.FC<Props> = ({
                     <Check size={14} /> Imagem salva na Biblioteca de Conteúdos
                   </div>
                   <div className="text-[10px] text-slate-500 mt-0.5">
-                    Modelo: {generatedImage.modelUsed} • Consumo: {generatedImage.creditsUsed} créditos
+                    Modelo confirmado: {generatedImage.modelUsed} • Resolução: {generatedImage.resolution || resolution}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

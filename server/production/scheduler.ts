@@ -2,6 +2,7 @@ import { config } from '../config/index.js';
 import { generateAutopilotPost, generatePlatformArticle, generatePost, processPendingVideoJobs } from './ai.js';
 import { runDailyPortalMarketingCycle } from './antiFallEngine.js';
 import { runDailyBlogCycle } from './blogEngine.js';
+import { PORTAL_VIP_PROJECTS } from './almaPortfolio.js';
 import { cleanupStaleReservations, getEffectiveWallet, getWallet } from './credits.js';
 import { getPlanEntitlements } from './plans.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
@@ -12,6 +13,27 @@ import {
   publishText,
   type SocialProvider
 } from './social.js';
+
+
+function schedulerProjectContext(userId: string, projectId: string): any | undefined {
+  const project = PORTAL_VIP_PROJECTS.find((item) => item.id === projectId);
+  if (!project) return undefined;
+  return {
+    id: project.id,
+    userId,
+    name: project.name,
+    slug: project.slug,
+    category: project.category,
+    segment: project.segment,
+    description: project.description,
+    website: project.websiteUrl,
+    websiteUrl: project.websiteUrl,
+    androidApp: project.playStoreUrl,
+    targetAudience: project.targetAudience,
+    keywords: project.keywords || [],
+    products: [], services: [], socialLinks: {}, portalProject: true, virtual: true
+  };
+}
 
 export interface AutopilotScheduleConfig {
   enabled?: boolean;
@@ -279,8 +301,8 @@ export async function processScheduledPosts(): Promise<number> {
 
       // 2. Revalidação de plano e entitlements (apenas para usuários legados não-administradores)
       const isPortalProject = Boolean(post.projectId || post.companyId?.startsWith('proj_') || post.autopilotGenerated || post.metadata?.isPortalVipAutomation);
-      const isAdmin = userData?.role === 'admin' || post.userId === 'portal_vip_admin' || isPortalProject;
-      if (!isAdmin) {
+      const isAdmin = userData?.role === 'admin' || isPortalProject;
+      if (!config.privatePortalMode && !isAdmin) {
         const wallet = await getWallet(post.userId);
         const entitlements = getPlanEntitlements(wallet.planId);
         if (!entitlements.socialConnections) {
@@ -289,6 +311,12 @@ export async function processScheduledPosts(): Promise<number> {
       }
 
       // 3. Revalidação de projeto ou empresa
+      if (isPortalProject) {
+        const projectId = String(post.projectId || post.companyId || '');
+        if (!PORTAL_VIP_PROJECTS.some((project) => project.id === projectId)) {
+          throw new Error('Inconsistência de segurança: projeto oficial do agendamento não reconhecido.');
+        }
+      }
       if (!isPortalProject) {
         const companySnap = await db.collection(COLLECTIONS.companies).doc(post.companyId).get();
         if (!companySnap.exists) {
@@ -306,7 +334,7 @@ export async function processScheduledPosts(): Promise<number> {
         throw new Error('Inconsistência de segurança: Conteúdo associado não encontrado.');
       }
       const content = { id: contentSnap.id, ...contentSnap.data() } as any;
-      if (content.userId !== post.userId || (!isPortalProject && content.companyId !== post.companyId)) {
+      if (content.userId !== post.userId || content.companyId !== post.companyId) {
         throw new Error('Violação de isolamento multi-tenant: Conteúdo não pertence ao usuário ou empresa do agendamento.');
       }
 
@@ -488,20 +516,24 @@ export async function processAutopilot(): Promise<number> {
     const ap = { id: doc.id, ...doc.data() } as any;
     if (!isAutopilotDue(ap, now)) continue;
 
-    // Validação estrita de entitlements do plano no backend usando plano efetivo fail-closed
+    // Entitlements comerciais existem apenas no modo legado.
     let entitlements = getPlanEntitlements('plan_free');
     try {
-      const wallet = await getEffectiveWallet(ap.userId, { failClosed: true });
-      entitlements = getPlanEntitlements(wallet.planId);
+      if (!config.privatePortalMode) {
+        const wallet = await getEffectiveWallet(ap.userId, { failClosed: true });
+        entitlements = getPlanEntitlements(wallet.planId);
+      } else {
+        entitlements = { ...entitlements, autopilotManual: true, autopilotAutomatic: true } as any;
+      }
     } catch (err) {
       console.warn(`[Froc Autopilot] Falha ao obter plano efetivo para usuário ${ap.userId}, cancelando execução:`, err);
       continue;
     }
 
-    if (!entitlements.autopilotManual && !entitlements.autopilotAutomatic) {
+    if (!config.privatePortalMode && !entitlements.autopilotManual && !entitlements.autopilotAutomatic) {
       continue;
     }
-    if (ap.mode === 'automatic' && !entitlements.autopilotAutomatic) {
+    if (!config.privatePortalMode && ap.mode === 'automatic' && !entitlements.autopilotAutomatic) {
       continue;
     }
 
@@ -511,18 +543,21 @@ export async function processAutopilot(): Promise<number> {
 
     const monthKey = now.toISOString().slice(0, 7);
     const used = ap.usageMonth === monthKey ? Number(ap.usedCreditsThisMonth || 0) : 0;
-    if (used + config.creditCosts.autopilot_cycle > Number(ap.maxMonthlyCredits || 0)) {
+    if (!config.privatePortalMode && used + config.creditCosts.autopilot_cycle > Number(ap.maxMonthlyCredits || 0)) {
       await doc.ref.set({ usageMonth: monthKey, usedCreditsThisMonth: used, lastBudgetWarningAt: nowIso() }, { merge: true });
       await createNotification({ userId: ap.userId, title: 'Limite do Autopilot atingido', message: 'O Froc Autopilot pausou novas gerações porque o limite mensal de créditos foi alcançado.', type: 'credit_low' });
       continue;
     }
 
-    const companySnap = await db.collection(COLLECTIONS.companies).doc(ap.companyId).get();
-    if (!companySnap.exists) continue;
-    const company = { id: companySnap.id, ...companySnap.data() } as any;
-    if (company.userId !== ap.userId) {
-      console.warn(`[Froc Autopilot] Isolamento violado para config ${doc.id}: empresa ${ap.companyId} não pertence ao usuário ${ap.userId}`);
-      continue;
+    let company = schedulerProjectContext(ap.userId, ap.companyId);
+    if (!company) {
+      const companySnap = await db.collection(COLLECTIONS.companies).doc(ap.companyId).get();
+      if (!companySnap.exists) continue;
+      company = { id: companySnap.id, ...companySnap.data() } as any;
+      if (company.userId !== ap.userId) {
+        console.warn(`[Froc Autopilot] Isolamento violado para config ${doc.id}: contexto ${ap.companyId} não pertence ao usuário ${ap.userId}`);
+        continue;
+      }
     }
 
     // Pre-flight check para modo automático: verificar se TODOS os canais suportam publicação direta e possuem conexão ativa e válida
@@ -686,17 +721,16 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
   message: string;
 }> {
   const db = firestore();
-  const companySnap = await db.collection(COLLECTIONS.companies).doc(companyId).get();
-  if (!companySnap.exists) {
-    throw new Error('Empresa não encontrada.');
-  }
-  const company = { id: companySnap.id, ...companySnap.data() } as any;
-  if (company.userId !== userId) {
-    throw new Error('Você não tem permissão para gerenciar esta empresa.');
+  let company = schedulerProjectContext(userId, companyId);
+  if (!company) {
+    const companySnap = await db.collection(COLLECTIONS.companies).doc(companyId).get();
+    if (!companySnap.exists) throw new Error('Projeto não encontrado.');
+    company = { id: companySnap.id, ...companySnap.data() } as any;
+    if (company.userId !== userId) throw new Error('Você não tem permissão para gerenciar este projeto.');
   }
 
-  const wallet = await getWallet(userId);
-  const entitlements = getPlanEntitlements(wallet.planId);
+  const wallet = config.privatePortalMode ? null : await getWallet(userId);
+  const entitlements = wallet ? getPlanEntitlements(wallet.planId) : ({ autopilotManual: true, autopilotAutomatic: true } as any);
   if (!entitlements.autopilotManual && !entitlements.autopilotAutomatic) {
     const error: any = new Error('O recurso Autopilot não está disponível no seu plano atual. Faça upgrade para o plano PRO ou superior.');
     error.statusCode = 403;
@@ -776,7 +810,7 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
 
   const monthKey = new Date().toISOString().slice(0, 7);
   const used = ap.usageMonth === monthKey ? Number(ap.usedCreditsThisMonth || 0) : 0;
-  if (used + config.creditCosts.autopilot_cycle > Number(ap.maxMonthlyCredits || 500)) {
+  if (!config.privatePortalMode && used + config.creditCosts.autopilot_cycle > Number(ap.maxMonthlyCredits || 500)) {
     throw new Error('Limite mensal de créditos do Autopilot atingido para esta empresa. Aumente o teto de créditos nas configurações.');
   }
 
@@ -877,7 +911,7 @@ export async function processSchedulerTick() {
   try {
     // Step 1: Cleanup stale reservations
     try {
-      releasedReservations = await cleanupStaleReservations(30);
+      if (!config.privatePortalMode) releasedReservations = await cleanupStaleReservations(30);
     } catch (err: any) {
       errors.cleanupReservations = err?.message || String(err);
       console.error('[Scheduler] Erro em cleanupStaleReservations:', err);

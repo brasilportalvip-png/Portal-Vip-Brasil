@@ -396,8 +396,8 @@ export async function executeAi<T = string>(data: {
   maxTokens?: number;
   parse?: (text: string) => T;
 }): Promise<{ result: T; creditsUsed: number; executionId: string; modelUsed: string }> {
-  const cost = Number(config.creditCosts[data.operation]);
-  const reservation = await reserveCredits({
+  const cost = config.privatePortalMode ? 0 : Number(config.creditCosts[data.operation]);
+  const reservation = config.privatePortalMode ? null : await reserveCredits({
     userId: data.userId,
     amount: cost,
     operation: data.operation,
@@ -415,7 +415,7 @@ export async function executeAi<T = string>(data: {
       maxTokens: data.maxTokens
     });
     const result = data.parse ? data.parse(generated.text) : (generated.text as T);
-    await commitReservation({
+    if (reservation) await commitReservation({
       userId: data.userId,
       reservationId: reservation.reservationId,
       source: `Froc AI: ${data.operation}`,
@@ -438,7 +438,7 @@ export async function executeAi<T = string>(data: {
     return { result, creditsUsed: cost, executionId, modelUsed: generated.modelUsed };
   } catch (error) {
     const message = formatAiErrorMessage(error instanceof Error ? error.message : String(error));
-    await rollbackReservation(data.userId, reservation.reservationId, message);
+    if (reservation) await rollbackReservation(data.userId, reservation.reservationId, message);
     await firestore().collection(COLLECTIONS.aiExecutions).doc(executionId).set({
       userId: data.userId,
       companyId: data.company?.id || null,
@@ -646,9 +646,9 @@ export async function generateMarketingImage(data: {
 }): Promise<{ imageUrl: string; storagePath: string; mimeType: string; creditsUsed: number; executionId: string; modelUsed: string; resolution: string }> {
   const resolution = data.resolution === '4K' ? '4K' : data.resolution === '2K' ? '2K' : '1K';
   const opKey = resolution === '4K' ? 'image_ai_4k' : resolution === '2K' ? 'image_ai_2k' : 'image_ai_1k';
-  const cost = Number(config.creditCosts[opKey] || config.creditCosts.image_ai || 15);
+  const cost = config.privatePortalMode ? 0 : Number(config.creditCosts[opKey] || config.creditCosts.image_ai || 15);
   
-  const reservation = await reserveCredits({ userId: data.userId, amount: cost, operation: opKey, companyId: data.company?.id });
+  const reservation = config.privatePortalMode ? null : await reserveCredits({ userId: data.userId, amount: cost, operation: opKey, companyId: data.company?.id });
   const executionId = newId('exec');
   const started = Date.now();
   const aspectRatio = normalizeAspectRatio(data.aspectRatio);
@@ -712,11 +712,11 @@ export async function generateMarketingImage(data: {
         imageUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(token)}`;
       } catch (storageErr) {
         console.error('[Froc AI Image Storage Error] Falha ao persistir imagem no Firebase Storage:', storageErr);
-        throw new Error('Não foi possível armazenar a imagem gerada com segurança. Seus créditos foram preservados.');
+        throw new Error('Não foi possível armazenar a imagem gerada com segurança. Nenhuma cobrança foi realizada.');
       }
     }
 
-    await commitReservation({
+    if (reservation) await commitReservation({
       userId: data.userId,
       reservationId: reservation.reservationId,
       source: `Froc AI: ${opKey}`,
@@ -739,7 +739,7 @@ export async function generateMarketingImage(data: {
     return { imageUrl, storagePath, mimeType, creditsUsed: cost, executionId, modelUsed: model, resolution };
   } catch (error) {
     const message = formatAiErrorMessage(error instanceof Error ? error.message : String(error));
-    await rollbackReservation(data.userId, reservation.reservationId, message);
+    if (reservation) await rollbackReservation(data.userId, reservation.reservationId, message);
     await firestore().collection(COLLECTIONS.aiExecutions).doc(executionId).set({
       userId: data.userId,
       companyId: data.company?.id || null,
@@ -912,7 +912,7 @@ async function failVideoJob(data: {
     return { marked: true, job: failedJob };
   });
 
-  if (result.marked) {
+  if (result.marked && !config.privatePortalMode) {
     try {
       await rollbackReservation(data.userId, data.reservationId, data.errorMessage);
     } catch (error) {
@@ -1108,10 +1108,10 @@ export async function startVideoGenerationJob(data: {
   const preset: VideoPreset = data.preset === 'cinema_4k' ? 'cinema_4k' : data.preset === 'pro_1080p' ? 'pro_1080p' : 'demo_720p';
   const presetConfig = VIDEO_PRESETS[preset];
   const aspectRatio = data.aspectRatio === '16:9' ? '16:9' : '9:16';
-  const cost = presetConfig.credits;
+  const cost = config.privatePortalMode ? 0 : presetConfig.credits;
 
-  // A reserva acontece antes de qualquer chamada onerosa de direção ou vídeo.
-  const reservation = await reserveCredits({
+  // No Portal privado não existe cobrança; o ledger permanece apenas para compatibilidade legada/testes.
+  const reservation = config.privatePortalMode ? null : await reserveCredits({
     userId: data.userId,
     amount: cost,
     operation: presetConfig.creditsKey,
@@ -1127,7 +1127,7 @@ export async function startVideoGenerationJob(data: {
     id: jobId,
     userId: data.userId,
     companyId: data.company?.id || 'default',
-    reservationId: reservation.reservationId,
+    reservationId: reservation?.reservationId || `private_${jobId}`,
     creditsReserved: cost,
     sourcePrompt: data.prompt,
     finalPrompt: data.prompt,
@@ -1152,8 +1152,8 @@ export async function startVideoGenerationJob(data: {
   try {
     await docRef.create(queuedJob);
   } catch (error) {
-    const message = 'Não foi possível registrar o job de vídeo antes do processamento. Seus créditos foram liberados.';
-    await rollbackReservation(data.userId, reservation.reservationId, message);
+    const message = 'Não foi possível registrar o job de vídeo antes do processamento. A operação foi encerrada com segurança.';
+    if (reservation) await rollbackReservation(data.userId, reservation.reservationId, message);
     throw new Error(formatAiErrorMessage(error instanceof Error ? error.message : message));
   }
 
@@ -1295,7 +1295,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
         userId: job.userId,
         reservationId: job.reservationId,
         errorCode: 'MISSING_PROVIDER_OPERATION',
-        errorMessage: 'O job não possui um identificador durável da operação de vídeo. Seus créditos foram liberados.'
+        errorMessage: 'O job não possui um identificador durável da operação de vídeo. A operação foi encerrada com segurança.'
       });
     }
 
@@ -1431,7 +1431,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
           ownerToken,
           ownerFence,
           errorCode: 'MISSING_DOWNLOAD_URI',
-          errorMessage: 'O modelo Veo concluiu o processamento, mas não retornou o arquivo do vídeo. Seus créditos foram liberados.'
+          errorMessage: 'O modelo Veo concluiu o processamento, mas não retornou o arquivo do vídeo. A operação foi encerrada com segurança.'
         });
       }
 
@@ -1465,7 +1465,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
           ownerToken,
           ownerFence,
           errorCode: String(error?.videoErrorCode || 'DOWNLOAD_FAILED'),
-          errorMessage: 'Falha ao recuperar o vídeo gerado com segurança. Seus créditos foram liberados.'
+          errorMessage: 'Falha ao recuperar o vídeo gerado com segurança. A operação foi encerrada com segurança.'
         });
       }
 
@@ -1477,7 +1477,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
           ownerToken,
           ownerFence,
           errorCode: 'INVALID_MP4_CONTAINER',
-          errorMessage: 'O arquivo produzido não é um vídeo MP4 válido. Seus créditos foram liberados.'
+          errorMessage: 'O arquivo produzido não é um vídeo MP4 válido. A operação foi encerrada com segurança.'
         });
       }
 
@@ -1509,7 +1509,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
           ownerToken,
           ownerFence,
           errorCode: 'STORAGE_PERSIST_FAILED',
-          errorMessage: 'Não foi possível armazenar o vídeo no Firebase Storage. Seus créditos foram liberados.'
+          errorMessage: 'Não foi possível armazenar o vídeo no Firebase Storage. A operação foi encerrada com segurança.'
         });
         await deleteStoredVideo(storagePath);
         return failedJob;
@@ -1587,7 +1587,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
         ownerToken,
         ownerFence,
         errorCode: 'INCOMPLETE_PERSISTED_RESULT',
-        errorMessage: 'O resultado persistido do vídeo está incompleto. Seus créditos foram liberados.'
+        errorMessage: 'O resultado persistido do vídeo está incompleto. A operação foi encerrada com segurança.'
       });
     }
 
@@ -1595,7 +1595,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
     if (!renewedBeforeCommit) return (await readLatestVideoJob(docRef)) || workingJob;
     workingJob = renewedBeforeCommit;
 
-    try {
+    if (!config.privatePortalMode) try {
       await commitReservation({
         userId: workingJob.userId,
         reservationId: workingJob.reservationId,
@@ -1724,7 +1724,7 @@ export async function processPendingVideoJobs(): Promise<{ checked: number; comp
             userId: job.userId,
             reservationId: job.reservationId,
             errorCode: 'PROVIDER_START_TIMEOUT',
-            errorMessage: 'A inicialização do provedor de vídeo excedeu o tempo seguro. Seus créditos foram liberados.'
+            errorMessage: 'A inicialização do provedor de vídeo excedeu o tempo seguro. A operação foi encerrada com segurança.'
           });
           if (result.status === 'failed') failed++;
         } catch (error) {
