@@ -503,7 +503,7 @@ test('TikTok Status: FAILED retorna mensagem de erro com fail_reason sanitizado'
   }
 });
 
-test('TikTok Status: publishId de outro usuário/empresa é estritamente bloqueado', async () => {
+test('TikTok Status: publishId de outro usuário/projeto é estritamente bloqueado', async () => {
   resetMemoryDb();
   const db = firestore();
   const { stableId } = await import('../server/production/store.js');
@@ -530,7 +530,7 @@ test('TikTok Status: publishId de outro usuário/empresa é estritamente bloquea
       });
     },
     (err: any) => {
-      return err.message.includes('Envio de rascunho não encontrado ou não pertence a esta empresa.');
+      return err.message.includes('Envio de rascunho não encontrado ou não pertence a este projeto.');
     }
   );
 });

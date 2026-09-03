@@ -1,18 +1,18 @@
 User-agent: *
 Allow: /
-Allow: /alma
-Allow: /alma/
 Allow: /blog
 Allow: /blog/
 Allow: /vitrine
 Allow: /vitrine/
-Allow: /planos
 Allow: /termos
 Allow: /privacidade
+Allow: /cookies
+Allow: /exclusao-de-dados
+Allow: /apps-compliance
 Disallow: /api/
 Disallow: /admin
 Disallow: /dashboard
-Disallow: /empresa
+Disallow: /projetos
 Disallow: /autopilot
 Disallow: /criar-conteudo
 Disallow: /criar-imagem
@@ -24,9 +24,8 @@ Disallow: /calendario
 Disallow: /redes-sociais
 Disallow: /conteudos
 Disallow: /analytics
-Disallow: /creditos
 Disallow: /perfil
 Disallow: /configuracoes
 Disallow: /suporte
 
-Sitemap: https://almax-34709.web.app/sitemap.xml
+Sitemap: https://portal-vip-brasil.vercel.app/sitemap.xml

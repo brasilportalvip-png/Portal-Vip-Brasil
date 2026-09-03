@@ -1,73 +1,48 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xmlns:xhtml="http://www.w3.org/1999/xhtml"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
-  <!-- ALMA X — O Regente Digital: URLs Canônicas Principais -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://almax-34709.web.app/</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>1.00</priority>
+    <loc>https://portal-vip-brasil.vercel.app/</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/alma</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.95</priority>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/alma/home</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
+    <loc>https://portal-vip-brasil.vercel.app/blog</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/alma/agentes</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.85</priority>
+    <loc>https://portal-vip-brasil.vercel.app/termos</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/alma/visao</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.80</priority>
+    <loc>https://portal-vip-brasil.vercel.app/privacidade</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/alma/memoria</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.80</priority>
+    <loc>https://portal-vip-brasil.vercel.app/cookies</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/vitrine</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.90</priority>
+    <loc>https://portal-vip-brasil.vercel.app/exclusao-de-dados</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/blog</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.90</priority>
+    <loc>https://portal-vip-brasil.vercel.app/apps-compliance</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/planos</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.80</priority>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine/magia-das-crencas</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/termos</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.50</priority>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine/exu-responde</loc>
   </url>
   <url>
-    <loc>https://almax-34709.web.app/privacidade</loc>
-    <lastmod>2026-08-31T09:54:00+00:00</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.50</priority>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine/maria-padilha-rainha-das-7-encruzilhadas</loc>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine/manual-catolico</loc>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine/froc-ia</loc>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine/oraculos</loc>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/vitrine/froc-ia-marketing-engine</loc>
   </url>
 </urlset>

@@ -40,8 +40,6 @@ export interface VideoJob {
   completedAt?: string;
 }
 
-export { CREDIT_COSTS } from './lib/creditCosts';
-export type { CreditOperation } from './lib/creditCosts';
 
 // ==========================================
 // ALMA X - REGENTE DIGITAL DATA CONTRACTS

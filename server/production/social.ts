@@ -653,12 +653,12 @@ export async function selectFacebookPage(data: {
     if (stateData.type && stateData.type !== 'facebook_page_selection') throw new Error('Tipo de sessão OAuth inválido.');
     if (stateData.userId !== data.userId) throw new Error('Permissão negada: sessão de seleção pertence a outro usuário.');
     if (stateData.companyId && data.companyId && stateData.companyId !== data.companyId) {
-      throw new Error('Permissão negada: empresa não corresponde à sessão de seleção.');
+      throw new Error('Permissão negada: projeto não corresponde à sessão de seleção.');
     }
     if (Number(stateData.expiresAt) < Date.now()) throw new Error('Sessão de seleção de página expirada.');
 
     const companyId = data.companyId || stateData.companyId;
-    if (!companyId) throw new Error('Empresa da sessão de seleção não encontrada.');
+    if (!companyId) throw new Error('Projeto da sessão de seleção não encontrado.');
     const provider: 'facebook' | 'instagram' = stateData.provider === 'instagram' ? 'instagram' : 'facebook';
     const pages = Array.isArray(stateData.pages) ? stateData.pages : [];
     const chosen = pages.find((page: any) => String(page.id) === String(targetPageId));
@@ -751,7 +751,7 @@ export async function getFacebookPageSelectionCandidates(
   }
 
   if (stateData.companyId && companyId && stateData.companyId !== companyId) {
-    throw new Error('Permissão negada: empresa não corresponde à sessão de seleção.');
+    throw new Error('Permissão negada: projeto não corresponde à sessão de seleção.');
   }
 
   if (Number(stateData.expiresAt) < Date.now()) {
@@ -1611,7 +1611,7 @@ export async function uploadTikTokDraftVideo(data: {
     .get();
 
   if (snap.empty) {
-    throw new Error('Conta TikTok não conectada para esta empresa. Conecte sua conta TikTok em Redes Sociais.');
+    throw new Error('Conta TikTok não conectada para este projeto. Conecte sua conta TikTok em Redes Sociais.');
   }
 
   const connection = snap.docs[0].data() as any;
@@ -1712,18 +1712,18 @@ export async function getTikTokUploadStatus(data: {
     throw new Error('publish_id é obrigatório.');
   }
 
-  // Fortalecimento de isolamento multi-tenant: o publishId deve pertencer a um upload registrado para este usuário e empresa
+  // Fortalecimento de isolamento multi-tenant: o publishId deve pertencer a um upload registrado para este usuário e projeto
   const draftRecordId = stableId(`${data.userId}:${data.companyId}:${data.publishId}`);
   const draftRef = firestore().collection('socialDraftUploads').doc(draftRecordId);
   const draftSnap = await draftRef.get();
 
   if (!draftSnap.exists) {
-    throw new Error('Envio de rascunho não encontrado ou não pertence a esta empresa.');
+    throw new Error('Envio de rascunho não encontrado ou não pertence a este projeto.');
   }
 
   const draftData = draftSnap.data() as any;
   if (draftData.userId !== data.userId || draftData.companyId !== data.companyId || draftData.provider !== 'tiktok') {
-    throw new Error('Envio de rascunho não encontrado ou não pertence a esta empresa.');
+    throw new Error('Envio de rascunho não encontrado ou não pertence a este projeto.');
   }
 
   const snap = await firestore()
@@ -1735,7 +1735,7 @@ export async function getTikTokUploadStatus(data: {
     .get();
 
   if (snap.empty) {
-    throw new Error('Conta TikTok não conectada para esta empresa.');
+    throw new Error('Conta TikTok não conectada para este projeto.');
   }
 
   const connection = snap.docs[0].data() as any;
@@ -1819,7 +1819,7 @@ export async function initTikTokDraftUpload(data: {
     .get();
 
   if (snap.empty) {
-    throw new Error('Conta TikTok não conectada para esta empresa.');
+    throw new Error('Conta TikTok não conectada para este projeto.');
   }
 
   const token = await ensureValidSocialAccessToken(snap.docs[0].id);
@@ -2076,7 +2076,7 @@ export async function getPinterestBoards(data: {
     .get();
 
   if (snap.empty) {
-    throw new Error('Conta Pinterest não conectada para esta empresa.');
+    throw new Error('Conta Pinterest não conectada para este projeto.');
   }
 
   const token = await ensureValidSocialAccessToken(snap.docs[0].id);
@@ -2126,7 +2126,7 @@ export async function createPinterestPin(data: {
     .get();
 
   if (snap.empty) {
-    throw new Error('Conta Pinterest não conectada para esta empresa.');
+    throw new Error('Conta Pinterest não conectada para este projeto.');
   }
 
   const token = await ensureValidSocialAccessToken(snap.docs[0].id);
@@ -2198,7 +2198,7 @@ export async function getSocialReadiness(companyId: string, userId?: string): Pr
     summary: '',
     scheduler: {
       cronSecretConfigured: Boolean(config.cronSecret),
-      nativeCronConfigured: false
+      nativeCronConfigured: true
     },
     linkedinApiVersionConfigured: Boolean(config.social.linkedin.apiVersion)
   };
@@ -2233,8 +2233,8 @@ export async function getSocialReadiness(companyId: string, userId?: string): Pr
 
   readiness.connectedCount = connectedCount;
   readiness.summary = connectedCount > 0
-    ? `${connectedCount} canal(is) configurado(s) e operacional(is) para esta empresa.`
-    : 'Nenhum canal social conectado para esta empresa.';
+    ? `${connectedCount} canal(is) configurado(s) e operacional(is) para este projeto.`
+    : 'Nenhum canal social conectado para este projeto.';
 
   return readiness;
 }

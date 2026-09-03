@@ -2,12 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import { getAdminAuth, getAdminStorage } from '../providers/firebaseAdmin.js';
 import { config } from '../config/index.js';
 import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, ensureUserProfile, hasAcceptedLatestTerms, requireAdmin, requireAuth } from './auth.js';
-import { addCredits, getWallet, listCreditTransactions } from './credits.js';
-import { getPlanEntitlements } from './plans.js';
-import { evaluateSignupBonusEligibility } from './antiAbuse.js';
 import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, listUserVideoJobs, textAiClient } from './ai.js';
 import { analyzeSeo } from './seo.js';
-import { cancelSubscription, createCheckout, listUserSubscriptions, mercadoPagoConfigured, processMercadoPagoWebhook } from './payments.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { getSchedulerHealth, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
@@ -40,7 +36,7 @@ const asyncRoute = (handler: AsyncHandler) => async (req: Request, res: Response
       : 500;
     if (status >= 500) console.error('[Froc API]', error);
     const publicMessage = status >= 500
-      ? 'Erro interno no Froc.IA.'
+      ? 'Erro interno no Portal Vip Brasil.'
       : String(error?.message || 'Requisição inválida.').slice(0, 500);
     res.status(status).json({ error: publicMessage });
   }
@@ -153,23 +149,17 @@ function portalProjectContext(userId: string, projectId?: string): any | undefin
 }
 
 export async function ownedCompany(userId: string, companyId?: string): Promise<any | undefined> {
-  const portalProject = portalProjectContext(userId, companyId);
-  if (portalProject) return portalProject;
-  if (!companyId || config.privatePortalMode) return undefined;
-  const snap = await firestore().collection(COLLECTIONS.companies).doc(companyId).get();
-  if (!snap.exists) return undefined;
-  const data = { id: snap.id, ...snap.data() } as any;
-  return data.userId === userId ? data : undefined;
+  return portalProjectContext(userId, companyId);
 }
 
 export async function requireOwnedCompany(userId: string, companyId: string): Promise<any> {
-  const company = await ownedCompany(userId, companyId);
-  if (!company) {
-    const error: any = new Error(config.privatePortalMode ? 'Projeto não encontrado ou não autorizado.' : 'Empresa não encontrada ou sem permissão.');
+  const project = await ownedCompany(userId, companyId);
+  if (!project) {
+    const error: any = new Error('Projeto oficial não encontrado ou não autorizado.');
     error.statusCode = 404;
     throw error;
   }
-  return company;
+  return project;
 }
 
 async function requireSocialCompany(userId: string, companyId: string): Promise<any> {
@@ -210,9 +200,16 @@ router.get('/health', asyncRoute(async (_req, res) => {
   const statusCode = dbHealth.status === 'healthy' ? 200 : dbHealth.status === 'degraded' ? 200 : 503;
   res.status(statusCode).json({
     status: dbHealth.status === 'healthy' ? 'ok' : dbHealth.status,
-    service: 'Froc.IA API',
+    service: 'Portal Vip Brasil API',
     database: dbHealth,
     environment: config.nodeEnv,
+    appUrl: config.appUrl,
+    automation: {
+      cronSecretConfigured: Boolean(config.cronSecret),
+      nativeCronConfigured: true,
+      scheduleUtc: '0 13 * * *',
+      timezone: 'America/Sao_Paulo'
+    },
     timestamp: nowIso()
   });
 }));
@@ -232,9 +229,7 @@ router.post('/auth/sync-profile', requireAuth, asyncRoute(async (req: Authentica
     const hasTerms = Boolean(req.body?.termsAccepted);
     const hasPrivacy = Boolean(req.body?.privacyAccepted);
     if (!hasTerms || !hasPrivacy) {
-      return res.status(428).json({
-        error: 'Para ativar sua conta, aceite os Termos de Uso e a Política de Privacidade no cadastro.'
-      });
+      return res.status(428).json({ error: 'Para ativar o acesso administrativo, aceite os Termos de Uso e a Política de Privacidade.' });
     }
     termsAcceptedAt = now;
     privacyAcceptedAt = now;
@@ -251,59 +246,12 @@ router.post('/auth/sync-profile', requireAuth, asyncRoute(async (req: Authentica
     avatarUrl: safeString(req.body?.avatarUrl, 1000) || req.user?.avatarUrl
   });
 
-  if (config.privatePortalMode) {
-    return res.json({
-      user: profile,
-      wallet: null,
-      needsTermsConsent: !hasAcceptedLatestTerms(profile),
-      currentTermsVersion: CURRENT_TERMS_VERSION,
-      security: { privatePortal: true, bonusEligible: false, bonusAmount: 0, reason: 'private_portal', message: 'Portal administrativo privado.' }
-    });
-  }
-
-  const clientIp = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
-  const userAgent = safeString(req.headers['user-agent'], 300);
-
-  // Avaliação rigorosa anti-abuso e anti-multicontas para concessão de bônus (apenas na criação)
-  const outcome = await evaluateSignupBonusEligibility({
-    userId: profile.id,
-    email: profile.email,
-    ip: clientIp,
-    userAgent,
-    securityPayload: req.body?.securityPayload
-  });
-
-  let wallet;
-  if (outcome.eligibleForBonus && outcome.bonusAmount > 0) {
-    try {
-      wallet = await addCredits({
-        userId: profile.id,
-        amount: outcome.bonusAmount,
-        type: 'bonus',
-        source: 'Bônus de Primeiro Cadastro Froc.IA',
-        idempotencyKey: `welcome:${profile.id}`,
-        metadata: { reason: outcome.reason, detail: outcome.detail, claimId: outcome.claimId }
-      });
-    } catch (err) {
-      console.error('[AuthSync] Erro ao conceder bônus de boas-vindas:', err);
-      wallet = await getWallet(profile.id);
-    }
-  } else {
-    // Conta criada sem bônus (0 créditos) por detecção de duplicidade/multiconta/e-mail temporário
-    wallet = await getWallet(profile.id);
-  }
-
   res.json({
     user: profile,
-    wallet,
+    wallet: null,
     needsTermsConsent: !hasAcceptedLatestTerms(profile),
     currentTermsVersion: CURRENT_TERMS_VERSION,
-    security: {
-      bonusEligible: outcome.eligibleForBonus,
-      bonusAmount: outcome.bonusAmount,
-      reason: outcome.reason,
-      message: outcome.detail
-    }
+    security: { privatePortal: true, reason: 'private_portal', message: 'Portal administrativo privado.' }
   });
 }));
 
@@ -327,26 +275,16 @@ router.post('/auth/accept-terms', requireAuth, asyncRoute(async (req: Authentica
   res.json({
     message: 'Termos de Uso e Política de Privacidade aceitos com sucesso.',
     user: profile,
-    wallet: config.privatePortalMode ? null : await getWallet(profile.id),
+    wallet: null,
     needsTermsConsent: false,
     currentTermsVersion: CURRENT_TERMS_VERSION
   });
 }));
 
 router.get('/auth/me', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const isAdmin = req.user?.role === 'admin';
-  let wallet = null;
-  if (!isAdmin && req.user?.id) {
-    try {
-      wallet = await getWallet(req.user.id);
-    } catch (err) {
-      console.warn('[Auth/Me] Falha silenciosa ao carregar carteira legado:', err);
-      wallet = null;
-    }
-  }
   res.json({
     user: req.user,
-    wallet,
+    wallet: null,
     needsTermsConsent: !hasAcceptedLatestTerms(req.user),
     currentTermsVersion: CURRENT_TERMS_VERSION
   });
@@ -412,134 +350,22 @@ router.get('/dashboard/status', requireAuth, asyncRoute(async (req: Authenticate
   });
 }));
 
-// Companies
+// Compatibilidade interna: aliases antigos retornam somente projetos oficiais.
 router.get('/companies', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (config.privatePortalMode) {
-    return res.json({ companies: PORTAL_VIP_PROJECTS.map((p) => portalProjectContext(req.user!.id, p.id)) });
-  }
-  const snap = await firestore().collection(COLLECTIONS.companies).where('userId', '==', req.user!.id).get();
-  const companies = queryData<any>(snap).sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
-  res.json({ companies });
-}));
-
-router.post('/companies', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
-  const name = safeString(req.body?.name, 120);
-  if (!name) return res.status(400).json({ error: 'O nome da empresa é obrigatório.' });
-  const current = await firestore().collection(COLLECTIONS.companies).where('userId', '==', req.user!.id).get();
-  const wallet = await getWallet(req.user!.id);
-  if (!config.privatePortalMode && current.size >= getPlanEntitlements(wallet.planId).maxCompanies) return res.status(403).json({ error: 'Seu plano atingiu o limite de empresas. Faça upgrade para cadastrar outra marca.' });
-  const id = newId('company');
-  const baseSlug = slugify(name);
-  const slug = `${baseSlug}-${id.slice(-6)}`;
-  const company = cleanObject({
-    id,
-    userId: req.user!.id,
-    name,
-    slug,
-    businessType: normalizeCompanyField('businessType', req.body?.businessType || 'online'),
-    onlineChannels: stringArray(req.body?.onlineChannels),
-    logoUrl: safeHttpUrl(req.body?.logoUrl, 1500),
-    description: safeString(req.body?.description, 5000),
-    website: safeHttpUrl(req.body?.website, 1000),
-    androidApp: safeHttpUrl(req.body?.androidApp, 1000),
-    iosApp: safeHttpUrl(req.body?.iosApp, 1000),
-    phone: safeString(req.body?.phone, 80),
-    whatsapp: safeString(req.body?.whatsapp, 80),
-    email: safeEmail(req.body?.email),
-    address: safeString(req.body?.address, 500),
-    city: safeString(req.body?.city, 150),
-    state: safeString(req.body?.state, 100),
-    country: safeString(req.body?.country, 100) || 'Brasil',
-    category: safeString(req.body?.category, 150) || 'Comércio & Serviços',
-    segment: safeString(req.body?.segment, 200),
-    products: stringArray(req.body?.products),
-    services: stringArray(req.body?.services),
-    targetAudience: safeString(req.body?.targetAudience, 3000),
-    coverageRegion: safeString(req.body?.coverageRegion, 500),
-    differentials: safeString(req.body?.differentials, 3000),
-    brandTone: safeString(req.body?.brandTone, 500),
-    goals: safeString(req.body?.goals, 2000),
-    competitors: stringArray(req.body?.competitors),
-    keywords: stringArray(req.body?.keywords),
-    socialLinks: sanitizedSocialLinks(req.body?.socialLinks),
-    isPublicInVitrine: normalizeCompanyField('isPublicInVitrine', req.body?.isPublicInVitrine),
-    marketingProfile: req.body?.marketingProfile && typeof req.body.marketingProfile === 'object' ? req.body.marketingProfile : undefined,
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  });
-  await firestore().collection(COLLECTIONS.companies).doc(id).set(company);
-  res.status(201).json({ message: 'Empresa cadastrada com sucesso.', company });
+  const projects = PORTAL_VIP_PROJECTS
+    .filter((project) => project.active !== false)
+    .map((project) => portalProjectContext(req.user!.id, project.id));
+  res.json({ companies: projects, projects });
 }));
 
 router.get('/companies/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  res.json({ company: await requireOwnedCompany(req.user!.id, req.params.id) });
+  const project = portalProjectContext(req.user!.id, safeString(req.params.id, 200));
+  if (!project) return res.status(404).json({ error: 'Projeto oficial não encontrado.' });
+  res.json({ company: project, project });
 }));
-
-router.patch('/companies/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
-  const current = await requireOwnedCompany(req.user!.id, req.params.id);
-  const allowed = ['name','businessType','onlineChannels','logoUrl','description','website','androidApp','iosApp','phone','whatsapp','email','address','city','state','country','category','segment','products','services','targetAudience','coverageRegion','differentials','brandTone','goals','competitors','keywords','socialLinks','isPublicInVitrine','marketingProfile'];
-  const patch: Record<string, any> = {};
-  for (const key of allowed) if (req.body?.[key] !== undefined) patch[key] = normalizeCompanyField(key, req.body[key]);
-  if (patch.name && patch.name !== current.name) patch.slug = `${slugify(safeString(patch.name, 120))}-${req.params.id.slice(-6)}`;
-  patch.updatedAt = nowIso();
-  await firestore().collection(COLLECTIONS.companies).doc(req.params.id).set(cleanObject(patch), { merge: true });
-  const snap = await firestore().collection(COLLECTIONS.companies).doc(req.params.id).get();
-  res.json({ message: 'Empresa atualizada com sucesso.', company: { id: snap.id, ...snap.data() } });
-}));
-
-router.post('/companies/:id/logo', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
-  const company = await requireOwnedCompany(req.user!.id, req.params.id);
-  const dataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl : '';
-  const match = dataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
-  if (!match) return res.status(400).json({ error: 'Envie uma imagem PNG, JPG ou WEBP válida.' });
-  if (dataUrl.length > 1_900_000) return res.status(413).json({ error: 'A logo deve ter no máximo aproximadamente 1,3 MB.' });
-  const mimeType = match[1];
-  const buffer = Buffer.from(match[2], 'base64');
-  if (!buffer.length || buffer.length > 1_400_000) return res.status(413).json({ error: 'A logo é muito grande.' });
-  const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
-  const storagePath = `companies/${req.user!.id}/${req.params.id}/logo.${ext}`;
-  const token = newId('download');
-  const bucket = getAdminStorage().bucket();
-  const file = bucket.file(storagePath);
-  await file.save(buffer, {
-    resumable: false,
-    metadata: {
-      contentType: mimeType,
-      cacheControl: 'public,max-age=86400',
-      metadata: { firebaseStorageDownloadTokens: token }
-    }
-  });
-  if (company.logoStoragePath && company.logoStoragePath !== storagePath) {
-    await bucket.file(String(company.logoStoragePath)).delete({ ignoreNotFound: true }).catch(() => undefined);
-  }
-  const logoUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(token)}`;
-  await firestore().collection(COLLECTIONS.companies).doc(req.params.id).set({ logoUrl, logoStoragePath: storagePath, updatedAt: nowIso() }, { merge: true });
-  res.json({ message: 'Logo atualizada.', logoUrl, logoStoragePath: storagePath });
-}));
-
-router.delete('/companies/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (config.privatePortalMode) return res.status(403).json({ error: 'O Portal Vip Brasil usa somente os projetos oficiais configurados no código.' });
-  const company = await requireOwnedCompany(req.user!.id, req.params.id);
-  if (company.logoStoragePath) await getAdminStorage().bucket().file(String(company.logoStoragePath)).delete({ ignoreNotFound: true }).catch(() => undefined);
-  await firestore().collection(COLLECTIONS.companies).doc(req.params.id).delete();
-  res.json({ message: 'Empresa removida com sucesso.' });
-}));
-
-// Créditos legados: indisponíveis na central privada.
-router.use('/credits', (req, res, next) => {
-  if (config.privatePortalMode) return res.status(404).json({ error: 'Créditos não fazem parte do Portal Vip Brasil privado.' });
-  next();
-});
-
-router.get('/credits/balance', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => res.json({ wallet: await getWallet(req.user!.id) })));
-router.get('/credits/transactions', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => res.json({ transactions: await listCreditTransactions(req.user!.id, Number(req.query.limit || 50)) })));
-router.get('/credits/history', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => res.json({ transactions: await listCreditTransactions(req.user!.id, Number(req.query.limit || 50)) })));
 
 // AI
-router.get('/ai/costs', (_req, res) => res.json({ costs: config.privatePortalMode ? {} : config.creditCosts }));
+router.get('/ai/costs', (_req, res) => res.json({ costs: {} }));
 
 router.post('/ai/generate-post', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const topic = safeString(req.body?.topic, 5000);
@@ -766,7 +592,6 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
 
   // 5. Diferenciação: Planejamento Editorial (Calendário) vs Auto-Publicação
   if (isPlanning) {
-    // Planejamento editorial: Disponível para todos os planos (START, PRO, BUSINESS, AGENCY, etc.)
     const id = newId('sched');
     const scheduled = {
       id,
@@ -784,7 +609,6 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
     return res.status(201).json({ message: 'Planejamento editorial salvo no calendário com sucesso.', scheduled });
   }
 
-  // Auto-publicação disponível sem assinatura; custos de uso seguem o ledger.
 
   // Validação estrita de suporte dos providers para texto direto
   for (const plat of rawPlatforms) {
@@ -946,39 +770,17 @@ router.get('/campaigns', requireAuth, asyncRoute(async (req: AuthenticatedReques
 }));
 
 router.post('/campaigns', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (!config.privatePortalMode) {
-    const wallet = await getWallet(req.user!.id);
-    const entitlements = getPlanEntitlements(wallet.planId);
-    if (!entitlements.campaigns) {
-      return res.status(403).json({
-        error: 'O recurso de Campanhas é exclusivo dos planos BUSINESS e AGENCY. Faça upgrade para criar campanhas.'
-      });
-    }
-  
-    }
-
   const name = safeString(req.body?.name, 300);
   const companyId = safeString(req.body?.companyId, 200);
   if (!name || !companyId) return res.status(400).json({ error: 'Nome e projeto são obrigatórios.' });
   await requireOwnedCompany(req.user!.id, companyId);
   const id = newId('campaign');
-  const campaign = { id, userId: req.user!.id, companyId, name, objective: safeString(req.body?.objective, 3000) || 'Reconhecimento e Conversão', targetPlatforms: stringArray(req.body?.targetPlatforms, 10), targetAudience: safeString(req.body?.targetAudience, 3000), budgetCredits: config.privatePortalMode ? 0 : Math.max(0, Number(req.body?.budgetCredits || 0)), startDate: req.body?.startDate ? new Date(req.body.startDate).toISOString() : nowIso(), endDate: req.body?.endDate ? new Date(req.body.endDate).toISOString() : undefined, status: ['draft','pending','scheduled','active','paused','completed','failed'].includes(req.body?.status) ? req.body.status : 'draft', contentItemIds: stringArray(req.body?.contentItemIds, 200), metrics: { reach: 0, clicks: 0, leads: 0, conversions: 0, shares: 0, comments: 0 }, createdAt: nowIso(), updatedAt: nowIso() };
+  const campaign = { id, userId: req.user!.id, companyId, name, objective: safeString(req.body?.objective, 3000) || 'Reconhecimento e Conversão', targetPlatforms: stringArray(req.body?.targetPlatforms, 10), targetAudience: safeString(req.body?.targetAudience, 3000), startDate: req.body?.startDate ? new Date(req.body.startDate).toISOString() : nowIso(), endDate: req.body?.endDate ? new Date(req.body.endDate).toISOString() : undefined, status: ['draft','pending','scheduled','active','paused','completed','failed'].includes(req.body?.status) ? req.body.status : 'draft', contentItemIds: stringArray(req.body?.contentItemIds, 200), metrics: { reach: 0, clicks: 0, leads: 0, conversions: 0, shares: 0, comments: 0 }, createdAt: nowIso(), updatedAt: nowIso() };
   await firestore().collection(COLLECTIONS.campaigns).doc(id).set(cleanObject(campaign));
   res.status(201).json({ message: 'Campanha criada.', campaign });
 }));
 
 router.patch('/campaigns/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (!config.privatePortalMode) {
-    const wallet = await getWallet(req.user!.id);
-    const entitlements = getPlanEntitlements(wallet.planId);
-    if (!entitlements.campaigns) {
-      return res.status(403).json({
-        error: 'O recurso de Campanhas é exclusivo dos planos BUSINESS e AGENCY. Faça upgrade para editar campanhas.'
-      });
-    }
-  
-    }
-
   const ref = firestore().collection(COLLECTIONS.campaigns).doc(req.params.id);
   const snap = await ref.get();
   if (!snap.exists || snap.data()?.userId !== req.user!.id) return res.status(404).json({ error: 'Campanha não encontrada.' });
@@ -987,7 +789,6 @@ router.patch('/campaigns/:id', requireAuth, asyncRoute(async (req: Authenticated
   if (req.body?.objective !== undefined) patch.objective = safeString(req.body.objective, 3000);
   if (req.body?.targetPlatforms !== undefined) patch.targetPlatforms = stringArray(req.body.targetPlatforms, 10);
   if (req.body?.targetAudience !== undefined) patch.targetAudience = safeString(req.body.targetAudience, 3000);
-  if (!config.privatePortalMode && req.body?.budgetCredits !== undefined) patch.budgetCredits = Math.max(0, Number(req.body.budgetCredits || 0));
   if (req.body?.startDate !== undefined) patch.startDate = new Date(req.body.startDate).toISOString();
   if (req.body?.endDate !== undefined) patch.endDate = req.body.endDate ? new Date(req.body.endDate).toISOString() : null;
   if (req.body?.status !== undefined) {
@@ -1007,48 +808,6 @@ router.delete('/campaigns/:id', requireAuth, asyncRoute(async (req: Authenticate
   if (!snap.exists || snap.data()?.userId !== req.user!.id) return res.status(404).json({ error: 'Campanha não encontrada.' });
   await ref.delete();
   res.json({ message: 'Campanha removida.' });
-}));
-
-// Pagamentos legados: desativados no Portal privado.
-router.use('/payments', (req, res, next) => {
-  if (config.privatePortalMode) return res.status(404).json({ error: 'Planos e pagamentos não são oferecidos pelo Portal Vip Brasil.' });
-  next();
-});
-
-router.get('/payments/plans', (_req, res) => res.json({ plans: config.plans, gatewayConfigured: mercadoPagoConfigured() }));
-router.post('/payments/checkout', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const planId = safeString(req.body?.planId, 100);
-  if (!planId) return res.status(400).json({ error: 'Selecione um plano.' });
-  const bodyIdempotencyKey = safeString(req.body?.idempotencyKey, 200);
-  const headerIdempotencyKey = safeString(req.headers['x-idempotency-key'], 200);
-  if (bodyIdempotencyKey && headerIdempotencyKey && bodyIdempotencyKey !== headerIdempotencyKey) {
-    return res.status(400).json({ error: 'A chave de idempotência do cabeçalho diverge da chave enviada no corpo.' });
-  }
-  const idempotencyKey = headerIdempotencyKey || bodyIdempotencyKey || undefined;
-  res.json(await createCheckout({ userId: req.user!.id, userEmail: req.user!.email, userName: req.user!.name, planId, idempotencyKey }));
-}));
-router.get('/payments/orders', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const snap = await firestore().collection(COLLECTIONS.payments).where('userId', '==', req.user!.id).get();
-  res.json({ orders: queryData<any>(snap).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) });
-}));
-router.get('/payments/orders/:orderId', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const ref = firestore().collection(COLLECTIONS.payments).doc(req.params.orderId);
-  const snap = await ref.get();
-  if (!snap.exists || snap.data()?.userId !== req.user!.id) {
-    return res.status(404).json({ error: 'Pedido não encontrado.' });
-  }
-  res.json({ order: { id: snap.id, ...snap.data() } });
-}));
-router.get('/payments/subscriptions', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  res.json({ subscriptions: await listUserSubscriptions(req.user!.id), billingMode: config.mercadoPago.billingMode });
-}));
-router.post('/payments/subscription/cancel', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  res.json({ message: 'Renovação automática cancelada.', subscription: await cancelSubscription(req.user!.id, safeString(req.body?.orderId, 200) || undefined) });
-}));
-router.post('/webhooks/mercadopago', asyncRoute(async (req, res) => {
-  if (config.privatePortalMode) return res.status(404).json({ error: 'Webhook de pagamentos desativado.' });
-  const result = await processMercadoPagoWebhook({ body: req.body, query: req.query, headers: req.headers as any });
-  res.status(200).json(result);
 }));
 
 // Autopilot
@@ -1073,9 +832,6 @@ router.get('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticate
         preferredHours: [10, 15, 19],
         targetPlatforms: ['Instagram', 'Facebook'],
         primaryGoal: 'Atrair clientes e gerar autoridade',
-        maxMonthlyCredits: 100,
-        usedCreditsThisMonth: 0,
-        usageMonth: new Date().toISOString().slice(0, 7)
       },
       persisted: false
     });
@@ -1089,21 +845,7 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
   await requireOwnedCompany(req.user!.id, companyId);
 
   const requestedEnabled = Boolean(req.body?.enabled);
-  const wallet = config.privatePortalMode ? null : await getWallet(req.user!.id);
-  const entitlements = wallet ? getPlanEntitlements(wallet.planId) : null;
   const requestedMode = req.body?.mode === 'automatic' ? 'automatic' : 'manual_approval';
-
-  if (!config.privatePortalMode && entitlements && requestedEnabled && !entitlements.autopilotManual && !entitlements.autopilotAutomatic) {
-    return res.status(403).json({
-      error: 'O recurso Autopilot não está disponível no seu plano atual. Faça upgrade para o plano PRO ou superior.'
-    });
-  }
-
-  if (!config.privatePortalMode && entitlements && requestedMode === 'automatic' && !entitlements.autopilotAutomatic) {
-    return res.status(403).json({
-      error: 'O modo automático do Autopilot é exclusivo dos planos BUSINESS e AGENCY. No plano PRO, utilize aprovação manual ou faça upgrade.'
-    });
-  }
 
   const id = `${req.user!.id}_${companyId}`;
   const ref = firestore().collection(COLLECTIONS.autopilotConfigs).doc(id);
@@ -1159,7 +901,6 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
     preferredHours,
     targetPlatforms,
     primaryGoal: safeString(req.body?.primaryGoal, 2000) || 'Engajamento e Vendas',
-    maxMonthlyCredits: Math.max(5, Number(req.body?.maxMonthlyCredits || 100)),
     updatedAt: nowIso(),
     createdAt: current.exists ? undefined : nowIso()
   });
@@ -1277,11 +1018,17 @@ router.get('/social/oauth/:provider/start', requireAuth, asyncRoute(async (req: 
   res.json({ ...oauth, authUrl: oauth.url });
 }));
 router.delete('/social/connections/:connectionId', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const companyId = safeString(req.query.companyId || req.body?.companyId, 200);
+  if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório.' });
+  await requireOwnedCompany(req.user!.id, companyId);
   const ref = firestore().collection(COLLECTIONS.socialConnections).doc(req.params.connectionId);
   const snap = await ref.get();
-  if (!snap.exists || snap.data()?.userId !== req.user!.id) return res.status(404).json({ error: 'Conexão não encontrada.' });
+  const connection = snap.data() as any;
+  if (!snap.exists || connection?.userId !== req.user!.id || connection?.companyId !== companyId) {
+    return res.status(404).json({ error: 'Conexão não encontrada para este projeto.' });
+  }
   await ref.delete();
-  res.json({ success: true, message: 'Conta desconectada.' });
+  res.json({ success: true, message: 'Conta desconectada deste projeto.' });
 }));
 
 // TikTok Content Posting API (Draft Video / Inbox Upload)
@@ -1535,80 +1282,52 @@ router.get('/vitrine/:slug', asyncRoute(async (req, res) => {
 // Admin
 router.get('/admin/overview', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const db = firestore();
-
-  if (config.privatePortalMode) {
-    const [contentsSnap, connectionsSnap, blogSnap] = await Promise.all([
-      db.collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id).get(),
-      db.collection(COLLECTIONS.socialConnections).where('userId', '==', req.user!.id).get(),
-      db.collection(COLLECTIONS.blogPosts).get()
-    ]);
-
-    const officialIds = new Set(PORTAL_VIP_PROJECTS.map((project) => project.id));
-    const now = Date.now();
-
-    const totalContentsGenerated = contentsSnap.docs.filter((doc) => {
-      const item = doc.data() as any;
-      return officialIds.has(String(item.companyId || ''));
-    }).length;
-
-    const totalSocialConnections = connectionsSnap.docs.filter((doc) => {
-      const item = doc.data() as any;
-      if (!officialIds.has(String(item.companyId || ''))) return false;
-      if (item.status !== 'connected') return false;
-      if (!item.expiresAt) return true;
-      const expiresAt = new Date(item.expiresAt).getTime();
-      return Number.isFinite(expiresAt) && expiresAt > now;
-    }).length;
-
-    const totalPublishedArticles = blogSnap.docs.filter(
-      (doc) => (doc.data() as any).status === 'published'
-    ).length;
-
-    return res.json({
-      stats: {
-        totalProjects: PORTAL_VIP_PROJECTS.filter((project) => project.active !== false).length,
-        totalContentsGenerated,
-        totalSocialConnections,
-        totalPublishedArticles
-      },
-      users: []
-    });
-  }
-
-  const [usersSnap, companiesSnap, txSnap, contentsSnap] = await Promise.all([
-    db.collection(COLLECTIONS.users).get(),
-    db.collection(COLLECTIONS.companies).get(),
-    db.collection(COLLECTIONS.creditTransactions).get(),
-    db.collection(COLLECTIONS.contentItems).get()
+  const [contentsSnap, connectionsSnap, blogSnap, scheduledSnap, autopilotSnap] = await Promise.all([
+    db.collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id).get(),
+    db.collection(COLLECTIONS.socialConnections).where('userId', '==', req.user!.id).get(),
+    db.collection(COLLECTIONS.blogPosts).get(),
+    db.collection(COLLECTIONS.scheduledPosts).where('userId', '==', req.user!.id).get(),
+    db.collection(COLLECTIONS.autopilotConfigs).where('userId', '==', req.user!.id).get().catch(() => ({ docs: [] } as any))
   ]);
-  const users = queryData<any>(usersSnap).map(({ passwordHash, ...user }) => user);
-  const totalCreditsIssued = txSnap.docs.reduce((sum, doc) => {
-    const d = doc.data() as any;
-    return sum + (Number(d.amount) > 0 ? Number(d.amount) : 0);
-  }, 0);
+
+  const officialIds = new Set(PORTAL_VIP_PROJECTS.map((project) => project.id));
+  const now = Date.now();
+
+  const projectContents = contentsSnap.docs.filter((doc) =>
+    officialIds.has(String((doc.data() as any).companyId || ''))
+  );
+  const validConnections = connectionsSnap.docs.filter((doc) => {
+    const item = doc.data() as any;
+    if (!officialIds.has(String(item.companyId || '')) || item.status !== 'connected') return false;
+    if (!item.expiresAt) return true;
+    const expiresAt = new Date(item.expiresAt).getTime();
+    return Number.isFinite(expiresAt) && expiresAt > now;
+  });
+  const projectScheduled = scheduledSnap.docs.filter((doc) =>
+    officialIds.has(String((doc.data() as any).companyId || ''))
+  );
+  const pendingOrFailed = projectScheduled.filter((doc) =>
+    ['scheduled', 'publishing', 'failed', 'requires_review'].includes(String((doc.data() as any).status || ''))
+  ).length;
+  const totalPublishedArticles = blogSnap.docs.filter(
+    (doc) => (doc.data() as any).status === 'published'
+  ).length;
+  const enabledAutopilot = (autopilotSnap as any).docs.filter((doc: any) => {
+    const item = doc.data() as any;
+    return item.enabled === true && officialIds.has(String(item.companyId || ''));
+  }).length;
+
   res.json({
     stats: {
-      totalUsers: usersSnap.size,
-      totalCompanies: companiesSnap.size,
-      totalCreditsIssued,
-      totalContentsGenerated: contentsSnap.size
+      totalProjects: PORTAL_VIP_PROJECTS.filter((project) => project.active !== false).length,
+      totalContentsGenerated: projectContents.length,
+      totalSocialConnections: validConnections.length,
+      totalPublishedArticles,
+      pendingOrFailed,
+      enabledAutopilot
     },
-    users
+    users: []
   });
-}));
-
-router.post('/admin/grant-credits', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  if (config.privatePortalMode) {
-    return res.status(404).json({ error: 'Créditos não fazem parte do Portal Vip Brasil privado.' });
-  }
-  const userId = safeString(req.body?.userId, 200);
-  const amount = Number(req.body?.amount || 0);
-  const reason = safeString(req.body?.reason, 500) || 'Ajuste administrativo';
-  if (!userId || !Number.isFinite(amount) || amount <= 0 || amount > 100_000) return res.status(400).json({ error: 'Usuário ou quantidade inválidos.' });
-  const wallet = await addCredits({ userId, amount, type: 'admin_adjustment', source: reason, idempotencyKey: `admin:${req.user!.id}:${newId('grant')}`, metadata: { operatorId: req.user!.id } });
-  await writeAdminLog({ operatorId: req.user!.id, operatorEmail: req.user!.email, action: 'grant_credits', targetUserId: userId, details: { amount, reason } });
-  await createNotification({ userId, title: 'Créditos adicionados', message: `${amount} créditos foram adicionados à sua carteira.`, type: 'system' });
-  res.json({ message: 'Créditos concedidos.', wallet });
 }));
 
 router.get('/admin/support/tickets', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
@@ -1848,10 +1567,6 @@ router.delete('/alma/memories/:id', requireAuth, asyncRoute(async (req: Authenti
   res.json({ success: true, deletedId: id });
 }));
 
-// Plans public catalog alias
-router.get('/plans', (_req, res) => res.json({ plans: config.plans, gatewayConfigured: mercadoPagoConfigured() }));
-
-
 // Technical SEO endpoints
 router.get('/sitemap.xml', asyncRoute(async (_req, res) => res.type('application/xml').send(await buildSitemapXml())));
 router.get('/robots.txt', (_req, res) => res.type('text/plain').send(buildRobotsTxt()));
@@ -1869,14 +1584,8 @@ export async function buildSitemapXml(): Promise<string> {
 
   const urls: SitemapUrlEntry[] = [
     { loc: `${base}/`, lastmod: now, changefreq: 'daily', priority: '1.0' },
-    { loc: `${base}/alma`, lastmod: now, changefreq: 'daily', priority: '0.95' },
-    { loc: `${base}/alma/home`, lastmod: now, changefreq: 'weekly', priority: '0.85' },
-    { loc: `${base}/alma/agentes`, lastmod: now, changefreq: 'weekly', priority: '0.85' },
-    { loc: `${base}/alma/visao`, lastmod: now, changefreq: 'weekly', priority: '0.80' },
-    { loc: `${base}/alma/memoria`, lastmod: now, changefreq: 'weekly', priority: '0.80' },
     { loc: `${base}/vitrine`, lastmod: now, changefreq: 'daily', priority: '0.90' },
     { loc: `${base}/blog`, lastmod: now, changefreq: 'daily', priority: '0.90' },
-    { loc: `${base}/planos`, lastmod: now, changefreq: 'weekly', priority: '0.80' },
     { loc: `${base}/termos`, lastmod: now, changefreq: 'monthly', priority: '0.60' },
     { loc: `${base}/privacidade`, lastmod: now, changefreq: 'monthly', priority: '0.60' },
     { loc: `${base}/cookies`, lastmod: now, changefreq: 'monthly', priority: '0.50' },
@@ -1885,14 +1594,14 @@ export async function buildSitemapXml(): Promise<string> {
   ];
 
   try {
-    const [blogSnap, articlesSnap, companiesSnap] = await Promise.race([
+    const [blogSnap, articlesSnap] = await Promise.race([
       Promise.all([
         firestore().collection(COLLECTIONS.blogPosts).where('status', '==', 'published').get(),
-        firestore().collection(COLLECTIONS.blogArticles).where('status', '==', 'published').get(),
-        firestore().collection(COLLECTIONS.companies).get()
+        firestore().collection(COLLECTIONS.blogArticles).where('status', '==', 'published').get()
       ]),
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Sitemap Firestore timeout')), 4_000))
     ]);
+
     for (const doc of blogSnap.docs) {
       const item = doc.data() as any;
       if (item.slug) {
@@ -1904,9 +1613,10 @@ export async function buildSitemapXml(): Promise<string> {
         });
       }
     }
+
     for (const doc of articlesSnap.docs) {
       const item = doc.data() as any;
-      if (item.slug && !urls.some((u) => u.loc.endsWith(`/blog/${encodeURIComponent(item.slug)}`))) {
+      if (item.slug && !urls.some((entry) => entry.loc.endsWith(`/blog/${encodeURIComponent(item.slug)}`))) {
         urls.push({
           loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
           lastmod: item.updatedAt || item.publishedAt || now,
@@ -1915,9 +1625,9 @@ export async function buildSitemapXml(): Promise<string> {
         });
       }
     }
-    // Inclui artigos predefinidos de alta autoridade
+
     for (const seeded of INITIAL_SEEDED_ARTICLES) {
-      if (!urls.some((u) => u.loc.endsWith(`/blog/${encodeURIComponent(seeded.slug)}`))) {
+      if (!urls.some((entry) => entry.loc.endsWith(`/blog/${encodeURIComponent(seeded.slug)}`))) {
         urls.push({
           loc: `${base}/blog/${encodeURIComponent(seeded.slug)}`,
           lastmod: seeded.updatedAt || now,
@@ -1926,10 +1636,10 @@ export async function buildSitemapXml(): Promise<string> {
         });
       }
     }
-    // Inclui projetos oficiais da vitrine
-    const sitemapProjects = await listAllPortalProjectsFromDb().catch(() => PORTAL_VIP_PROJECTS);
-    for (const project of sitemapProjects) {
-      if (project.active !== false) {
+
+    const projects = await listAllPortalProjectsFromDb().catch(() => PORTAL_VIP_PROJECTS);
+    for (const project of projects) {
+      if (project.active !== false && project.slug) {
         urls.push({
           loc: `${base}/vitrine/${encodeURIComponent(project.slug)}`,
           lastmod: project.updatedAt || now,
@@ -1938,35 +1648,27 @@ export async function buildSitemapXml(): Promise<string> {
         });
       }
     }
-    for (const doc of companiesSnap.docs) {
-      const item = doc.data() as any;
-      const isPublic = item.isPublicInVitrine === true || item.isPublicInVitrine === 'true';
-      if (isPublic && item.slug) {
-        urls.push({
-          loc: `${base}/vitrine/${encodeURIComponent(item.slug)}`,
-          lastmod: item.updatedAt || now,
-          changefreq: 'weekly',
-          priority: '0.70'
-        });
-      }
-    }
   } catch (error) {
-    console.warn('[Portal Vip Brasil Sitemap] Não foi possível carregar dados dinâmicos do Firestore, usando páginas base:', error);
+    console.warn('[Portal Vip Brasil Sitemap] Falha ao carregar conteúdo dinâmico; mantendo rotas públicas base:', error);
   }
 
-  const escapeXml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  const escapeXml = (value: string) =>
+    value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
   const safeLastmod = (value?: string) => {
     if (!value) return '';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? '' : date.toISOString();
   };
 
-  const body = urls.map((item) => {
-    const lastmod = safeLastmod(item.lastmod);
-    return `  <url>
+  const body = urls
+    .filter((item, index, list) => list.findIndex((candidate) => candidate.loc === item.loc) === index)
+    .map((item) => {
+      const lastmod = safeLastmod(item.lastmod);
+      return `  <url>
     <loc>${escapeXml(item.loc)}</loc>${lastmod ? `\n    <lastmod>${escapeXml(lastmod)}</lastmod>` : ''}${item.changefreq ? `\n    <changefreq>${item.changefreq}</changefreq>` : ''}${item.priority ? `\n    <priority>${item.priority}</priority>` : ''}
   </url>`;
-  }).join('\n');
+    })
+    .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
@@ -1982,7 +1684,7 @@ export function buildRobotsTxt(): string {
     '/api/',
     '/admin',
     '/dashboard',
-    '/empresa',
+    '/projetos',
     '/autopilot',
     '/criar-conteudo',
     '/criar-imagem',
@@ -1994,22 +1696,21 @@ export function buildRobotsTxt(): string {
     '/redes-sociais',
     '/conteudos',
     '/analytics',
-    '/creditos',
     '/perfil',
     '/configuracoes',
     '/suporte'
   ];
   return `User-agent: *
 Allow: /
-Allow: /alma
-Allow: /alma/
 Allow: /blog
 Allow: /blog/
 Allow: /vitrine
 Allow: /vitrine/
-Allow: /planos
 Allow: /termos
 Allow: /privacidade
+Allow: /cookies
+Allow: /exclusao-de-dados
+Allow: /apps-compliance
 ${blocked.map((path) => `Disallow: ${path}`).join('\n')}
 
 Sitemap: ${config.appUrl.replace(/\/$/, '')}/sitemap.xml
