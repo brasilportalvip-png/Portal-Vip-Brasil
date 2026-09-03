@@ -772,10 +772,14 @@ export async function getFacebookPageSelectionCandidates(
 
 export async function listConnections(userId: string, companyId?: string) {
   let snap;
-  if (!companyId || companyId === 'all' || companyId.startsWith('proj_')) {
+  if (!companyId || companyId === 'all') {
     snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).get();
   } else {
-    snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).where('companyId', '==', companyId).get();
+    snap = await firestore()
+      .collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', userId)
+      .where('companyId', '==', companyId)
+      .get();
   }
   return snap.docs.map((doc) => {
     const item = doc.data() as any;
@@ -1107,24 +1111,6 @@ export async function publishText(data: {
       .where('provider', '==', data.provider)
       .limit(1)
       .get();
-
-    if (snap.empty) {
-      snap = await firestore()
-        .collection(COLLECTIONS.socialConnections)
-        .where('userId', '==', data.userId)
-        .where('provider', '==', data.provider)
-        .limit(1)
-        .get();
-    }
-
-    if (snap.empty && data.userId !== 'portal_vip_admin') {
-      snap = await firestore()
-        .collection(COLLECTIONS.socialConnections)
-        .where('userId', '==', 'portal_vip_admin')
-        .where('provider', '==', data.provider)
-        .limit(1)
-        .get();
-    }
   } catch (err: any) {
     return {
       provider: data.provider,
@@ -1141,7 +1127,7 @@ export async function publishText(data: {
       externalId: null,
       externalState: 'confirmed_failed',
       retrySafe: false,
-      error: `Conta ${data.provider} não conectada para este projeto ou usuário.`
+      error: `Conta ${data.provider} não conectada para este projeto.`
     };
   }
 
@@ -1931,7 +1917,7 @@ export async function publishInstagramMedia(data: {
     throw new Error('É necessário fornecer imageUrl ou videoUrl para publicar no Instagram.');
   }
 
-  let snap = await firestore()
+  const snap = await firestore()
     .collection(COLLECTIONS.socialConnections)
     .where('userId', '==', data.userId)
     .where('companyId', '==', data.companyId)
@@ -1940,25 +1926,7 @@ export async function publishInstagramMedia(data: {
     .get();
 
   if (snap.empty) {
-    snap = await firestore()
-      .collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', data.userId)
-      .where('provider', '==', 'instagram')
-      .limit(1)
-      .get();
-  }
-
-  if (snap.empty && data.userId !== 'portal_vip_admin') {
-    snap = await firestore()
-      .collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', 'portal_vip_admin')
-      .where('provider', '==', 'instagram')
-      .limit(1)
-      .get();
-  }
-
-  if (snap.empty) {
-    throw new Error('Conta Instagram não conectada para este projeto ou usuário.');
+    throw new Error('Conta Instagram não conectada para este projeto.');
   }
 
   const connection = snap.docs[0].data() as any;
@@ -2038,7 +2006,7 @@ export async function initYouTubeResumableUpload(data: {
     throw new Error('Título do vídeo no YouTube é obrigatório.');
   }
 
-  let snap = await firestore()
+  const snap = await firestore()
     .collection(COLLECTIONS.socialConnections)
     .where('userId', '==', data.userId)
     .where('companyId', '==', data.companyId)
@@ -2047,25 +2015,7 @@ export async function initYouTubeResumableUpload(data: {
     .get();
 
   if (snap.empty) {
-    snap = await firestore()
-      .collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', data.userId)
-      .where('provider', '==', 'youtube')
-      .limit(1)
-      .get();
-  }
-
-  if (snap.empty && data.userId !== 'portal_vip_admin') {
-    snap = await firestore()
-      .collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', 'portal_vip_admin')
-      .where('provider', '==', 'youtube')
-      .limit(1)
-      .get();
-  }
-
-  if (snap.empty) {
-    throw new Error('Canal YouTube não conectado para este projeto ou usuário.');
+    throw new Error('Canal YouTube não conectado para este projeto.');
   }
 
   const token = await ensureValidSocialAccessToken(snap.docs[0].id);
