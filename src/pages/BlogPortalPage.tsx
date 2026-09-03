@@ -411,28 +411,28 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
           </nav>
 
           <div className="flex items-center gap-3">
-            {/* Action to trigger generation */}
-            <button
-              onClick={() => setShowGenerateModal(true)}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30 transition-all"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Gerar Artigo Agora</span>
-            </button>
-
             {user ? (
-              <button
-                onClick={() => onNavigate('dashboard')}
-                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-slate-700 transition-all"
-              >
-                Painel do Criador
-              </button>
+              <>
+                <button
+                  onClick={() => setShowGenerateModal(true)}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 text-xs font-bold border border-cyan-500/30 transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Gerar Artigo Agora</span>
+                </button>
+                <button
+                  onClick={() => onNavigate('dashboard')}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white border border-slate-700 transition-all"
+                >
+                  Painel Administrativo
+                </button>
+              </>
             ) : (
               <button
                 onClick={onOpenAuth}
                 className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition-all active:scale-95"
               >
-                Entrar / Criar Conta
+                Acesso administrativo
               </button>
             )}
           </div>

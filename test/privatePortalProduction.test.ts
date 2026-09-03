@@ -217,3 +217,19 @@ test('Saneamento arquitetural final: Portal não reintroduz identidade central F
 
   assert.equal(existsSync('public/og-froc.png'), false);
 });
+
+
+test('Blog público não oferece cadastro nem geração de artigo antes do acesso administrativo', () => {
+  const blog = read('src/pages/BlogPortalPage.tsx');
+
+  assert.ok(!blog.includes('Entrar / Criar Conta'));
+  assert.ok(!blog.includes('Painel do Criador'));
+  assert.ok(blog.includes('Acesso administrativo'));
+  assert.ok(blog.includes('Painel Administrativo'));
+
+  const privateActions = /\{user \? \(\s*<>[\s\S]*?setShowGenerateModal\(true\)[\s\S]*?Gerar Artigo Agora[\s\S]*?Painel Administrativo[\s\S]*?<\/>(?:\s*)\) : \((?:[\s\S]*?)Acesso administrativo/;
+  assert.ok(
+    privateActions.test(blog),
+    'Gerar Artigo Agora deve existir somente dentro do ramo autenticado do Blog.'
+  );
+});
