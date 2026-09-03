@@ -565,7 +565,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
               </li>
               <li>
                 <a
-                  href="https://portalvipbrasil.com.br"
+                  href="https://portal-vip-brasil.vercel.app"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover:text-cyan-400 transition-colors flex items-center gap-1"

@@ -322,19 +322,19 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       instagram: {
         caption: '✨ Desperte o poder das suas crenças! Novo artigo no Blog Oficial do Portal Vip Brasil ensina como atrair prosperidade e abrir caminhos hoje. Link na bio!',
         hashtags: ['#MagiaDasCrencas', '#Prosperidade', '#Fe', '#PortalVipBrasil', '#DecretoDoDia'],
-        utmUrl: 'https://portalvipbrasil.com.br/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=instagram&utm_medium=social&utm_campaign=blog_magia_crencas'
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=instagram&utm_medium=social&utm_campaign=blog_magia_crencas'
       },
       facebook: {
         postText: 'Como transformar sua rotina com o poder das palavras certas? Leia o novo guia completo no Blog Portal Vip Brasil.',
-        utmUrl: 'https://portalvipbrasil.com.br/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=facebook&utm_medium=social&utm_campaign=blog_magia_crencas'
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=facebook&utm_medium=social&utm_campaign=blog_magia_crencas'
       },
       linkedin: {
         postText: 'Artigo publicado no Portal Vip Brasil: Como a intenção focada e os hábitos mentais impactam a clareza e tomada de decisão.',
-        utmUrl: 'https://portalvipbrasil.com.br/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=linkedin&utm_medium=social&utm_campaign=blog_magia_crencas'
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=linkedin&utm_medium=social&utm_campaign=blog_magia_crencas'
       },
       x: {
         tweetText: 'Aprenda como desbloquear seus caminhos com o poder dos decretos diários no blog @portalvipbrasil:',
-        utmUrl: 'https://portalvipbrasil.com.br/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=x&utm_medium=social&utm_campaign=blog_magia_crencas'
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=x&utm_medium=social&utm_campaign=blog_magia_crencas'
       }
     },
     status: 'published',
@@ -560,9 +560,9 @@ export async function notifyIndexNow(urls: string[]): Promise<void> {
   if (!urls || urls.length === 0) return;
   try {
     const payload = {
-      host: 'portalvipbrasil.com.br',
+      host: 'portal-vip-brasil.vercel.app',
       key: 'portalvipbrasil_indexnow_key_2026',
-      keyLocation: 'https://portalvipbrasil.com.br/portalvipbrasil_indexnow_key_2026.txt',
+      keyLocation: 'https://portal-vip-brasil.vercel.app/portalvipbrasil_indexnow_key_2026.txt',
       urlList: urls
     };
     console.log('[IndexNow] Sinal de indexação rápida emitido com sucesso para:', urls);
@@ -757,7 +757,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
   const targetStatus = (options?.forceApproval || settings.mode === 'approval') ? 'pending_approval' : 'published';
 
   // URLs com UTM tracking para redes sociais
-  const articlePublicUrl = `https://portalvipbrasil.com.br/blog/${finalSlug}`;
+  const articlePublicUrl = `https://portal-vip-brasil.vercel.app/blog/${finalSlug}`;
   const socialCampaign: SocialRepurposePack = {
     instagram: {
       caption: parsed.socialCampaign?.instagram?.caption || articleExcerpt,

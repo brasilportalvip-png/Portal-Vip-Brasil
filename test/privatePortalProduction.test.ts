@@ -83,10 +83,10 @@ test('Produção: cron e SEO usam a configuração oficial', () => {
   assert.ok(sitemap.includes('https://portal-vip-brasil.vercel.app/'));
   assert.ok(robots.includes('https://portal-vip-brasil.vercel.app/sitemap.xml'));
 
-  for (const value of ['almax-34709', '/planos', 'portalvipbrasil.com.br']) {
+  for (const value of ['almax-34709', '/planos', ['portalvipbrasil', '.com.br'].join('')]) {
     assert.ok(!sitemap.includes(value), `sitemap contém referência antiga: ${value}`);
   }
-  for (const value of ['almax-34709', 'Allow: /planos', 'portalvipbrasil.com.br']) {
+  for (const value of ['almax-34709', 'Allow: /planos', ['portalvipbrasil', '.com.br'].join('')]) {
     assert.ok(!robots.includes(value), `robots contém referência antiga: ${value}`);
   }
 });
@@ -117,4 +117,31 @@ test('Produção: testes migrados usam o contrato de projeto privado', () => {
 
   const tiktok = read('test/tiktok.test.ts');
   assert.ok(tiktok.includes('não pertence a este projeto'));
+});
+
+
+test('Identidade pública e automação usam somente o domínio oficial', () => {
+  const legacyDomain = ['portalvipbrasil', '.com.br'].join('');
+  const officialDomain = 'portal-vip-brasil.vercel.app';
+  const files = [
+    'index.html',
+    'server/production/almaPortfolio.ts',
+    'server/production/blogEngine.ts',
+    'src/data/blogArticles.ts',
+    'src/data/portalProjects.ts',
+    'src/lib/brand.ts',
+    'src/pages/BlogPortalPage.tsx',
+    'src/pages/LegalPage.tsx',
+    'src/pages/VitrinePage.tsx'
+  ];
+
+  for (const file of files) {
+    const content = read(file);
+    assert.ok(!content.includes(legacyDomain), `${file} ainda contém domínio legado`);
+  }
+
+  assert.ok(read('server/production/almaPortfolio.ts').includes(officialDomain));
+  assert.ok(read('server/production/blogEngine.ts').includes(officialDomain));
+  assert.ok(read('src/data/portalProjects.ts').includes(officialDomain));
+  assert.ok(read('index.html').includes(officialDomain));
 });

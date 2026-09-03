@@ -24,7 +24,7 @@ import {
 import { BRAND } from '../lib/brand';
 
 const SUPPORT_EMAIL = 'brasilportalvip@gmail.com';
-const PORTAL_CANONICAL_URL = 'https://portalvipbrasil.com.br';
+const PORTAL_CANONICAL_URL = 'https://portal-vip-brasil.vercel.app';
 const LAST_UPDATED = '03 de Setembro de 2026';
 
 export type LegalTabType = 'privacidade' | 'termos' | 'cookies' | 'lgpd' | 'apps-compliance';

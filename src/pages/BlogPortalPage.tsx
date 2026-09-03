@@ -153,7 +153,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       relatedProjectSlug: item.relatedProjectSlug || 'magia-das-crencas',
       relatedProjectUrl: item.relatedProjectUrl || 'https://magiadascrencas.com.br',
       relatedPlayStoreUrl: item.relatedPlayStoreUrl,
-      canonicalUrl: `https://portalvipbrasil.com.br/blog/${item.slug}`,
+      canonicalUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}`,
       schemaJsonLd: {
         '@context': 'https://schema.org',
         '@type': 'BlogPosting',
@@ -165,23 +165,23 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
         instagram: {
           caption: `✨ ${item.title}\n\n${item.excerpt}\n\n👉 Leia o artigo completo no Portal Vip Brasil!`,
           hashtags: ['#PortalVipBrasil', '#Espiritualidade', '#Oraculos', '#IA'],
-          utmUrl: `https://portalvipbrasil.com.br/blog/${item.slug}?utm_source=instagram`
+          utmUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}?utm_source=instagram`
         },
         facebook: {
           postText: `Confira nosso novo artigo: "${item.title}".\n\n${item.excerpt}\n\n🔗 Leia mais no link:`,
-          utmUrl: `https://portalvipbrasil.com.br/blog/${item.slug}?utm_source=facebook`
+          utmUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}?utm_source=facebook`
         },
         linkedin: {
           postText: `Análise sobre desenvolvimento temático e autoridade orgânica: "${item.title}".`,
           professionalTakeaway: 'A consistência de publicações e a precisão das diretrizes aumentam a relevância e retenção de usuários.',
-          utmUrl: `https://portalvipbrasil.com.br/blog/${item.slug}?utm_source=linkedin`
+          utmUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}?utm_source=linkedin`
         },
         twitter: {
           thread: [
             `1/2 📢 Novo artigo publicado: ${item.title}`,
-            `2/2 ${item.excerpt} Leia completo em: https://portalvipbrasil.com.br/blog/${item.slug}`
+            `2/2 ${item.excerpt} Leia completo em: https://portal-vip-brasil.vercel.app/blog/${item.slug}`
           ],
-          utmUrl: `https://portalvipbrasil.com.br/blog/${item.slug}?utm_source=x`
+          utmUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}?utm_source=x`
         }
       },
       author: item.author || {
@@ -1554,7 +1554,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 </li>
                 <li>
                   <a
-                    href="https://portalvipbrasil.com.br"
+                    href="https://portal-vip-brasil.vercel.app"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="hover:text-cyan-400 transition-colors flex items-center gap-1"
