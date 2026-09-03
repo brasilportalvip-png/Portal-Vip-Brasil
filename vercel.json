@@ -61,6 +61,10 @@
       "dest": "/api/index.ts"
     },
     {
+      "src": "^/indexnow-key\\.txt$",
+      "dest": "/api/index.ts"
+    },
+    {
       "src": "^/sitemap\\.xml$",
       "dest": "/api/index.ts"
     },

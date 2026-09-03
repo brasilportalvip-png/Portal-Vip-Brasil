@@ -55,7 +55,9 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
   const [selectedProjectId, setSelectedProjectId] = useState<string>('todos');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [readingArticle, setReadingArticle] = useState<PortalBlogArticle | null>(null);
-  const [likedArticles, setLikedArticles] = useState<Record<string, boolean>>({});
+  const [likedArticles, setLikedArticles] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(window.localStorage.getItem('portal_vip.blog.likes.v1') || '{}'); } catch { return {}; }
+  });
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
   const [showRepurposeModal, setShowRepurposeModal] = useState<PortalBlogArticle | null>(null);
@@ -190,11 +192,11 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
         avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
         bio: 'Redação oficial do Portal Vip Brasil com curadoria de especialistas em espiritualidade, oráculos e IA.'
       },
-      views: item.views || 340,
-      likes: item.likes || 42,
-      shares: 12,
-      clicksWebsite: 18,
-      clicksPlayStore: 9,
+      views: 0,
+      likes: 0,
+      shares: 0,
+      clicksWebsite: 0,
+      clicksPlayStore: 0,
       publishedAt: item.publishedAt || 'Hoje',
       updatedAt: item.publishedAt || 'Hoje',
       status: 'published',
@@ -229,7 +231,11 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
   const handleLike = async (articleId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const isLiked = likedArticles[articleId];
-    setLikedArticles((prev) => ({ ...prev, [articleId]: !isLiked }));
+    setLikedArticles((prev) => {
+      const next = { ...prev, [articleId]: !isLiked };
+      try { window.localStorage.setItem('portal_vip.blog.likes.v1', JSON.stringify(next)); } catch {}
+      return next;
+    });
 
     // Update local count
     setArticles((prev) =>
@@ -284,7 +290,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       if (res.success && res.article) {
         setGenFeedback({
           success: true,
-          message: 'Artigo original com SEO e IndexNow gerado com sucesso!',
+          message: 'Artigo original com SEO gerado e salvo com sucesso.',
           article: res.article
         });
         // Prepend to article list
@@ -313,23 +319,25 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       const res = await apiRequest<{
         success: boolean;
         publishedCount: number;
-        pendingApprovalCount: number;
+        pendingCount: number;
+        skippedCount: number;
+        failedCount: number;
         totalProjects: number;
-        results: any[];
+        articlesGenerated: any[];
       }>('/api/portal/blog/daily-cycle', {
         method: 'POST'
       });
 
       if (res.success) {
         setDailyMsg(
-          `Ciclo de Blog Concluído! ${res.publishedCount} novos artigos gerados e publicados com SEO para os ${res.totalProjects} projetos ativos.`
+          `Ciclo concluído: ${res.publishedCount} publicado(s), ${res.pendingCount} aguardando aprovação, ${res.skippedCount} já processado(s) hoje e ${res.failedCount} falha(s).`
         );
         fetchArticles();
       } else {
-        setDailyMsg('Ciclo executado com proteção anti-quedas.');
+        setDailyMsg(`Ciclo concluído com ${res.failedCount || 0} falha(s). Consulte o painel administrativo.`);
       }
     } catch (err: any) {
-      setDailyMsg('Executado com redundância de esteira de IA.');
+      setDailyMsg(err?.message || 'Falha ao executar o ciclo diário do Blog.');
     } finally {
       setIsTriggeringDaily(false);
     }
@@ -512,12 +520,12 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                       <h3 className="text-sm font-bold text-white">Motor de Blog Diário</h3>
                     </div>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                      ATIVO 24/7
+                      AUTOMAÇÃO CONFIGURADA
                     </span>
                   </div>
 
                   <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                    Geração diária automatizada de <strong className="text-white">1 artigo por projeto ativo</strong> com SEO técnico, IndexNow para Bing/Google e reaproveitamento para redes sociais.
+                    Esteira preparada para <strong className="text-white">1 artigo por projeto ativo por dia</strong>, com trava contra duplicação. A execução real do cron é confirmada pela telemetria do painel administrativo.
                   </p>
 
                   <div className="space-y-2 mb-4 text-xs">

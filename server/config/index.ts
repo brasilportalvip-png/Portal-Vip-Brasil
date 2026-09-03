@@ -79,6 +79,7 @@ export const config = {
   },
   encryptionKey: env('TOKEN_ENCRYPTION_KEY', isTest ? 'test_token_encryption_key_32bytes_long!' : ''),
   cronSecret: env('CRON_SECRET', isTest ? 'test_cron_secret' : ''),
+  indexNowKey: env('INDEXNOW_KEY'),
   adminBootstrap: {
     enabled: env('ADMIN_BOOTSTRAP_ENABLED', isProduction ? 'false' : 'true').toLowerCase() === 'true',
     key: env('ADMIN_BOOTSTRAP_KEY', isTest ? 'test_admin_bootstrap_key' : '')
@@ -147,6 +148,10 @@ export function assertProductionConfig(): void {
     throw new Error(`[Portal Vip Brasil] APP_URL em produção não pode ser localhost ou 127.0.0.1 (atual: ${config.appUrl})`);
   }
 
+
+  if (config.indexNowKey && !/^[A-Za-z0-9-]{8,128}$/.test(config.indexNowKey)) {
+    throw new Error('[Portal Vip Brasil] INDEXNOW_KEY deve ter 8 a 128 caracteres (letras, números ou hífen).');
+  }
 
   if (config.adminBootstrap.enabled && !config.adminBootstrap.key) {
     throw new Error('[Portal Vip Brasil] ADMIN_BOOTSTRAP_KEY obrigatória quando ADMIN_BOOTSTRAP_ENABLED=true');

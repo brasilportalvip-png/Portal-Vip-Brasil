@@ -90,19 +90,28 @@ async function metaFor(pathname: string): Promise<PublicMeta> {
   if (blogMatch) {
     try {
       const slug = decodeURIComponent(blogMatch[1]);
-      const snap = await firestore().collection(COLLECTIONS.blogPosts).where('slug', '==', slug).where('status', '==', 'published').limit(1).get();
-      if (snap.empty) return { ...fallback, status: 404, title: 'Artigo não encontrado — Portal Vip Brasil', description: 'Este artigo não está disponível no blog do Portal Vip Brasil.' };
-      const post = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
+      const db = firestore();
+      const [articleSnap, postSnap] = await Promise.all([
+        db.collection(COLLECTIONS.blogArticles).where('slug', '==', slug).where('status', '==', 'published').limit(1).get(),
+        db.collection(COLLECTIONS.blogPosts).where('slug', '==', slug).where('status', '==', 'published').limit(1).get()
+      ]);
+      const doc = !articleSnap.empty ? articleSnap.docs[0] : !postSnap.empty ? postSnap.docs[0] : null;
+      if (!doc) return { ...fallback, status: 404, title: 'Artigo não encontrado — Portal Vip Brasil', description: 'Este artigo não está disponível no blog do Portal Vip Brasil.' };
+
+      const post = { id: doc.id, ...doc.data() } as any;
       const canonical = `${base}/blog/${encodeURIComponent(post.slug)}`;
+      const authorName = typeof post.author === 'object' ? post.author?.name : post.author;
+      const image = post.coverImage || post.featuredImageUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl;
+      const summary = post.metaDescription || post.seoDescription || post.excerpt || post.summary;
       return {
         title: post.seoTitle || `${post.title} — Portal Vip Brasil`,
-        description: description(post.seoDescription || post.summary, 'Artigo do Portal Vip Brasil.'),
-        canonical, image: absolute(post.featuredImageUrl), type: 'article', status: 200,
+        description: description(summary, 'Artigo do Portal Vip Brasil.'),
+        canonical, image: absolute(image), type: 'article', status: 200,
         schema: {
-          '@context': 'https://schema.org', '@type': 'Article', headline: post.title, description: post.summary || post.seoDescription,
-          image: post.featuredImageUrl ? [absolute(post.featuredImageUrl)] : undefined,
+          '@context': 'https://schema.org', '@type': 'Article', headline: post.title, description: summary,
+          image: image ? [absolute(image)] : undefined,
           datePublished: post.publishedAt || post.createdAt, dateModified: post.updatedAt || post.publishedAt || post.createdAt,
-          author: { '@type': 'Organization', name: post.author || 'Portal Vip Brasil' },
+          author: { '@type': 'Organization', name: authorName || 'Portal Vip Brasil' },
           publisher: { '@type': 'Organization', name: 'Portal Vip Brasil', logo: { '@type': 'ImageObject', url: `${base}/icons/icon-512.png` } },
           mainEntityOfPage: canonical
         }
