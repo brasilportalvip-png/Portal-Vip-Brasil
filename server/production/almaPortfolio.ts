@@ -248,6 +248,84 @@ export function getProjectBySlug(slug: string): PortalProjectItem | undefined {
   return PORTAL_VIP_PROJECTS.find((p) => p.slug === slug || p.id === slug);
 }
 
+const PORTAL_PROJECT_IDENTITY_FIELDS: Array<keyof PortalProjectItem> = [
+  'id',
+  'name',
+  'slug',
+  'category',
+  'segment',
+  'websiteUrl',
+  'playStoreUrl',
+  'appTitle',
+  'hasApp',
+  'logoUrl',
+  'bannerUrl',
+  'tagline',
+  'description',
+  'highlights',
+  'keywords',
+  'targetAudience',
+  'socialMarketingAngles',
+  'bingSeoKeywords'
+];
+
+function defaultProjectSocialSettings(project: PortalProjectItem): PortalProjectSocialSettings {
+  return {
+    instagramEnabled: true,
+    facebookEnabled: true,
+    linkedinEnabled: true,
+    xEnabled: true,
+    pinterestEnabled: false,
+    youtubeEnabled: Boolean(project.hasApp),
+    tiktokEnabled: false
+  };
+}
+
+function officialIdentityPatch(project: PortalProjectItem): Partial<PortalProjectItem> {
+  const patch: Partial<PortalProjectItem> = {};
+  for (const key of PORTAL_PROJECT_IDENTITY_FIELDS) {
+    (patch as any)[key] = project[key];
+  }
+  return cleanObject(patch);
+}
+
+function projectIdentityNeedsSync(stored: any, official: PortalProjectItem): boolean {
+  if (!stored || typeof stored !== 'object') return true;
+  const patch = officialIdentityPatch(official) as any;
+  for (const [key, value] of Object.entries(patch)) {
+    if (JSON.stringify(stored[key]) !== JSON.stringify(value)) return true;
+  }
+  return false;
+}
+
+/**
+ * Combina estado operacional persistido com a identidade canônica do projeto.
+ * Firestore pode controlar automação/conexões/estado, mas não substitui identidade,
+ * URLs, logo, banner, descrição ou metadados oficiais do registro do Portal.
+ */
+export function mergeOfficialPortalProject(
+  official: PortalProjectItem,
+  stored?: Partial<PortalProjectItem> | null
+): PortalProjectItem {
+  const operational: any = stored && typeof stored === 'object' ? stored : {};
+  return {
+    ...operational,
+    ...official,
+    active: typeof operational.active === 'boolean' ? operational.active : true,
+    dailyMarketingEnabled: typeof operational.dailyMarketingEnabled === 'boolean'
+      ? operational.dailyMarketingEnabled
+      : true,
+    dailyBlogEnabled: typeof operational.dailyBlogEnabled === 'boolean'
+      ? operational.dailyBlogEnabled
+      : true,
+    socialSettings: operational.socialSettings && typeof operational.socialSettings === 'object'
+      ? operational.socialSettings
+      : defaultProjectSocialSettings(official),
+    createdAt: operational.createdAt,
+    updatedAt: operational.updatedAt
+  };
+}
+
 /**
  * Sincronização idempotente dos 7 Projetos Oficiais no Firestore (Collection: 'projects').
  * Garante que a coleção 'projects' seja a única fonte da verdade, sem duplicar dados.
@@ -260,48 +338,19 @@ export async function seedPortalProjectsIfEmpty(): Promise<{
   const db = firestore();
   const projectsRef = db.collection(COLLECTIONS.projects);
   const existingSnap = await projectsRef.get().catch(() => null);
+  const existingIds = new Set<string>();
 
-  const existingMap = new Map<string, any>();
   if (existingSnap && !existingSnap.empty) {
-    for (const doc of existingSnap.docs) {
-      existingMap.set(doc.id, doc.data());
-    }
+    for (const doc of existingSnap.docs) existingIds.add(doc.id);
   }
 
-  let seededCount = 0;
-  const now = nowIso();
+  const seededCount = PORTAL_VIP_PROJECTS.filter((project) => !existingIds.has(project.id)).length;
+  const projects = await listAllPortalProjectsFromDb();
 
-  for (const proj of PORTAL_VIP_PROJECTS) {
-    if (!existingMap.has(proj.id)) {
-      const docToSave: PortalProjectItem = {
-        ...proj,
-        active: true,
-        dailyMarketingEnabled: true,
-        dailyBlogEnabled: true,
-        socialSettings: {
-          instagramEnabled: true,
-          facebookEnabled: true,
-          linkedinEnabled: true,
-          xEnabled: true,
-          pinterestEnabled: false,
-          youtubeEnabled: Boolean(proj.hasApp),
-          tiktokEnabled: false
-        },
-        createdAt: now,
-        updatedAt: now
-      };
-      await projectsRef.doc(proj.id).set(cleanObject(docToSave), { merge: true }).catch((err) => {
-        console.warn(`[PortalPortfolio] Erro ao sincronizar projeto ${proj.id}:`, err);
-      });
-      seededCount++;
-    }
-  }
-
-  const allProjects = await listAllPortalProjectsFromDb();
   return {
     seededCount,
-    totalProjects: allProjects.length,
-    projects: allProjects
+    totalProjects: projects.length,
+    projects
   };
 }
 
@@ -312,28 +361,55 @@ export async function seedPortalProjectsIfEmpty(): Promise<{
 export async function listAllPortalProjectsFromDb(): Promise<PortalProjectItem[]> {
   try {
     const db = firestore();
-    const snap = await db.collection(COLLECTIONS.projects).get();
-    if (!snap.empty) {
-      const docs = queryData<PortalProjectItem>(snap);
-      if (docs.length > 0) {
-        return docs.map((doc) => ({
-          active: true,
-          dailyMarketingEnabled: true,
-          dailyBlogEnabled: true,
-          ...doc
-        }));
+    const projectsRef = db.collection(COLLECTIONS.projects);
+    const snap = await projectsRef.get();
+    const storedDocs = snap.empty ? [] : queryData<PortalProjectItem>(snap);
+    const storedById = new Map<string, any>(storedDocs.map((doc: any) => [doc.id, doc]));
+    const now = nowIso();
+    const writes: Promise<any>[] = [];
+
+    const projects = PORTAL_VIP_PROJECTS.map((official) => {
+      const stored = storedById.get(official.id);
+      const merged = mergeOfficialPortalProject(official, stored);
+
+      if (!stored) {
+        const newDoc = {
+          ...merged,
+          createdAt: now,
+          updatedAt: now
+        };
+        writes.push(
+          projectsRef.doc(official.id).set(cleanObject(newDoc), { merge: true }).catch((err) => {
+            console.warn(`[PortalPortfolio] Erro ao criar projeto oficial ${official.id}:`, err);
+          })
+        );
+        return newDoc;
       }
-    }
+
+      if (projectIdentityNeedsSync(stored, official)) {
+        writes.push(
+          projectsRef.doc(official.id).set(
+            cleanObject({
+              ...officialIdentityPatch(official),
+              updatedAt: now
+            }),
+            { merge: true }
+          ).catch((err) => {
+            console.warn(`[PortalPortfolio] Erro ao reparar identidade do projeto ${official.id}:`, err);
+          })
+        );
+      }
+
+      return merged;
+    });
+
+    if (writes.length) await Promise.all(writes);
+    return projects;
   } catch (err) {
     console.warn('[PortalPortfolio] Erro ao consultar Firestore projects, usando lista oficial:', err);
   }
 
-  return PORTAL_VIP_PROJECTS.map((p) => ({
-    ...p,
-    active: true,
-    dailyMarketingEnabled: true,
-    dailyBlogEnabled: true
-  }));
+  return PORTAL_VIP_PROJECTS.map((project) => mergeOfficialPortalProject(project));
 }
 
 /**
@@ -343,25 +419,52 @@ export async function getPortalProjectFromDb(idOrSlug: string): Promise<PortalPr
   const norm = String(idOrSlug || '').trim().toLowerCase();
   if (!norm) return undefined;
 
+  const official = PORTAL_VIP_PROJECTS.find(
+    (project) => project.id.toLowerCase() === norm || project.slug.toLowerCase() === norm
+  );
+  if (!official) return undefined;
+
   try {
     const db = firestore();
-    const docRef = db.collection(COLLECTIONS.projects).doc(idOrSlug);
+    const docRef = db.collection(COLLECTIONS.projects).doc(official.id);
     const snap = await docRef.get();
+
     if (snap.exists) {
-      const data = docData<PortalProjectItem>(snap);
-      if (data) return { active: true, dailyMarketingEnabled: true, dailyBlogEnabled: true, ...data };
+      const stored = docData<PortalProjectItem>(snap);
+      if (stored) {
+        if (projectIdentityNeedsSync(stored, official)) {
+          await docRef.set(
+            cleanObject({
+              ...officialIdentityPatch(official),
+              updatedAt: nowIso()
+            }),
+            { merge: true }
+          ).catch((err) => {
+            console.warn(`[PortalPortfolio] Erro ao reparar identidade individual ${official.id}:`, err);
+          });
+        }
+        return mergeOfficialPortalProject(official, stored);
+      }
     }
 
-    const bySlugSnap = await db.collection(COLLECTIONS.projects).where('slug', '==', norm).limit(1).get();
-    if (!bySlugSnap.empty) {
-      const data = docData<PortalProjectItem>(bySlugSnap.docs[0]);
-      if (data) return { active: true, dailyMarketingEnabled: true, dailyBlogEnabled: true, ...data };
-    }
+    const now = nowIso();
+    const fresh = mergeOfficialPortalProject(official, {
+      active: true,
+      dailyMarketingEnabled: true,
+      dailyBlogEnabled: true,
+      socialSettings: defaultProjectSocialSettings(official),
+      createdAt: now,
+      updatedAt: now
+    });
+    await docRef.set(cleanObject(fresh), { merge: true }).catch((err) => {
+      console.warn(`[PortalPortfolio] Erro ao criar projeto oficial ${official.id}:`, err);
+    });
+    return fresh;
   } catch (err) {
     console.warn('[PortalPortfolio] Erro ao consultar projeto individual no Firestore:', err);
   }
 
-  return PORTAL_VIP_PROJECTS.find((p) => p.id === idOrSlug || p.slug === norm);
+  return mergeOfficialPortalProject(official);
 }
 
 /**
