@@ -69,11 +69,11 @@
       "dest": "/api/index.ts"
     },
     {
-      "src": "^/(?:vitrine(?:/.*)?|blog(?:/.*)?|planos|termos|privacidade)/?$",
+      "src": "^/(?:vitrine(?:/.*)?|blog(?:/.*)?|termos|privacidade|cookies|exclusao-de-dados|apps-compliance)/?$",
       "dest": "/api/index.ts"
     },
     {
-      "src": "^/(?:dashboard|empresa|froc-ia|autopilot|criar-conteudo|criar-imagem|criar-video|criar-artigo|seo|campanhas|calendario|redes-sociais|conteudos|analytics|creditos|perfil|configuracoes|suporte|admin)/?$",
+      "src": "^/(?:dashboard|projetos|froc-ia|autopilot|criar-conteudo|criar-imagem|criar-video|criar-artigo|seo|campanhas|calendario|redes-sociais|conteudos|analytics|perfil|configuracoes|suporte|admin)/?$",
       "dest": "/api/index.ts"
     },
     {
@@ -89,6 +89,12 @@
       "headers": {
         "Cache-Control": "no-cache, max-age=0, must-revalidate"
       }
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/process",
+      "schedule": "0 10 * * *"
     }
   ]
 }
