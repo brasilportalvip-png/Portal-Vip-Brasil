@@ -145,3 +145,31 @@ test('Identidade pública e automação usam somente o domínio oficial', () => 
   assert.ok(read('src/data/portalProjects.ts').includes(officialDomain));
   assert.ok(read('index.html').includes(officialDomain));
 });
+
+
+test('Identidade central: automação e shell privado usam Portal Vip Brasil, preservando Froc.IA apenas como projeto', () => {
+  const scheduler = read('server/production/scheduler.ts');
+  const publicPages = read('server/production/publicPages.ts');
+
+  for (const legacy of [
+    '[Froc Autopilot]',
+    'Froc Autopilot criou novo conteúdo',
+    'Froc Autopilot executado',
+    "'Froc Magazine'",
+    "generatedBy: 'froc_auto_blog'"
+  ]) {
+    assert.ok(!scheduler.includes(legacy), `scheduler ainda contém identidade central legada: ${legacy}`);
+  }
+
+  assert.ok(scheduler.includes('[Portal Vip Automação]'));
+  assert.ok(scheduler.includes('Automação do Portal Vip Brasil criou novo conteúdo'));
+  assert.ok(scheduler.includes('Automação do Portal Vip Brasil executada'));
+  assert.ok(scheduler.includes("'Portal Vip Brasil Magazine'"));
+  assert.ok(scheduler.includes("generatedBy: 'portal_vip_auto_blog'"));
+
+  assert.ok(!publicPages.includes('data-froc-path'));
+  assert.ok(publicPages.includes('data-portal-path'));
+
+  // Não proíbe Froc.IA como projeto oficial; este teste é deliberadamente específico
+  // aos rótulos centrais acima.
+});

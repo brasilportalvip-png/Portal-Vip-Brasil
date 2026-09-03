@@ -668,7 +668,7 @@ export async function processAutopilot(): Promise<number> {
       }
 
       if (!allTargetsSupported || normalizedTargets.length === 0) {
-        console.warn(`[Froc Autopilot] Canais incompatíveis com o modo automático em ${doc.id}. Apenas Facebook, LinkedIn e X são suportados.`);
+        console.warn(`[Portal Vip Automação] Canais incompatíveis com o modo automático em ${doc.id}. Apenas Facebook, LinkedIn e X são suportados.`);
         continue;
       }
 
@@ -695,7 +695,7 @@ export async function processAutopilot(): Promise<number> {
       }
 
       if (!allConnectionsValid) {
-        console.warn(`[Froc Autopilot] Nem todos os canais selecionados possuem conexão ativa e válida para ${doc.id}`);
+        console.warn(`[Portal Vip Automação] Nem todos os canais selecionados possuem conexão ativa e válida para ${doc.id}`);
         continue;
       }
     }
@@ -742,10 +742,10 @@ export async function processAutopilot(): Promise<number> {
         lastRunSlot: currentSlot,
         updatedAt: nowIso()
       }, { merge: true });
-      await createNotification({ userId: ap.userId, title: 'Froc Autopilot criou novo conteúdo', message: `Novo conteúdo criado para ${company.name}${ap.mode === 'automatic' ? ' e agendado para publicação.' : ' e salvo para sua aprovação.'}`, type: 'autopilot_ready' });
+      await createNotification({ userId: ap.userId, title: 'Automação do Portal Vip Brasil criou novo conteúdo', message: `Novo conteúdo criado para ${company.name}${ap.mode === 'automatic' ? ' e agendado para publicação.' : ' e salvo para sua aprovação.'}`, type: 'autopilot_ready' });
       processed += 1;
     } catch (error) {
-      console.warn('[Froc Autopilot]', error instanceof Error ? error.message : String(error));
+      console.warn('[Portal Vip Automação]', error instanceof Error ? error.message : String(error));
     }
   }
   return processed;
@@ -781,13 +781,13 @@ async function processAutoBlog(): Promise<number> {
     const slugBase = String(article.suggestedSlug || article.title || topics[index]);
     const slug = `${slugBase.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,70)}-${today.replace(/-/g,'')}`;
     const post = {
-      id, title: String(article.title || 'Froc Magazine').slice(0, 180), slug,
+      id, title: String(article.title || 'Portal Vip Brasil Magazine').slice(0, 180), slug,
       summary: String(article.summary || article.metaDescription || '').slice(0, 500),
       content: String(article.content || '').slice(0, 120_000), featuredImageUrl: '', author: config.blog.author,
       category: String(article.category || 'Marketing & IA').slice(0, 100),
       tags: Array.isArray(article.tags) ? article.tags.slice(0, 12).map((x:any)=>String(x).slice(0,80)) : ['Marketing','IA'],
       seoTitle: String(article.title || '').slice(0, 70), seoDescription: String(article.metaDescription || article.summary || '').slice(0, 180),
-      status: 'published', publishedAt: nowIso(), createdAt: nowIso(), updatedAt: nowIso(), generatedBy: 'froc_auto_blog', modelUsed: generated.modelUsed
+      status: 'published', publishedAt: nowIso(), createdAt: nowIso(), updatedAt: nowIso(), generatedBy: 'portal_vip_auto_blog', modelUsed: generated.modelUsed
     };
     if (!post.title || !post.content) throw new Error('A IA não retornou artigo completo.');
     await db.collection(COLLECTIONS.blogPosts).doc(id).set(post);
@@ -946,7 +946,7 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
 
   await createNotification({
     userId,
-    title: 'Froc Autopilot executado',
+    title: 'Automação do Portal Vip Brasil executada',
     message: `Conteúdo gerado com sucesso para ${company.name}${ap.mode === 'automatic' ? ' e agendado.' : ' e pronto para revisão.'}`,
     type: 'autopilot_ready'
   });
