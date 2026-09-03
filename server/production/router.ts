@@ -34,7 +34,7 @@ const asyncRoute = (handler: AsyncHandler) => async (req: Request, res: Response
     const status = Number.isInteger(requestedStatus) && requestedStatus >= 400 && requestedStatus <= 599
       ? requestedStatus
       : 500;
-    if (status >= 500) console.error('[Froc API]', error);
+    if (status >= 500) console.error('[Portal Vip Brasil API]', error);
     const publicMessage = status >= 500
       ? 'Erro interno no Portal Vip Brasil.'
       : String(error?.message || 'Requisição inválida.').slice(0, 500);
