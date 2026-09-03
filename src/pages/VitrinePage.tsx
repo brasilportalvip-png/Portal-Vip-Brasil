@@ -63,7 +63,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
         setDailyStatusMessage(`Sucesso! ${res.publishedCount} publicações geradas e programadas com SEO para redes sociais.`);
       }
     } catch (err: any) {
-      setDailyStatusMessage('Executado com proteção anti-quedas de emergência.');
+      setDailyStatusMessage(`Falha: ${err?.message || 'o ciclo diário não foi confirmado pelo backend.'}`);
     } finally {
       setIsTriggeringDaily(false);
     }
@@ -171,7 +171,11 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                 )}
               </button>
               {dailyStatusMessage && (
-                <div className="text-[11px] text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-3 py-1.5 rounded-lg w-full">
+                <div className={`text-[11px] px-3 py-1.5 rounded-lg w-full border ${
+                  dailyStatusMessage.startsWith('Falha:')
+                    ? 'text-rose-300 bg-rose-950/40 border-rose-500/30'
+                    : 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30'
+                }`}>
                   {dailyStatusMessage}
                 </div>
               )}

@@ -377,13 +377,39 @@ router.post('/auth/bootstrap-admin', requireAuth, asyncRoute(async (req: Authent
 // Dashboard status
 router.get('/dashboard/status', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const companyId = safeString(req.query.companyId, 200);
-  const [seoSnap, socialSnap] = await Promise.all([
-    firestore().collection(COLLECTIONS.seoReports).where('userId','==',req.user!.id).get(),
-    firestore().collection(COLLECTIONS.socialConnections).where('userId','==',req.user!.id).get()
+  const db = firestore();
+
+  const [seoSnap, socialSnap, autopilotSnap, contentSnap] = await Promise.all([
+    db.collection(COLLECTIONS.seoReports).where('userId', '==', req.user!.id).get(),
+    db.collection(COLLECTIONS.socialConnections).where('userId', '==', req.user!.id).get(),
+    db.collection(COLLECTIONS.autopilotConfigs).where('userId', '==', req.user!.id).get(),
+    db.collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id).get()
   ]);
-  const seoReports = queryData<any>(seoSnap).filter(x=>!companyId||x.companyId===companyId);
-  const socialConnections = queryData<any>(socialSnap).filter(x=>(!companyId||x.companyId===companyId)&&x.status==='connected');
-  res.json({ hasSeoAudit:seoReports.length>0, connectedSocialCount:socialConnections.length, seoReportsCount:seoReports.length });
+
+  const matchesProject = (item: any) => !companyId || item.companyId === companyId;
+  const now = Date.now();
+
+  const seoReports = queryData<any>(seoSnap).filter(matchesProject);
+  const socialConnections = queryData<any>(socialSnap).filter((item) => {
+    if (!matchesProject(item) || item.status !== 'connected') return false;
+    if (!item.expiresAt) return true;
+    const expiresAt = new Date(item.expiresAt).getTime();
+    return Number.isFinite(expiresAt) && expiresAt > now;
+  });
+  const autopilotConfigs = queryData<any>(autopilotSnap).filter(
+    (item) => matchesProject(item) && item.enabled === true
+  );
+  const createdArticles = queryData<any>(contentSnap).filter(
+    (item) => matchesProject(item) && item.type === 'article'
+  );
+
+  res.json({
+    hasSeoAudit: seoReports.length > 0,
+    connectedSocialCount: socialConnections.length,
+    seoReportsCount: seoReports.length,
+    autopilotEnabled: autopilotConfigs.length > 0,
+    hasCreatedArticle: createdArticles.length > 0
+  });
 }));
 
 // Companies
@@ -933,10 +959,10 @@ router.post('/campaigns', requireAuth, asyncRoute(async (req: AuthenticatedReque
 
   const name = safeString(req.body?.name, 300);
   const companyId = safeString(req.body?.companyId, 200);
-  if (!name || !companyId) return res.status(400).json({ error: 'Nome e empresa são obrigatórios.' });
+  if (!name || !companyId) return res.status(400).json({ error: 'Nome e projeto são obrigatórios.' });
   await requireOwnedCompany(req.user!.id, companyId);
   const id = newId('campaign');
-  const campaign = { id, userId: req.user!.id, companyId, name, objective: safeString(req.body?.objective, 3000) || 'Reconhecimento e Conversão', targetPlatforms: stringArray(req.body?.targetPlatforms, 10), targetAudience: safeString(req.body?.targetAudience, 3000), budgetCredits: Math.max(0, Number(req.body?.budgetCredits || 0)), startDate: req.body?.startDate ? new Date(req.body.startDate).toISOString() : nowIso(), endDate: req.body?.endDate ? new Date(req.body.endDate).toISOString() : undefined, status: ['draft','pending','scheduled','active','paused','completed','failed'].includes(req.body?.status) ? req.body.status : 'draft', contentItemIds: stringArray(req.body?.contentItemIds, 200), metrics: { reach: 0, clicks: 0, leads: 0, conversions: 0, shares: 0, comments: 0 }, createdAt: nowIso(), updatedAt: nowIso() };
+  const campaign = { id, userId: req.user!.id, companyId, name, objective: safeString(req.body?.objective, 3000) || 'Reconhecimento e Conversão', targetPlatforms: stringArray(req.body?.targetPlatforms, 10), targetAudience: safeString(req.body?.targetAudience, 3000), budgetCredits: config.privatePortalMode ? 0 : Math.max(0, Number(req.body?.budgetCredits || 0)), startDate: req.body?.startDate ? new Date(req.body.startDate).toISOString() : nowIso(), endDate: req.body?.endDate ? new Date(req.body.endDate).toISOString() : undefined, status: ['draft','pending','scheduled','active','paused','completed','failed'].includes(req.body?.status) ? req.body.status : 'draft', contentItemIds: stringArray(req.body?.contentItemIds, 200), metrics: { reach: 0, clicks: 0, leads: 0, conversions: 0, shares: 0, comments: 0 }, createdAt: nowIso(), updatedAt: nowIso() };
   await firestore().collection(COLLECTIONS.campaigns).doc(id).set(cleanObject(campaign));
   res.status(201).json({ message: 'Campanha criada.', campaign });
 }));
@@ -961,7 +987,7 @@ router.patch('/campaigns/:id', requireAuth, asyncRoute(async (req: Authenticated
   if (req.body?.objective !== undefined) patch.objective = safeString(req.body.objective, 3000);
   if (req.body?.targetPlatforms !== undefined) patch.targetPlatforms = stringArray(req.body.targetPlatforms, 10);
   if (req.body?.targetAudience !== undefined) patch.targetAudience = safeString(req.body.targetAudience, 3000);
-  if (req.body?.budgetCredits !== undefined) patch.budgetCredits = Math.max(0, Number(req.body.budgetCredits || 0));
+  if (!config.privatePortalMode && req.body?.budgetCredits !== undefined) patch.budgetCredits = Math.max(0, Number(req.body.budgetCredits || 0));
   if (req.body?.startDate !== undefined) patch.startDate = new Date(req.body.startDate).toISOString();
   if (req.body?.endDate !== undefined) patch.endDate = req.body.endDate ? new Date(req.body.endDate).toISOString() : null;
   if (req.body?.status !== undefined) {
@@ -1459,65 +1485,96 @@ router.get('/blog/:slug', asyncRoute(async (req, res) => {
   if (snap.empty) return res.status(404).json({ error: 'Artigo não encontrado.' });
   res.json({ post: { id: snap.docs[0].id, ...snap.docs[0].data() } });
 }));
-function sanitizePublicVitrineCompany(company: any) {
+function sanitizePublicVitrineProject(project: any) {
   return {
-    id: company.id,
-    name: company.name,
-    slug: company.slug,
-    segment: company.segment || '',
-    niche: company.niche || '',
-    description: company.description || '',
-    logoUrl: company.logoUrl || null,
-    coverUrl: company.coverUrl || null,
-    website: company.website || null,
-    whatsapp: company.whatsapp || null,
-    instagram: company.instagram || null,
-    linkedin: company.linkedin || null,
-    facebook: company.facebook || null,
-    youtube: company.youtube || null,
-    tiktok: company.tiktok || null,
-    city: company.city || null,
-    state: company.state || null,
-    country: company.country || 'BR',
-    businessType: company.businessType || 'digital',
-    isPublicInVitrine: true,
-    updatedAt: company.updatedAt || company.createdAt || null
+    id: project.id,
+    name: project.name,
+    slug: project.slug,
+    segment: project.segment || '',
+    niche: project.category || '',
+    category: project.category || '',
+    description: project.description || '',
+    logoUrl: project.logoUrl || null,
+    coverUrl: project.bannerUrl || null,
+    website: project.websiteUrl || null,
+    playStoreUrl: project.playStoreUrl || null,
+    tagline: project.tagline || '',
+    highlights: Array.isArray(project.highlights) ? project.highlights : [],
+    keywords: Array.isArray(project.keywords) ? project.keywords : [],
+    targetAudience: project.targetAudience || '',
+    country: 'BR',
+    businessType: 'digital',
+    isPublicInVitrine: true
   };
 }
 
 router.get('/vitrine', asyncRoute(async (_req, res) => {
-  const snap = await firestore().collection(COLLECTIONS.companies).get();
-  const companies = queryData<any>(snap)
-    .filter((c) => parseStrictBoolean(c.isPublicInVitrine))
-    .map((c) => sanitizePublicVitrineCompany(c))
-    .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
-  res.json({ companies });
+  const projects = PORTAL_VIP_PROJECTS
+    .filter((project) => project.active !== false)
+    .map((project) => sanitizePublicVitrineProject(project))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
+
+  // "companies" permanece apenas como alias de compatibilidade de API.
+  res.json({ projects, companies: projects });
 }));
+
 router.get('/vitrine/:slug', asyncRoute(async (req, res) => {
   const param = safeString(req.params.slug, 200);
-  const snap = await firestore().collection(COLLECTIONS.companies).where('slug', '==', param).limit(1).get();
-  if (!snap.empty) {
-    const data = snap.docs[0].data() as any;
-    if (parseStrictBoolean(data.isPublicInVitrine)) {
-      const company = sanitizePublicVitrineCompany({ id: snap.docs[0].id, ...data });
-      return res.json({ company });
-    }
+  const project = PORTAL_VIP_PROJECTS.find(
+    (item) => item.active !== false && (item.slug === param || item.id === param)
+  );
+
+  if (!project) {
+    return res.status(404).json({ error: 'Projeto oficial não encontrado na Vitrine Pública.' });
   }
-  // Try direct document ID fallback
-  const directSnap = await firestore().collection(COLLECTIONS.companies).doc(param).get();
-  if (directSnap.exists) {
-    const data = directSnap.data() as any;
-    if (parseStrictBoolean(data.isPublicInVitrine)) {
-      const company = sanitizePublicVitrineCompany({ id: directSnap.id, ...data });
-      return res.json({ company });
-    }
-  }
-  res.status(404).json({ error: 'Empresa não encontrada ou não está visível na Vitrine Pública.' });
+
+  const publicProject = sanitizePublicVitrineProject(project);
+  res.json({ project: publicProject, company: publicProject });
 }));
 
 // Admin
-router.get('/admin/overview', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+router.get('/admin/overview', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const db = firestore();
+
+  if (config.privatePortalMode) {
+    const [contentsSnap, connectionsSnap, blogSnap] = await Promise.all([
+      db.collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id).get(),
+      db.collection(COLLECTIONS.socialConnections).where('userId', '==', req.user!.id).get(),
+      db.collection(COLLECTIONS.blogPosts).get()
+    ]);
+
+    const officialIds = new Set(PORTAL_VIP_PROJECTS.map((project) => project.id));
+    const now = Date.now();
+
+    const totalContentsGenerated = contentsSnap.docs.filter((doc) => {
+      const item = doc.data() as any;
+      return officialIds.has(String(item.companyId || ''));
+    }).length;
+
+    const totalSocialConnections = connectionsSnap.docs.filter((doc) => {
+      const item = doc.data() as any;
+      if (!officialIds.has(String(item.companyId || ''))) return false;
+      if (item.status !== 'connected') return false;
+      if (!item.expiresAt) return true;
+      const expiresAt = new Date(item.expiresAt).getTime();
+      return Number.isFinite(expiresAt) && expiresAt > now;
+    }).length;
+
+    const totalPublishedArticles = blogSnap.docs.filter(
+      (doc) => (doc.data() as any).status === 'published'
+    ).length;
+
+    return res.json({
+      stats: {
+        totalProjects: PORTAL_VIP_PROJECTS.filter((project) => project.active !== false).length,
+        totalContentsGenerated,
+        totalSocialConnections,
+        totalPublishedArticles
+      },
+      users: []
+    });
+  }
+
   const [usersSnap, companiesSnap, txSnap, contentsSnap] = await Promise.all([
     db.collection(COLLECTIONS.users).get(),
     db.collection(COLLECTIONS.companies).get(),
@@ -1525,10 +1582,25 @@ router.get('/admin/overview', requireAdmin, asyncRoute(async (_req: Authenticate
     db.collection(COLLECTIONS.contentItems).get()
   ]);
   const users = queryData<any>(usersSnap).map(({ passwordHash, ...user }) => user);
-  const totalCreditsIssued = txSnap.docs.reduce((sum, doc) => { const d = doc.data() as any; return sum + (Number(d.amount) > 0 ? Number(d.amount) : 0); }, 0);
-  res.json({ stats: { totalUsers: usersSnap.size, totalCompanies: companiesSnap.size, totalCreditsIssued, totalContentsGenerated: contentsSnap.size }, users });
+  const totalCreditsIssued = txSnap.docs.reduce((sum, doc) => {
+    const d = doc.data() as any;
+    return sum + (Number(d.amount) > 0 ? Number(d.amount) : 0);
+  }, 0);
+  res.json({
+    stats: {
+      totalUsers: usersSnap.size,
+      totalCompanies: companiesSnap.size,
+      totalCreditsIssued,
+      totalContentsGenerated: contentsSnap.size
+    },
+    users
+  });
 }));
+
 router.post('/admin/grant-credits', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  if (config.privatePortalMode) {
+    return res.status(404).json({ error: 'Créditos não fazem parte do Portal Vip Brasil privado.' });
+  }
   const userId = safeString(req.body?.userId, 200);
   const amount = Number(req.body?.amount || 0);
   const reason = safeString(req.body?.reason, 500) || 'Ajuste administrativo';

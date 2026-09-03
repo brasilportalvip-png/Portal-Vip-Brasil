@@ -25,7 +25,7 @@ import { BRAND } from '../lib/brand';
 
 const SUPPORT_EMAIL = 'brasilportalvip@gmail.com';
 const PORTAL_CANONICAL_URL = 'https://portalvipbrasil.com.br';
-const LAST_UPDATED = '02 de Setembro de 2026';
+const LAST_UPDATED = '03 de Setembro de 2026';
 
 export type LegalTabType = 'privacidade' | 'termos' | 'cookies' | 'lgpd' | 'apps-compliance';
 
@@ -141,7 +141,7 @@ Assinatura / Nome do Titular: ____________________________________`;
             <div className="pt-1 flex flex-wrap items-center gap-4 text-xs text-slate-400">
               <span>📅 Última revisão: <strong className="text-slate-200">{LAST_UPDATED}</strong></span>
               <span>•</span>
-              <span>🔒 Criptografia TLS 1.3 / HTTPS Obrigatória</span>
+              <span>🔒 Comunicação protegida por HTTPS/TLS</span>
             </div>
           </div>
 
@@ -262,9 +262,9 @@ Assinatura / Nome do Titular: ____________________________________`;
               </div>
               <ul className="text-xs space-y-1.5 text-slate-300 list-disc list-inside">
                 <li><strong className="text-white">Não vendemos seus dados:</strong> Suas informações nunca são comercializadas para terceiros, anunciantes ou corretores de dados.</li>
-                <li><strong className="text-white">Isolamento de IA:</strong> Seus prompts e dados não são utilizados para treinar modelos abertos da concorrência.</li>
-                <li><strong className="text-white">Segurança em Nuvem:</strong> Infraestrutura Google Cloud com criptografia em repouso e em trânsito (TLS 1.3).</li>
-                <li><strong className="text-white">Autonomia Total:</strong> Exclusão facilitada de conta e revogação de tokens de redes sociais a qualquer momento.</li>
+                <li><strong className="text-white">Processamento de IA:</strong> O Portal envia ao provedor configurado apenas os dados necessários à geração solicitada e não cria, a partir desses prompts, uma base pública própria de treinamento.</li>
+                <li><strong className="text-white">Segurança em Nuvem:</strong> Acesso por HTTPS/TLS, autenticação e controles de acesso no backend e no banco de dados.</li>
+                <li><strong className="text-white">Canal LGPD:</strong> Solicitações de acesso, correção ou exclusão podem ser encaminhadas ao canal oficial do Encarregado de Dados.</li>
               </ul>
             </div>
 
@@ -383,8 +383,8 @@ Assinatura / Nome do Titular: ____________________________________`;
                 Adotamos medidas técnicas e organizacionais avançadas, incluindo:
               </p>
               <ul className="list-disc list-inside space-y-1 text-xs text-slate-300">
-                <li>Comunicação 100% criptografada via protocolo HTTPS e certificados TLS 1.3 vigentes.</li>
-                <li>Isolamento estrito multi-tenant no banco de dados Cloud Firestore.</li>
+                <li>Comunicação protegida por HTTPS/TLS nas conexões servidas em produção.</li>
+                <li>Controles de acesso e isolamento por projeto no backend e nas integrações sociais.</li>
                 <li>Proteção contra ataques SSRF, injeção de código e limitação de taxa (Rate Limiting).</li>
                 <li>Armazenamento de segredos e credenciais administrativas isolados no servidor.</li>
               </ul>
@@ -449,10 +449,10 @@ Assinatura / Nome do Titular: ____________________________________`;
             <section className="space-y-3">
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <span className="w-6 h-6 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-xs font-mono">3</span>
-                <span>Cadastro, Senhas e Segurança da Conta</span>
+                <span>Acesso Administrativo, Senhas e Segurança da Conta</span>
               </h3>
               <p>
-                Para acessar determinadas áreas administrativas, o usuário deve criar uma conta com informações verídicas. O usuário é o único responsável pela guarda e confidencialidade de sua senha e por todas as atividades realizadas sob sua credencial.
+                A central administrativa do Portal Vip Brasil é privada e não oferece cadastro público. O acesso é reservado ao proprietário e a administradores previamente autorizados. Cada pessoa autorizada é responsável pela guarda e confidencialidade de sua credencial.
               </p>
             </section>
 
@@ -633,20 +633,11 @@ Assinatura / Nome do Titular: ____________________________________`;
                 <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
                   <div className="font-bold text-white text-sm flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-xs">1</span>
-                    <span>Exclusão Direta pelo Painel do Usuário</span>
+                    <span>Solicitação pelo Canal Oficial LGPD</span>
                   </div>
                   <p className="text-slate-400">
-                    Acesse a aba <strong>Meu Perfil</strong> após efetuar login e clique na opção de encerramento de conta. Todos os seus dados de projetos e briefings serão apagados da base operacional.
+                    A central administrativa privada não oferece exclusão automática da conta do proprietário pelo Perfil. Solicitações de titulares relacionadas aos serviços e aplicativos do ecossistema devem ser encaminhadas ao Encarregado de Dados pelo e-mail oficial abaixo.
                   </p>
-                  {onNavigate && (
-                    <button
-                      onClick={() => onNavigate('perfil')}
-                      className="mt-2 text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 text-xs"
-                    >
-                      <span>Ir para Meu Perfil</span>
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                 </div>
 
                 {/* Via 2: Via E-mail DPO */}
@@ -656,7 +647,7 @@ Assinatura / Nome do Titular: ____________________________________`;
                     <span>Contato Direto com o Encarregado (DPO)</span>
                   </div>
                   <p className="text-slate-400">
-                    Envie um e-mail formal solicitando a exclusão definitiva para o nosso Encarregado de Dados. Processamos e confirmamos o atendimento em até 15 dias úteis, conforme estipulado pela LGPD.
+                    Envie um e-mail formal ao nosso Encarregado de Dados. A solicitação será tratada e respondida conforme os prazos e obrigações aplicáveis da LGPD e da regulamentação vigente.
                   </p>
                   <a
                     href={`mailto:${SUPPORT_EMAIL}?subject=Solicitacao%20de%20Exclusao%20de%20Dados%20LGPD%20-%20Portal%20Vip%20Brasil`}

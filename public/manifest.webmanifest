@@ -2,21 +2,61 @@
   "id": "/",
   "name": "Portal Vip Brasil",
   "short_name": "Portal VIP",
-  "description": "Central de marketing, inteligência artificial, vitrine e divulgação do Portal Vip Brasil.",
+  "description": "Central privada de projetos, marketing automatizado, conteúdo e conexões sociais do Portal Vip Brasil.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "background_color": "#050811",
   "theme_color": "#050811",
   "orientation": "any",
-  "categories": ["productivity", "utilities", "business"],
+  "categories": [
+    "productivity",
+    "business"
+  ],
   "icons": [
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
   ],
   "shortcuts": [
-    { "name": "Portal Vip Brasil", "url": "/", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Alma Home Hub", "url": "/alma/home", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
-    { "name": "17 Agentes", "url": "/alma/agentes", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+    {
+      "name": "Meus Projetos",
+      "url": "/projetos",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Redes Sociais",
+      "url": "/redes-sociais",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Autopilot",
+      "url": "/autopilot",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
   ]
 }

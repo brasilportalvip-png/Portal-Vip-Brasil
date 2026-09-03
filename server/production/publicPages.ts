@@ -91,19 +91,19 @@ async function metaFor(pathname: string): Promise<PublicMeta> {
     try {
       const slug = decodeURIComponent(blogMatch[1]);
       const snap = await firestore().collection(COLLECTIONS.blogPosts).where('slug', '==', slug).where('status', '==', 'published').limit(1).get();
-      if (snap.empty) return { ...fallback, status: 404, title: 'Artigo não encontrado — Froc.IA', description: 'Este artigo não está disponível no Froc Magazine.' };
+      if (snap.empty) return { ...fallback, status: 404, title: 'Artigo não encontrado — Portal Vip Brasil', description: 'Este artigo não está disponível no blog do Portal Vip Brasil.' };
       const post = { id: snap.docs[0].id, ...snap.docs[0].data() } as any;
       const canonical = `${base}/blog/${encodeURIComponent(post.slug)}`;
       return {
-        title: post.seoTitle || `${post.title} — Froc Magazine`,
-        description: description(post.seoDescription || post.summary, 'Artigo do Froc Magazine.'),
+        title: post.seoTitle || `${post.title} — Portal Vip Brasil`,
+        description: description(post.seoDescription || post.summary, 'Artigo do Portal Vip Brasil.'),
         canonical, image: absolute(post.featuredImageUrl), type: 'article', status: 200,
         schema: {
           '@context': 'https://schema.org', '@type': 'Article', headline: post.title, description: post.summary || post.seoDescription,
           image: post.featuredImageUrl ? [absolute(post.featuredImageUrl)] : undefined,
           datePublished: post.publishedAt || post.createdAt, dateModified: post.updatedAt || post.publishedAt || post.createdAt,
-          author: { '@type': 'Organization', name: post.author || 'Equipe Froc.IA' },
-          publisher: { '@type': 'Organization', name: 'Froc.IA', logo: { '@type': 'ImageObject', url: `${base}/icons/icon-512.png` } },
+          author: { '@type': 'Organization', name: post.author || 'Portal Vip Brasil' },
+          publisher: { '@type': 'Organization', name: 'Portal Vip Brasil', logo: { '@type': 'ImageObject', url: `${base}/icons/icon-512.png` } },
           mainEntityOfPage: canonical
         }
       };
