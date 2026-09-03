@@ -198,7 +198,7 @@ export function createApp() {
     }
   });
 
-  // O webhook mantém semântica JSON; Mercado Pago assina metadados, não o raw body.
+  // Parsers JSON e URL-encoded com limites explícitos para a API privada.
   app.use(express.json({
     limit: '2mb',
     strict: true
@@ -218,15 +218,17 @@ export function createApp() {
   });
   app.get('/robots.txt', (_req, res) => res.type('text/plain').send(buildRobotsTxt()));
 
+  // Rotas públicas ALMA foram descontinuadas. As APIs internas /api/alma/* permanecem autenticadas.
+  app.get(/^\/alma(?:\/.*)?$/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    res.status(404).type('text/plain').send('Página não encontrada.');
+  });
+
   // Shell SEO dinâmico para páginas públicas.
   app.get(
     [
       '/',
-      '/alma',
-      '/alma/home',
-      '/alma/agentes',
-      '/alma/visao',
-      '/alma/memoria',
       '/vitrine',
       '/vitrine/:slug',
       '/blog',
@@ -279,7 +281,7 @@ export function createApp() {
   app.use('/api', productionRouter);
   app.use('/api', (_req, res) => {
     res.status(404).json({
-      error: 'Endpoint Froc.IA não encontrado.',
+      error: 'Endpoint Portal Vip Brasil não encontrado.',
       requestId: res.locals.requestId
     });
   });
@@ -292,7 +294,7 @@ export function createApp() {
 
     const status = publicErrorStatus(error);
     const requestId = String(res.locals.requestId || '');
-    console.error('[Froc API Error]', {
+    console.error('[Portal Vip Brasil API Error]', {
       requestId,
       status,
       code: sanitizeLogText(error?.code || error?.type || 'INTERNAL_ERROR'),

@@ -81,6 +81,10 @@
       "dest": "/api/index.ts"
     },
     {
+      "src": "^/alma(?:/.*)?$",
+      "dest": "/api/index.ts"
+    },
+    {
       "handle": "filesystem"
     },
     {
