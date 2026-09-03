@@ -122,15 +122,64 @@ export function isAutopilotDue(config: AutopilotScheduleConfig, referenceDate: D
   return true;
 }
 
+export type SchedulerTrigger = 'vercel_cron' | 'authorized_api' | 'social_tick' | 'internal';
+export type SchedulerCycleStatus = 'running' | 'ok' | 'degraded' | 'failed';
+
 interface SchedulerLease {
   owner: string;
   fencingToken: number;
   lockedUntil: number;
+  trigger: SchedulerTrigger;
+  startedAt: string;
 }
 
-async function acquireLock(): Promise<SchedulerLease | null> {
+export interface SchedulerPublicRuntime {
+  executionObserved: boolean;
+  totalCyclesRecorded: number;
+  lastCycleStartedAt: string | null;
+  lastCycleFinishedAt: string | null;
+  lastCycleStatus: SchedulerCycleStatus | null;
+  lastTrigger: SchedulerTrigger | null;
+  vercelCronCyclesRecorded: number;
+  lastCronStartedAt: string | null;
+  lastCronFinishedAt: string | null;
+  lastCronStatus: SchedulerCycleStatus | null;
+  legacyLastLeaseStartedAt: string | null;
+  legacyLastLeaseReleasedAt: string | null;
+  checkedAt: string;
+  error?: string;
+}
+
+const SCHEDULER_RUNTIME_DOC = 'schedulerRuntime';
+
+function safeNonNegativeInteger(value: any): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function epochToIso(value: any): string | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  const date = new Date(parsed);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function knownTrigger(value: any): SchedulerTrigger | null {
+  return ['vercel_cron', 'authorized_api', 'social_tick', 'internal'].includes(String(value))
+    ? value as SchedulerTrigger
+    : null;
+}
+
+function knownCycleStatus(value: any): SchedulerCycleStatus | null {
+  return ['running', 'ok', 'degraded', 'failed'].includes(String(value))
+    ? value as SchedulerCycleStatus
+    : null;
+}
+
+async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<SchedulerLease | null> {
   const db = firestore();
   const ref = db.collection(COLLECTIONS.schedulerLocks).doc('process');
+  const runtimeRef = db.collection(COLLECTIONS.systemSettings).doc(SCHEDULER_RUNTIME_DOC);
   const now = Date.now();
   const leaseMs = 12 * 60 * 1000;
   const owner = newId('cron');
@@ -140,14 +189,20 @@ async function acquireLock(): Promise<SchedulerLease | null> {
     const current = snap.data() as any;
     if (current?.lockedUntil && Number(current.lockedUntil) > now) return null;
 
+    const runtimeSnap = await tx.get(runtimeRef);
+    const runtime = runtimeSnap.data() as any;
+
     const currentFence = Number(current?.fencingToken || 0);
     const fencingToken = Number.isSafeInteger(currentFence) && currentFence >= 0
       ? currentFence + 1
       : 1;
+    const startedAt = nowIso();
     const lease: SchedulerLease = {
       owner,
       fencingToken,
-      lockedUntil: now + leaseMs
+      lockedUntil: now + leaseMs,
+      trigger,
+      startedAt
     };
 
     tx.set(ref, {
@@ -158,13 +213,33 @@ async function acquireLock(): Promise<SchedulerLease | null> {
       releasedAt: null
     }, { merge: true });
 
+    const runtimePatch: Record<string, any> = {
+      totalCycles: safeNonNegativeInteger(runtime?.totalCycles) + 1,
+      lastStartedAt: startedAt,
+      lastStatus: 'running',
+      lastTrigger: trigger,
+      lastCycleOwner: owner,
+      updatedAt: startedAt
+    };
+    if (trigger === 'vercel_cron') {
+      runtimePatch.vercelCronCycles = safeNonNegativeInteger(runtime?.vercelCronCycles) + 1;
+      runtimePatch.lastCronStartedAt = startedAt;
+      runtimePatch.lastCronStatus = 'running';
+    }
+    tx.set(runtimeRef, runtimePatch, { merge: true });
+
     return lease;
   });
 }
 
-async function releaseLock(lease: SchedulerLease): Promise<boolean> {
+async function releaseLock(
+  lease: SchedulerLease,
+  status: Exclude<SchedulerCycleStatus, 'running'> = 'ok',
+  errorCount = 0
+): Promise<boolean> {
   const db = firestore();
   const ref = db.collection(COLLECTIONS.schedulerLocks).doc('process');
+  const runtimeRef = db.collection(COLLECTIONS.systemSettings).doc(SCHEDULER_RUNTIME_DOC);
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
@@ -174,16 +249,90 @@ async function releaseLock(lease: SchedulerLease): Promise<boolean> {
       current?.owner === lease.owner &&
       Number(current?.fencingToken) === lease.fencingToken
     );
-
     if (!stillOwnsLock) return false;
+
+    const runtimeSnap = await tx.get(runtimeRef);
+    const runtime = runtimeSnap.data() as any;
+    const finishedAt = nowIso();
 
     tx.set(ref, {
       lockedUntil: 0,
       releasedAt: Date.now(),
       releasedBy: lease.owner
     }, { merge: true });
+
+    if (!runtime?.lastCycleOwner || runtime.lastCycleOwner === lease.owner) {
+      const runtimePatch: Record<string, any> = {
+        lastFinishedAt: finishedAt,
+        lastStatus: status,
+        lastErrorCount: safeNonNegativeInteger(errorCount),
+        updatedAt: finishedAt
+      };
+      if (lease.trigger === 'vercel_cron') {
+        runtimePatch.lastCronFinishedAt = finishedAt;
+        runtimePatch.lastCronStatus = status;
+      }
+      tx.set(runtimeRef, runtimePatch, { merge: true });
+    }
+
     return true;
   });
+}
+
+export async function getSchedulerPublicRuntime(): Promise<SchedulerPublicRuntime> {
+  const db = firestore();
+  try {
+    const [runtimeSnap, lockSnap] = await Promise.all([
+      db.collection(COLLECTIONS.systemSettings).doc(SCHEDULER_RUNTIME_DOC).get(),
+      db.collection(COLLECTIONS.schedulerLocks).doc('process').get()
+    ]);
+    const runtime = runtimeSnap.data() as any;
+    const lock = lockSnap.data() as any;
+
+    const totalCyclesRecorded = safeNonNegativeInteger(runtime?.totalCycles);
+    const vercelCronCyclesRecorded = safeNonNegativeInteger(runtime?.vercelCronCycles);
+    const legacyLastLeaseStartedAt = epochToIso(lock?.lockedAt);
+    const legacyLastLeaseReleasedAt = epochToIso(lock?.releasedAt);
+
+    return {
+      executionObserved: Boolean(
+        totalCyclesRecorded > 0 ||
+        vercelCronCyclesRecorded > 0 ||
+        legacyLastLeaseStartedAt ||
+        legacyLastLeaseReleasedAt
+      ),
+      totalCyclesRecorded,
+      lastCycleStartedAt: runtime?.lastStartedAt || null,
+      lastCycleFinishedAt: runtime?.lastFinishedAt || null,
+      lastCycleStatus: knownCycleStatus(runtime?.lastStatus),
+      lastTrigger: knownTrigger(runtime?.lastTrigger),
+      vercelCronCyclesRecorded,
+      lastCronStartedAt: runtime?.lastCronStartedAt || null,
+      lastCronFinishedAt: runtime?.lastCronFinishedAt || null,
+      lastCronStatus: knownCycleStatus(runtime?.lastCronStatus),
+      legacyLastLeaseStartedAt,
+      legacyLastLeaseReleasedAt,
+      checkedAt: nowIso()
+    };
+  } catch (err: any) {
+    return {
+      executionObserved: false,
+      totalCyclesRecorded: 0,
+      lastCycleStartedAt: null,
+      lastCycleFinishedAt: null,
+      lastCycleStatus: null,
+      lastTrigger: null,
+      vercelCronCyclesRecorded: 0,
+      lastCronStartedAt: null,
+      lastCronFinishedAt: null,
+      lastCronStatus: null,
+      legacyLastLeaseStartedAt: null,
+      legacyLastLeaseReleasedAt: null,
+      checkedAt: nowIso(),
+      error: 'Falha ao consultar telemetria do scheduler: ' +
+        (err?.message ? String(err.message).slice(0, 200) : 'Erro desconhecido')
+    };
+  }
 }
 
 export async function recoverStalePublishingPosts(staleThresholdMinutes = 15): Promise<number> {
@@ -812,11 +961,12 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
   };
 }
 
-export async function processSchedulerTick() {
-  const lease = await acquireLock();
+export async function processSchedulerTick(options: { trigger?: SchedulerTrigger } = {}) {
+  const lease = await acquireLock(options.trigger || 'internal');
   if (!lease) return { skipped: true, reason: 'Outro ciclo já está em execução.' };
 
   const errors: Record<string, string> = {};
+  let finalStatus: Exclude<SchedulerCycleStatus, 'running'> = 'ok';
   let recoveredPublishing = 0;
   let scheduledPosts = 0;
   let videoJobs: { checked: number; completed: number; failed: number } | number = 0;
@@ -886,6 +1036,7 @@ export async function processSchedulerTick() {
       console.error('[Scheduler] Erro em processAutoBlog:', err);
     }
 
+    finalStatus = Object.keys(errors).length > 0 ? 'degraded' : 'ok';
     return {
       skipped: false,
       recoveredPublishing,
@@ -898,8 +1049,11 @@ export async function processSchedulerTick() {
       errors: Object.keys(errors).length > 0 ? errors : undefined,
       processedAt: nowIso()
     };
+  } catch (error) {
+    finalStatus = 'failed';
+    throw error;
   } finally {
-    await releaseLock(lease);
+    await releaseLock(lease, finalStatus, Object.keys(errors).length);
   }
 }
 
@@ -991,7 +1145,7 @@ export async function processSocialTick(): Promise<{
   error?: string;
   processedAt: string;
 }> {
-  const lease = await acquireLock();
+  const lease = await acquireLock('social_tick');
   if (!lease) {
     return {
       skipped: true,
@@ -1002,6 +1156,7 @@ export async function processSocialTick(): Promise<{
     };
   }
 
+  let socialStatus: Exclude<SchedulerCycleStatus, 'running'> = 'ok';
   try {
     const recoveredPublishing = await recoverStalePublishingPosts(15);
     const scheduledPosts = await processScheduledPosts();
@@ -1012,6 +1167,7 @@ export async function processSocialTick(): Promise<{
       processedAt: nowIso()
     };
   } catch (err: any) {
+    socialStatus = 'degraded';
     return {
       skipped: false,
       recoveredPublishing: 0,
@@ -1020,6 +1176,6 @@ export async function processSocialTick(): Promise<{
       processedAt: nowIso()
     };
   } finally {
-    await releaseLock(lease);
+    await releaseLock(lease, socialStatus, socialStatus === 'ok' ? 0 : 1);
   }
 }

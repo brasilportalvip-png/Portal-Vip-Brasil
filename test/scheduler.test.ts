@@ -5,6 +5,8 @@ import {
   processScheduledPosts,
   recoverStalePublishingPosts,
   getSchedulerHealth,
+  getSchedulerPublicRuntime,
+  processSocialTick,
   isAutopilotDue,
   getLocalDateAndHour,
   type AutopilotScheduleConfig
@@ -83,4 +85,53 @@ test('Scheduler: health expõe filas e cron secret sem dados falsos', async () =
   assert.equal(health.status, 'ok');
   assert.equal(health.queueStats?.scheduledPending, 1);
   assert.equal(typeof health.cronSecretConfigured, 'boolean');
+});
+
+
+test('Scheduler: telemetria pública registra ciclos sem expor segredo', async () => {
+  resetMemoryDb();
+
+  const before = await getSchedulerPublicRuntime();
+  assert.equal(before.executionObserved, false);
+  assert.equal(before.totalCyclesRecorded, 0);
+  assert.equal(before.lastCronStartedAt, null);
+
+  const tick = await processSocialTick();
+  assert.equal(tick.skipped, false);
+
+  const runtime = await getSchedulerPublicRuntime();
+  assert.equal(runtime.executionObserved, true);
+  assert.equal(runtime.totalCyclesRecorded, 1);
+  assert.equal(runtime.lastTrigger, 'social_tick');
+  assert.equal(runtime.lastCycleStatus, 'ok');
+  assert.equal(typeof runtime.lastCycleStartedAt, 'string');
+  assert.equal(typeof runtime.lastCycleFinishedAt, 'string');
+  assert.equal(runtime.vercelCronCyclesRecorded, 0);
+  assert.equal(runtime.lastCronStartedAt, null);
+
+  const serialized = JSON.stringify(runtime).toLowerCase();
+  assert.ok(!serialized.includes('cron_secret'));
+  assert.ok(!serialized.includes('authorization'));
+  assert.ok(!serialized.includes('bearer '));
+});
+
+test('Scheduler: telemetria reconhece evidência legada do lock sem inventar sucesso', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const started = Date.now() - 60_000;
+  const released = Date.now() - 30_000;
+
+  await db.collection(COLLECTIONS.schedulerLocks).doc('process').set({
+    lockedAt: started,
+    lockedUntil: 0,
+    releasedAt: released,
+    fencingToken: 3
+  });
+
+  const runtime = await getSchedulerPublicRuntime();
+  assert.equal(runtime.executionObserved, true);
+  assert.equal(runtime.totalCyclesRecorded, 0);
+  assert.equal(runtime.lastCycleStatus, null);
+  assert.equal(runtime.legacyLastLeaseStartedAt, new Date(started).toISOString());
+  assert.equal(runtime.legacyLastLeaseReleasedAt, new Date(released).toISOString());
 });
