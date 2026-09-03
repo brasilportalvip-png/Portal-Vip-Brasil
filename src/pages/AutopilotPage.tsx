@@ -5,6 +5,7 @@ import { apiRequest } from '../lib/api';
 
 interface Props {
   selectedCompany: Company | null;
+  onRefreshContents: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
 }
 
@@ -29,7 +30,7 @@ const channels = [
   { name: 'Pinterest', direct: false }
 ];
 
-export const AutopilotPage: React.FC<Props> = ({ selectedCompany, onNavigate }) => {
+export const AutopilotPage: React.FC<Props> = ({ selectedCompany, onRefreshContents, onNavigate }) => {
   const [cfg, setCfg] = useState<AutopilotConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -89,8 +90,19 @@ export const AutopilotPage: React.FC<Props> = ({ selectedCompany, onNavigate }) 
     if (!selectedCompany) return;
     setLoading(true); setMessage('');
     try {
-      await apiRequest('/api/autopilot/trigger-now', { method: 'POST', body: { companyId: selectedCompany.id } });
-      setMessage('Ciclo executado. O conteúdo foi gerado para este projeto.');
+      const data = await apiRequest<{
+        result?: { success?: boolean; contentId?: string; message?: string };
+      }>('/api/autopilot/trigger-now', {
+        method: 'POST',
+        body: { companyId: selectedCompany.id }
+      });
+
+      if (!data?.result?.success || !data.result.contentId) {
+        throw new Error(data?.result?.message || 'O ciclo terminou sem comprovar a gravação do conteúdo.');
+      }
+
+      await onRefreshContents();
+      setMessage(data.result.message || 'Conteúdo gerado com sucesso e salvo para aprovação.');
     } catch (error: any) {
       setMessage(error.message || 'Falha ao executar o ciclo.');
     } finally { setLoading(false); }

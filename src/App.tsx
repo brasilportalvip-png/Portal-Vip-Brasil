@@ -198,7 +198,7 @@ export function App() {
   const refreshContents = useCallback(async () => {
     if (!user || !selectedCompany) return;
     try {
-      const data = await apiRequest<{ items: ContentItem[] }>(`/api/contents?companyId=${encodeURIComponent(selectedCompany.id)}`);
+      const data = await apiRequest<{ items: ContentItem[] }>(`/api/content?companyId=${encodeURIComponent(selectedCompany.id)}`);
       if (Array.isArray(data?.items)) setContentItems(data.items);
     } catch (err) {
       if (!isApiAbortError(err)) console.warn('Erro ao carregar conteúdos:', err);
@@ -314,6 +314,11 @@ export function App() {
       ? 'dashboard'
       : currentTab;
 
+  useEffect(() => {
+    if (guardedTab !== 'conteudos' || !user || !selectedCompany) return;
+    void refreshContents();
+  }, [guardedTab, refreshContents, selectedCompany, user]);
+
   const needsTermsConsent = Boolean(
     user && (
       !user.termsAcceptedAt ||
@@ -378,6 +383,7 @@ export function App() {
         return (
           <AutopilotPage
             selectedCompany={selectedCompany}
+            onRefreshContents={refreshContents}
             onNavigate={navigate}
           />
         );
