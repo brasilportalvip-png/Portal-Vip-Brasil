@@ -27,7 +27,6 @@ import { CalendarPage } from './pages/CalendarPage';
 import { SocialNetworksPage } from './pages/SocialNetworksPage';
 import { ContentsLibraryPage } from './pages/ContentsLibraryPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
-import { CreditsPage } from './pages/CreditsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { SupportPage } from './pages/SupportPage';
 import { LegalPage } from './pages/LegalPage';
@@ -36,13 +35,14 @@ import { AdminPage } from './pages/AdminPage';
 import type { Campaign, Company, ContentItem, ScheduledPost, User, Wallet } from './types';
 import { ApiRequestError, apiRequest, isApiAbortError } from './lib/api';
 import { auth } from './lib/firebase';
+import { initialPortalProject, PORTAL_PROJECT_COMPANIES } from './lib/portalProjectAdapter';
 
 const TAB_PATH: Record<string, string> = {
   home: '/',
   vitrine: '/vitrine',
   blog: '/blog',
   dashboard: '/dashboard',
-  empresa: '/empresa',
+  projetos: '/projetos',
   'froc-ia': '/froc-ia',
   autopilot: '/autopilot',
   'criar-conteudo': '/criar-conteudo',
@@ -55,8 +55,6 @@ const TAB_PATH: Record<string, string> = {
   'redes-sociais': '/redes-sociais',
   conteudos: '/conteudos',
   analytics: '/analytics',
-  planos: '/planos',
-  creditos: '/creditos',
   perfil: '/perfil',
   suporte: '/suporte',
   legal: '/termos',
@@ -79,7 +77,12 @@ const TAB_ALIASES: Record<string, string> = {
   terms: 'termos',
   'exclusao-dados': 'exclusao-de-dados',
   'data-deletion': 'exclusao-de-dados',
-  'direitos-lgpd': 'lgpd'
+  'direitos-lgpd': 'lgpd',
+  empresa: 'projetos',
+  company: 'projetos',
+  companies: 'projetos',
+  planos: 'dashboard',
+  creditos: 'dashboard'
 };
 
 const PUBLIC_TABS = new Set([
@@ -128,8 +131,8 @@ export function App() {
   const [currentTab, setCurrentTab] = useState<string>(() => routeFromPath(window.location.pathname).tab);
   const [user, setUser] = useState<User | null>(null);
   const [wallet, setWallet] = useState<Wallet | null>(null);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [companies, setCompanies] = useState<Company[]>(PORTAL_PROJECT_COMPANIES);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(() => initialPortalProject());
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
@@ -153,8 +156,8 @@ export function App() {
     tenantControllerRef.current?.abort();
     setUser(null);
     setWallet(null);
-    setCompanies([]);
-    setSelectedCompany(null);
+    setCompanies(PORTAL_PROJECT_COMPANIES);
+    setSelectedCompany((current) => current || initialPortalProject());
     setCampaigns([]);
     setScheduledPosts([]);
     setContentItems([]);
@@ -238,23 +241,13 @@ export function App() {
     }
   }, [selectedCompany, user]);
 
-  const refreshCompanies = useCallback(async (signal?: AbortSignal, epoch?: number) => {
-    if (!user) return;
-    try {
-      const data = await apiRequest<{ companies: Company[] }>('/api/companies', { signal });
-      if (typeof epoch === 'number' && epoch !== sessionEpochRef.current) return;
-      const list = Array.isArray(data?.companies) ? data.companies : [];
-      setCompanies(list);
-      setSelectedCompany((prev) => {
-        if (!list.length) return null;
-        if (!prev) return list[0];
-        const match = list.find((c) => c.id === prev.id);
-        return match || list[0];
-      });
-    } catch (err) {
-      if (!isApiAbortError(err)) console.warn('Erro ao carregar empresas:', err);
-    }
-  }, [user]);
+  const refreshCompanies = useCallback(async (_signal?: AbortSignal, _epoch?: number) => {
+    setCompanies(PORTAL_PROJECT_COMPANIES);
+    setSelectedCompany((current) => {
+      if (current && PORTAL_PROJECT_COMPANIES.some((project) => project.id === current.id)) return current;
+      return initialPortalProject();
+    });
+  }, []);
 
   const reloadSession = useCallback(async () => {
     if (!auth.currentUser) return;
@@ -269,6 +262,7 @@ export function App() {
 
   const handleSelectCompany = useCallback((company: Company) => {
     setSelectedCompany(company);
+    try { localStorage.setItem('portal_vip_selected_project', company.id); } catch {}
   }, []);
 
   useEffect(() => {
@@ -388,7 +382,7 @@ export function App() {
             onOpenAuth={() => setAuthOpen(true)}
           />
         );
-      case 'empresa':
+      case 'projetos':
         return (
           <MyCompanyPage
             companies={companies}
@@ -503,10 +497,6 @@ export function App() {
             onNavigate={navigate}
           />
         );
-      case 'creditos':
-        return <CreditsPage wallet={wallet} onRefreshWallet={refreshWallet} onNavigate={navigate} />;
-      case 'planos':
-        return <CreditsPage wallet={wallet} onRefreshWallet={refreshWallet} onNavigate={navigate} />;
       case 'perfil':
         return <ProfilePage user={user} wallet={wallet} onRefreshUser={reloadSession} onNavigate={navigate} />;
       case 'suporte':
