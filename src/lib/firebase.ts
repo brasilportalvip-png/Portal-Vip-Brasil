@@ -58,7 +58,7 @@ if (envHasAnyRequiredField && !envIsComplete) {
   );
 
   throw new Error(
-    `[Froc Firebase] Configuração VITE_FIREBASE_* incompleta. Campos ausentes: ${missing.join(', ')}.`
+    `[Portal Vip Firebase] Configuração VITE_FIREBASE_* incompleta. Campos ausentes: ${missing.join(', ')}.`
   );
 }
 
@@ -77,7 +77,7 @@ if (envIsComplete) {
 
   if (mismatches.length > 0) {
     throw new Error(
-      `[Froc Firebase] Configuração rejeitada: os campos ${mismatches.join(', ')} não pertencem ao projeto oficial.`
+      `[Portal Vip Firebase] Configuração rejeitada: os campos ${mismatches.join(', ')} não pertencem ao projeto oficial.`
     );
   }
 }
@@ -101,7 +101,7 @@ if (
   existingApp.options.projectId !== firebaseConfig.projectId
 ) {
   throw new Error(
-    '[Froc Firebase] Já existe uma instância Firebase ligada a outro projeto.'
+    '[Portal Vip Firebase] Já existe uma instância Firebase ligada a outro projeto.'
   );
 }
 
@@ -124,53 +124,59 @@ googleAuthProvider.setCustomParameters({
 
 export const firebaseProjectId = firebaseConfig.projectId;
 
-const ANALYTICS_CONSENT_KEY = 'froc.analytics.consent.v1';
+const PORTAL_ANALYTICS_CONSENT_KEY = 'portal_vip.analytics.consent.v1';
+const LEGACY_ANALYTICS_CONSENT_KEY = 'froc.analytics.consent.v1';
 
-type StoredAnalyticsConsent = 'granted' | 'denied' | 'unknown';
+export type AnalyticsConsentState = 'granted' | 'denied' | 'unknown';
 
 export let analytics: Analytics | null = null;
 let analyticsInitialization: Promise<Analytics | null> | null = null;
 
-function readStoredAnalyticsConsent(): StoredAnalyticsConsent {
+export function getPortalAnalyticsConsent(): AnalyticsConsentState {
   if (typeof window === 'undefined') return 'unknown';
 
   try {
-    const value = window.localStorage.getItem(ANALYTICS_CONSENT_KEY);
-    return value === 'granted' || value === 'denied' ? value : 'unknown';
+    const current = window.localStorage.getItem(PORTAL_ANALYTICS_CONSENT_KEY);
+    if (current === 'granted' || current === 'denied') return current;
+
+    // Migração transparente: respeita decisão já salva sem reativar coleta indevidamente.
+    const legacy = window.localStorage.getItem(LEGACY_ANALYTICS_CONSENT_KEY);
+    if (legacy === 'granted' || legacy === 'denied') {
+      window.localStorage.setItem(PORTAL_ANALYTICS_CONSENT_KEY, legacy);
+      window.localStorage.removeItem(LEGACY_ANALYTICS_CONSENT_KEY);
+      return legacy;
+    }
   } catch {
-    return 'unknown';
+    // Sem armazenamento disponível, a decisão permanece desconhecida.
   }
+
+  return 'unknown';
 }
 
-function storeAnalyticsConsent(
-  value: Exclude<StoredAnalyticsConsent, 'unknown'>
+function storePortalAnalyticsConsent(
+  value: Exclude<AnalyticsConsentState, 'unknown'>
 ): void {
   if (typeof window === 'undefined') return;
 
   try {
-    window.localStorage.setItem(ANALYTICS_CONSENT_KEY, value);
+    window.localStorage.setItem(PORTAL_ANALYTICS_CONSENT_KEY, value);
+    window.localStorage.removeItem(LEGACY_ANALYTICS_CONSENT_KEY);
   } catch {
-    // Em navegadores que bloqueiam armazenamento,
-    // a decisão vale apenas na sessão atual.
+    // Em navegadores que bloqueiam armazenamento, a decisão vale na sessão atual.
   }
 }
 
 async function initializeAnalyticsAfterConsent(): Promise<Analytics | null> {
-  if (typeof window === 'undefined' || !firebaseConfig.measurementId) {
-    return null;
-  }
-
+  if (typeof window === 'undefined' || !firebaseConfig.measurementId) return null;
   if (analytics) return analytics;
   if (analyticsInitialization) return analyticsInitialization;
 
   analyticsInitialization = (async () => {
     try {
       if (!(await isSupported())) return null;
-
       const instance = getAnalytics(app);
       setAnalyticsCollectionEnabled(instance, true);
       analytics = instance;
-
       return instance;
     } catch {
       return null;
@@ -184,41 +190,37 @@ async function initializeAnalyticsAfterConsent(): Promise<Analytics | null> {
 
 /**
  * Único ponto autorizado para ativar ou revogar métricas opcionais.
- * Sem uma chamada explícita com `true`, o Analytics permanece desligado.
+ * Primeiro acesso permanece sem coleta até uma escolha explícita.
  */
-export async function setFrocAnalyticsConsent(
+export async function setPortalAnalyticsConsent(
   granted: boolean
 ): Promise<Analytics | null> {
-  storeAnalyticsConsent(granted ? 'granted' : 'denied');
+  storePortalAnalyticsConsent(granted ? 'granted' : 'denied');
 
   if (!granted) {
-    if (analytics) {
-      setAnalyticsCollectionEnabled(analytics, false);
-    }
-
+    if (analytics) setAnalyticsCollectionEnabled(analytics, false);
     return null;
   }
 
   return initializeAnalyticsAfterConsent();
 }
 
-export function hasFrocAnalyticsConsent(): boolean {
-  return readStoredAnalyticsConsent() === 'granted';
+export function hasPortalAnalyticsConsent(): boolean {
+  return getPortalAnalyticsConsent() === 'granted';
 }
 
 export async function trackAnalyticsEvent(
   name: string,
   parameters: Record<string, string | number | boolean> = {}
 ): Promise<boolean> {
-  if (!hasFrocAnalyticsConsent()) return false;
+  if (!hasPortalAnalyticsConsent()) return false;
   const instance = analytics || await initializeAnalyticsAfterConsent();
   if (!instance) return false;
   logEvent(instance, name, parameters);
   return true;
 }
 
-// Reativa somente uma decisão positiva salva anteriormente. Primeiro acesso,
-// ausência de consentimento ou armazenamento indisponível mantêm coleta desligada.
-if (hasFrocAnalyticsConsent()) {
+// Reativa somente uma decisão positiva previamente registrada.
+if (hasPortalAnalyticsConsent()) {
   void initializeAnalyticsAfterConsent();
 }

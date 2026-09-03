@@ -13,14 +13,12 @@ import {
   ArrowRight,
   FolderPlus
 } from 'lucide-react';
-import { Company, Wallet, ContentItem } from '../types';
+import { Company, ContentItem } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface CreateContentPageProps {
   companies: Company[];
   selectedCompany: Company | null;
-  wallet: Wallet | null;
-  onRefreshWallet: () => void;
   onRefreshContents?: () => void;
   onNavigate: (tab: string) => void;
 }
@@ -28,8 +26,6 @@ interface CreateContentPageProps {
 export const CreateContentPage: React.FC<CreateContentPageProps> = ({
   companies,
   selectedCompany,
-  wallet,
-  onRefreshWallet,
   onRefreshContents,
   onNavigate
 }) => {

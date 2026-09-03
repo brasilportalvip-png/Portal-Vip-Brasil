@@ -4,6 +4,7 @@ import { AuthModal } from './components/AuthModal';
 import { TermsConsentModal } from './components/TermsConsentModal';
 import { OfflineBanner } from './components/OfflineBanner';
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
+import { AnalyticsConsentBanner } from './components/AnalyticsConsentBanner';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
 import { MobileTopBar } from './components/MobileTopBar';
@@ -32,7 +33,7 @@ import { SupportPage } from './pages/SupportPage';
 import { LegalPage } from './pages/LegalPage';
 import { AdminPage } from './pages/AdminPage';
 
-import type { Campaign, Company, ContentItem, ScheduledPost, User, Wallet } from './types';
+import type { Campaign, Company, ContentItem, ScheduledPost, User } from './types';
 import { ApiRequestError, apiRequest, isApiAbortError } from './lib/api';
 import { auth } from './lib/firebase';
 import { initialPortalProject, PORTAL_PROJECT_COMPANIES } from './lib/portalProjectAdapter';
@@ -125,7 +126,6 @@ function isPrivateTab(tab: string): boolean {
 export function App() {
   const [currentTab, setCurrentTab] = useState<string>(() => routeFromPath(window.location.pathname).tab);
   const [user, setUser] = useState<User | null>(null);
-  const [wallet, setWallet] = useState<Wallet | null>(null);
   const [companies, setCompanies] = useState<Company[]>(PORTAL_PROJECT_COMPANIES);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(() => initialPortalProject());
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -150,7 +150,6 @@ export function App() {
     sessionControllerRef.current?.abort();
     tenantControllerRef.current?.abort();
     setUser(null);
-    setWallet(null);
     setCompanies(PORTAL_PROJECT_COMPANIES);
     setSelectedCompany((current) => current || initialPortalProject());
     setCampaigns([]);
@@ -196,10 +195,6 @@ export function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [commitNavigation]);
 
-  const refreshWallet = useCallback(async () => {
-    setWallet(null);
-  }, []);
-
   const refreshContents = useCallback(async () => {
     if (!user || !selectedCompany) return;
     try {
@@ -241,9 +236,8 @@ export function App() {
   const reloadSession = useCallback(async () => {
     if (!auth.currentUser) return;
     try {
-      const data = await apiRequest<{ user: User; wallet?: Wallet | null }>('/api/auth/me');
+      const data = await apiRequest<{ user: User }>('/api/auth/me');
       if (data?.user) setUser(data.user);
-      setWallet(null);
     } catch (err) {
       if (!isApiAbortError(err)) console.warn('Erro ao recarregar sessão:', err);
     }
@@ -262,7 +256,7 @@ export function App() {
           const epoch = ++sessionEpochRef.current;
           sessionControllerRef.current = controller;
 
-          const data = await apiRequest<{ user: User; wallet?: Wallet | null }>('/api/auth/me', {
+          const data = await apiRequest<{ user: User }>('/api/auth/me', {
             signal: controller.signal,
             timeoutMs: 12_000
           });
@@ -270,7 +264,6 @@ export function App() {
 
           if (data?.user) {
             setUser(data.user);
-            setWallet(null);
             await refreshCompanies(controller.signal, epoch);
           }
         } catch (err) {
@@ -336,6 +329,7 @@ export function App() {
       <div className="min-h-screen bg-[#070B14] text-slate-100 selection:bg-cyan-500 selection:text-black">
         <OfflineBanner />
         <PwaInstallPrompt />
+        <AnalyticsConsentBanner />
         <BlogPortalPage onNavigate={navigate} onOpenAuth={() => setAuthOpen(true)} user={user} />
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} onSuccess={authSuccess} />
         <TermsConsentModal isOpen={needsTermsConsent} onConsentSuccess={authSuccess} onLogout={logout} />
@@ -349,6 +343,7 @@ export function App() {
       <div className="min-h-screen bg-[#070B14] text-slate-100 selection:bg-cyan-500 selection:text-black">
         <OfflineBanner />
         <PwaInstallPrompt />
+        <AnalyticsConsentBanner />
         <VitrinePage onNavigate={navigate} />
         <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} onSuccess={authSuccess} />
         <TermsConsentModal isOpen={needsTermsConsent} onConsentSuccess={authSuccess} onLogout={logout} />
@@ -363,7 +358,6 @@ export function App() {
         return (
           <DashboardPage
             user={user}
-            wallet={wallet}
             selectedCompany={selectedCompany}
             campaigns={campaigns}
             scheduledPosts={scheduledPosts}
@@ -384,7 +378,6 @@ export function App() {
         return (
           <AutopilotPage
             selectedCompany={selectedCompany}
-            wallet={wallet}
             onNavigate={navigate}
           />
         );
@@ -393,8 +386,6 @@ export function App() {
           <CreateContentPage
             companies={companies}
             selectedCompany={selectedCompany}
-            wallet={wallet}
-            onRefreshWallet={refreshWallet}
             onRefreshContents={refreshContents}
             onNavigate={navigate}
           />
@@ -403,8 +394,6 @@ export function App() {
         return (
           <CreateImagePage
             selectedCompany={selectedCompany}
-            wallet={wallet}
-            onRefreshWallet={refreshWallet}
             onRefreshContents={refreshContents}
             onNavigate={navigate}
           />
@@ -413,8 +402,6 @@ export function App() {
         return (
           <CreateVideoPage
             selectedCompany={selectedCompany}
-            wallet={wallet}
-            onRefreshWallet={refreshWallet}
             onRefreshContents={refreshContents}
             onNavigate={navigate}
           />
@@ -423,8 +410,6 @@ export function App() {
         return (
           <CreateArticlePage
             selectedCompany={selectedCompany}
-            wallet={wallet}
-            onRefreshWallet={refreshWallet}
             onRefreshContents={refreshContents}
             onNavigate={navigate}
           />
@@ -433,16 +418,12 @@ export function App() {
         return (
           <SeoPage
             selectedCompany={selectedCompany}
-            wallet={wallet}
-            onRefreshWallet={refreshWallet}
           />
         );
       case 'froc-ia':
         return (
           <FrocIaPage
             selectedCompany={selectedCompany}
-            wallet={wallet}
-            onRefreshWallet={refreshWallet}
             onNavigate={navigate}
           />
         );
@@ -480,14 +461,13 @@ export function App() {
         return (
           <AnalyticsPage
             selectedCompany={selectedCompany}
-            wallet={wallet}
             campaigns={campaigns}
             scheduledPosts={scheduledPosts}
             onNavigate={navigate}
           />
         );
       case 'perfil':
-        return <ProfilePage user={user} wallet={wallet} onRefreshUser={reloadSession} onNavigate={navigate} />;
+        return <ProfilePage user={user} onRefreshUser={reloadSession} onNavigate={navigate} />;
       case 'suporte':
         return <SupportPage onNavigate={navigate} />;
       case 'legal':
@@ -504,7 +484,6 @@ export function App() {
         return (
           <DashboardPage
             user={user}
-            wallet={wallet}
             selectedCompany={selectedCompany}
             campaigns={campaigns}
             scheduledPosts={scheduledPosts}
@@ -519,6 +498,7 @@ export function App() {
     <div className="min-h-screen bg-[#070B14] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-black">
       <OfflineBanner />
       <PwaInstallPrompt />
+      <AnalyticsConsentBanner />
 
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
@@ -526,7 +506,6 @@ export function App() {
           currentTab={guardedTab}
           onSelectTab={navigate}
           user={user}
-          wallet={wallet}
           selectedCompany={selectedCompany}
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
@@ -538,7 +517,6 @@ export function App() {
       <div className="hidden lg:block">
         <Header
           user={user}
-          wallet={wallet}
           companies={companies}
           selectedCompany={selectedCompany}
           onSelectCompany={handleSelectCompany}
@@ -552,7 +530,6 @@ export function App() {
       {/* Mobile Top Bar */}
       <MobileTopBar
         user={user}
-        wallet={wallet}
         menuOpen={mobileMenuOpen}
         onToggleMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
         onOpenAuth={() => setAuthOpen(true)}

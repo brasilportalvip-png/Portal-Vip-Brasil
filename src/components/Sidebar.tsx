@@ -1,13 +1,12 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, FolderOpen, LayoutDashboard, Settings, Share2, ShieldAlert, Sparkles, type LucideIcon } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
-import type { Company, User as UserType, Wallet } from '../types';
+import type { Company, User as UserType } from '../types';
 
 interface SidebarProps {
   currentTab: string;
   onSelectTab: (tab: string) => void;
   user: UserType | null;
-  wallet?: Wallet | null;
   selectedCompany?: Company | null;
   isCollapsed: boolean;
   onToggleCollapse: () => void;

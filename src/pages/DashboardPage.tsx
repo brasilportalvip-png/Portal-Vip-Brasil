@@ -24,12 +24,11 @@ import {
 } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
 import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND } from '../data/portalProjects';
-import type { Campaign, Company, ScheduledPost, User, Wallet } from '../types';
+import type { Campaign, Company, ScheduledPost, User } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface Props {
   user: User | null;
-  wallet: Wallet | null;
   selectedCompany: Company | null;
   campaigns: Campaign[];
   scheduledPosts: ScheduledPost[];
@@ -39,7 +38,6 @@ interface Props {
 
 export const DashboardPage: React.FC<Props> = ({
   user,
-  wallet,
   selectedCompany,
   campaigns,
   scheduledPosts,

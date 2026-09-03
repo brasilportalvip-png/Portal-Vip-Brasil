@@ -10,21 +10,17 @@ import {
   ArrowRight,
   BookOpen
 } from 'lucide-react';
-import { Company, Wallet } from '../types';
+import { Company } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface CreateArticlePageProps {
   selectedCompany: Company | null;
-  wallet: Wallet | null;
-  onRefreshWallet: () => void;
   onRefreshContents?: () => void;
   onNavigate: (tab: string) => void;
 }
 
 export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
   selectedCompany,
-  wallet,
-  onRefreshWallet,
   onRefreshContents,
   onNavigate
 }) => {
@@ -169,7 +165,7 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
                 type="text"
                 value={targetAudience}
                 onChange={(e) => setTargetAudience(e.target.value)}
-                placeholder="Ex: Proprietários de pequenas projetos e gestores"
+                placeholder="Ex: Proprietários de pequenos projetos e gestores"
                 className="w-full bg-[#1E293B] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
               />
             </div>
@@ -182,7 +178,7 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
                 className="w-full bg-[#1E293B] border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-cyan-400"
               >
                 <option value="Educativo, Autoritário e Otimizado para SEO">Educativo, Autoritário & SEO</option>
-                <option value="Jornalístico / Revista Digital">Jornalístico / Froc Magazine</option>
+                <option value="Jornalístico / Revista Digital">Jornalístico / Portal Vip Brasil</option>
                 <option value="Técnico e Analítico Passo a Passo">Técnico & Analítico Passo a Passo</option>
                 <option value="Persuasivo com Foco em Vendas">Persuasivo com Foco em Vendas</option>
               </select>
@@ -292,7 +288,7 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
               <BookOpen size={40} className="mb-3 text-slate-600" />
               <h4 className="text-sm font-semibold text-slate-400">Nenhum artigo produzido ainda</h4>
               <p className="text-xs text-slate-500 max-w-sm mt-1">
-                Configure o tema e a palavra-chave ao lado para gerar artigos de autoridade para o blog da sua projeto ou portal Froc Magazine.
+                Configure o tema e a palavra-chave ao lado para gerar artigos de autoridade para o blog do seu projeto ou do Portal Vip Brasil.
               </p>
             </div>
           )}

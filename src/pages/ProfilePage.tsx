@@ -3,9 +3,9 @@ import { Calendar, KeyRound, Mail, Save, ShieldCheck, User as UserIcon } from 'l
 import { EmailAuthProvider, reauthenticateWithCredential, updatePassword, updateProfile } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { apiRequest } from '../lib/api';
-import type { User, Wallet } from '../types';
+import type { User } from '../types';
 
-interface Props { user: User | null; wallet: Wallet | null; onRefreshUser: () => void; onNavigate: (tab: string) => void; }
+interface Props { user: User | null; onRefreshUser: () => void; onNavigate: (tab: string) => void; }
 export const ProfilePage: React.FC<Props> = ({ user, onRefreshUser }) => {
   const [name, setName] = useState(user?.name || '');
   const [currentPassword, setCurrentPassword] = useState('');

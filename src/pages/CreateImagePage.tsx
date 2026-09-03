@@ -1,12 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { Check, Copy, Download, Image as ImageIcon, Sparkles, Wand2, Zap, Layers, RefreshCw } from 'lucide-react';
-import type { Company, Wallet } from '../types';
+import type { Company } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface Props {
   selectedCompany: Company | null;
-  wallet: Wallet | null;
-  onRefreshWallet: () => void;
   onRefreshContents?: () => void;
   onNavigate: (tab: string) => void;
 }
@@ -24,15 +22,12 @@ interface ImagePrompt {
 interface GeneratedImage {
   imageUrl: string;
   mimeType: string;
-  creditsUsed: number;
   modelUsed: string;
   resolution?: string;
 }
 
 export const CreateImagePage: React.FC<Props> = ({
   selectedCompany,
-  wallet,
-  onRefreshWallet,
   onRefreshContents,
   onNavigate
 }) => {
@@ -64,7 +59,7 @@ export const CreateImagePage: React.FC<Props> = ({
       return false;
     }
     if (!selectedCompany?.id) {
-      setError('Selecione uma projeto para aplicar as diretrizes e identidade da marca.');
+      setError('Selecione um projeto para aplicar as diretrizes e identidade da marca.');
       return false;
     }
     return true;
@@ -132,7 +127,7 @@ export const CreateImagePage: React.FC<Props> = ({
         <div>
           <h2 className="flex items-center gap-2 text-xl font-black text-white">
             <ImageIcon className="text-cyan-400" />
-            Estúdio de Imagens Froc.IA
+            Estúdio de Imagens do Portal Vip Brasil
           </h2>
           <p className="mt-1 text-xs text-slate-400">
             Geração real de imagem pelo Gemini com controle de resolução (1K, 2K, 4K), salva diretamente na sua biblioteca.
@@ -149,8 +144,8 @@ export const CreateImagePage: React.FC<Props> = ({
 
       {!selectedCompany && (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-200">
-          Selecione uma projeto para que a IA respeite identidade, público, produtos e tom da marca.{' '}
-          <button onClick={() => onNavigate('projeto')} className="ml-1 font-bold underline">
+          Selecione um projeto para que a IA respeite identidade, público, produtos e tom da marca.{' '}
+          <button onClick={() => onNavigate('projetos')} className="ml-1 font-bold underline">
             Configurar projeto
           </button>
         </div>
@@ -277,7 +272,7 @@ export const CreateImagePage: React.FC<Props> = ({
           <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3 text-[11px] leading-relaxed text-slate-400">
             <div className="flex items-center gap-1.5 font-bold text-slate-300 mb-0.5">
               <Zap size={12} className="text-amber-400" />
-              Garantia de Entrega Froc.IA
+              Garantia de Entrega do Portal Vip Brasil
             </div>
             A imagem só é marcada como concluída depois de ser renderizada e salva com sucesso no Storage.
           </div>

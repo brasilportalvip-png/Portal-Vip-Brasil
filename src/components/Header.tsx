@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { ChevronDown, ExternalLink, LogOut, ShieldAlert, Sparkles, User as UserIcon } from 'lucide-react';
-import type { Company, User, Wallet } from '../types';
+import type { Company, User } from '../types';
 
 interface HeaderProps {
   user: User | null;
-  wallet?: Wallet | null;
   companies: Company[];
   selectedCompany: Company | null;
   onSelectCompany: (company: Company) => void;

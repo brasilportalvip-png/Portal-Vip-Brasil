@@ -12,19 +12,15 @@ import {
   Layers,
   ArrowRight
 } from 'lucide-react';
-import { Company, SeoReport, Wallet } from '../types';
+import { Company, SeoReport } from '../types';
 import { apiRequest } from '../lib/api';
 
 interface SeoPageProps {
   selectedCompany: Company | null;
-  wallet: Wallet | null;
-  onRefreshWallet: () => void;
 }
 
 export const SeoPage: React.FC<SeoPageProps> = ({
   selectedCompany,
-  wallet,
-  onRefreshWallet
 }) => {
   const [urlInput, setUrlInput] = useState(selectedCompany?.website || '');
   const [loading, setLoading] = useState(false);
@@ -69,7 +65,7 @@ export const SeoPage: React.FC<SeoPageProps> = ({
       {/* Header */}
       <div>
         <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          <Search className="text-cyan-400" /> Froc SEO Inteligente & Auditoria Web
+          <Search className="text-cyan-400" /> SEO Inteligente & Auditoria Web · Portal Vip Brasil
         </h2>
         <p className="text-xs text-slate-400">
           Auditoria técnica real de páginas com detecção de metatags, densidade de palavras-chave, H1/H2 e recomendações com IA.
@@ -117,7 +113,7 @@ export const SeoPage: React.FC<SeoPageProps> = ({
           {/* Top Score Banner */}
           <div className="p-6 rounded-3xl bg-gradient-to-r from-blue-950/80 to-slate-900 border border-blue-500/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-1">
-              <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">Score SEO Froc.IA</span>
+              <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-wider">Score SEO Portal Vip Brasil</span>
               <h3 className="text-lg font-bold text-white truncate max-w-lg">{report.url}</h3>
               <p className="text-xs text-slate-300">
                 Título detectado: &ldquo;{report.title || 'Nenhum título'}&rdquo;
@@ -134,7 +130,7 @@ export const SeoPage: React.FC<SeoPageProps> = ({
                 <span className="font-bold text-white block">
                   {report.seoScore >= 80 ? 'Excelente Otimização 🟢' : report.seoScore >= 50 ? 'Oportunidades de Melhoria 🟡' : 'Crítico 🔴'}
                 </span>
-                <span className="text-[11px] text-slate-400">Score estrutural Froc.IA (10 critérios HTML)</span>
+                <span className="text-[11px] text-slate-400">Score estrutural do Portal Vip Brasil (10 critérios HTML)</span>
               </div>
             </div>
           </div>

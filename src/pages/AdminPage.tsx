@@ -140,7 +140,7 @@ export const AdminPage:React.FC<AdminPageProps>=()=>{
       {([
         ['overview','Visão geral',BarChart3],
         ['support','Suporte',Ticket],
-        ['blog','Froc Magazine',BookOpen]
+        ['blog','Blog Portal Vip',BookOpen]
       ] as const).map(([id,label,Icon])=>
         <button
           key={id}

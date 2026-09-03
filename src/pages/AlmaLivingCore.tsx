@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { AlmaCyberFace } from '../components/AlmaCyberFace';
 import { AlmaOrbitalSymbols, ORBITAL_SYMBOLS, type OrbitalSymbolDef } from '../components/AlmaOrbitalSymbols';
 import { almaVoice, startAlmaListening } from '../lib/almaVoice';
-import type { AlmaState, Company, User, Wallet, Campaign, ScheduledPost, ContentItem } from '../types';
+import type { AlmaState, Company, User, Campaign, ScheduledPost, ContentItem } from '../types';
 import { Mic, MicOff, Volume2, VolumeX, Keyboard, X, Sparkles, Send } from 'lucide-react';
 
 // Sub-ambientes modulares integrados sob a regência viva do ALMA
@@ -20,14 +20,12 @@ import { VitrinePage } from './VitrinePage';
 
 interface AlmaLivingCoreProps {
   user: User | null;
-  wallet: Wallet | null;
   selectedCompany: Company | null;
   companies: Company[];
   campaigns: Campaign[];
   scheduledPosts: ScheduledPost[];
   contentItems: ContentItem[];
   onSelectCompany: (company: Company) => void;
-  onRefreshWallet: () => Promise<void>;
   onRefreshCompanies: (signal?: AbortSignal, epoch?: number) => Promise<void>;
   onRefreshContents: () => Promise<void>;
   onRefreshSchedule: () => Promise<void>;
@@ -41,14 +39,12 @@ interface AlmaLivingCoreProps {
 
 export const AlmaLivingCore: React.FC<AlmaLivingCoreProps> = ({
   user,
-  wallet,
   selectedCompany,
   companies,
   campaigns,
   scheduledPosts,
   contentItems,
   onSelectCompany,
-  onRefreshWallet,
   onRefreshCompanies,
   onRefreshContents,
   onRefreshSchedule,
@@ -227,19 +223,17 @@ export const AlmaLivingCore: React.FC<AlmaLivingCoreProps> = ({
       case 'alma-memory':
         return <AlmaMemoryPage />;
       case 'autopilot':
-        return <AutopilotPage selectedCompany={selectedCompany} wallet={wallet} onNavigate={onNavigate} />;
+        return <AutopilotPage selectedCompany={selectedCompany} onNavigate={onNavigate} />;
       case 'criar-conteudo':
-        return <CreateContentPage companies={companies} selectedCompany={selectedCompany} wallet={wallet} onRefreshWallet={onRefreshWallet} onRefreshContents={onRefreshContents} onNavigate={onNavigate} />;
+        return <CreateContentPage companies={companies} selectedCompany={selectedCompany} onRefreshContents={onRefreshContents} onNavigate={onNavigate} />;
       case 'seo':
-        return <SeoPage selectedCompany={selectedCompany} wallet={wallet} onRefreshWallet={onRefreshWallet} />;
+        return <SeoPage selectedCompany={selectedCompany} />;
       case 'froc-ia':
-        return <FrocIaPage selectedCompany={selectedCompany} wallet={wallet} onRefreshWallet={onRefreshWallet} onNavigate={onNavigate} />;
+        return <FrocIaPage selectedCompany={selectedCompany} onNavigate={onNavigate} />;
       case 'perfil':
-        return <ProfilePage user={user} wallet={wallet} onRefreshUser={reloadSession} onNavigate={onNavigate} />;
-      case 'planos':
-        return <DashboardPage user={user} wallet={wallet} selectedCompany={selectedCompany} campaigns={campaigns} scheduledPosts={scheduledPosts} onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
+        return <ProfilePage user={user} onRefreshUser={reloadSession} onNavigate={onNavigate} />;
       case 'dashboard':
-        return <DashboardPage user={user} wallet={wallet} selectedCompany={selectedCompany} campaigns={campaigns} scheduledPosts={scheduledPosts} onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
+        return <DashboardPage user={user} selectedCompany={selectedCompany} campaigns={campaigns} scheduledPosts={scheduledPosts} onNavigate={onNavigate} onOpenAuth={onOpenAuth} />;
       case 'vitrine':
         return <VitrinePage onNavigate={onNavigate} />;
       default:
