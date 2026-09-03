@@ -218,8 +218,14 @@ export function createApp() {
   });
   app.get('/robots.txt', (_req, res) => res.type('text/plain').send(buildRobotsTxt()));
 
-  // Rotas públicas ALMA foram descontinuadas. As APIs internas /api/alma/* permanecem autenticadas.
+  // Rotas públicas legadas foram descontinuadas. APIs internas continuam protegidas separadamente.
   app.get(/^\/alma(?:\/.*)?$/, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
+    res.status(404).type('text/plain').send('Página não encontrada.');
+  });
+
+  app.get(/^\/(?:empresa|company|companies|planos|creditos)\/?$/, (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive');
     res.status(404).type('text/plain').send('Página não encontrada.');
@@ -253,7 +259,6 @@ export function createApp() {
   const privateAppRoutes = [
     '/dashboard',
     '/projetos',
-    '/empresa',
     '/froc-ia',
     '/autopilot',
     '/criar-conteudo',
@@ -266,7 +271,6 @@ export function createApp() {
     '/redes-sociais',
     '/conteudos',
     '/analytics',
-    '/creditos',
     '/perfil',
     '/configuracoes',
     '/suporte',

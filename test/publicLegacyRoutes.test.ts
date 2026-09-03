@@ -67,3 +67,47 @@ test('Produção: identidade central não usa nome Froc no pacote ou erros gené
 
   assert.ok(router.includes("router.get('/alma/memories'") || router.includes("router.post('/alma/"));
 });
+
+
+test('Produção: aliases legados de empresa e comercial retornam 404 real + noindex', async (t) => {
+  const app = createApp();
+  const server = app.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  }));
+
+  const address = server.address();
+  assert.ok(address && typeof address === 'object');
+  const base = `http://127.0.0.1:${address.port}`;
+
+  for (const path of ['/empresa', '/company', '/companies', '/planos', '/creditos']) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 404, `${path} deve ser 404`);
+    assert.match(response.headers.get('x-robots-tag') || '', /noindex/i);
+    assert.match(await response.text(), /Página não encontrada/i);
+  }
+});
+
+test('Produção: Vercel intercepta aliases legados antes do fallback SPA', () => {
+  const vercel = JSON.parse(readFileSync('vercel.json', 'utf8'));
+  const routes = vercel.routes || [];
+  const legacyIndex = routes.findIndex((route: any) =>
+    route.src === '^/(?:empresa|company|companies|planos|creditos)/?$' &&
+    route.dest === '/api/index.ts'
+  );
+  const filesystemIndex = routes.findIndex((route: any) => route.handle === 'filesystem');
+
+  assert.ok(legacyIndex >= 0, 'vercel.json precisa interceptar aliases legados');
+  assert.ok(filesystemIndex >= 0, 'vercel.json precisa manter fallback filesystem');
+  assert.ok(legacyIndex < filesystemIndex, 'aliases legados devem ser tratados antes do fallback SPA');
+});
+
+test('Frontend: aliases legados não são mais canonicalizados para projetos/dashboard', () => {
+  const appSource = readFileSync('src/App.tsx', 'utf8');
+
+  for (const alias of ['empresa', 'company', 'companies', 'planos', 'creditos']) {
+    const aliasPattern = new RegExp(`\\b${alias}\\s*:\\s*['"](?:projetos|dashboard)['"]`);
+    assert.equal(aliasPattern.test(appSource), false, `alias ${alias} ainda está ativo no frontend`);
+  }
+});

@@ -85,6 +85,10 @@
       "dest": "/api/index.ts"
     },
     {
+      "src": "^/(?:empresa|company|companies|planos|creditos)/?$",
+      "dest": "/api/index.ts"
+    },
+    {
       "handle": "filesystem"
     },
     {
