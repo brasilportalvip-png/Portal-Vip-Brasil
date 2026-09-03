@@ -141,7 +141,7 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
   const disconnect=async(connection:SocialConnection)=>{
     if(!window.confirm(`Desconectar ${connection.accountName||connection.provider}?`))return;
     setWorking(connection.provider);setError('');setMessage('');
-    try{await apiRequest(`/api/social/connections/${connection.id}`,{method:'DELETE'});setMessage('Conta desconectada com segurança.');await fetchConnections()}
+    try{await apiRequest(`/api/social/connections/${connection.id}?companyId=${encodeURIComponent(activeCompanyId)}`,{method:'DELETE'});setMessage('Conta desconectada com segurança deste projeto.');await fetchConnections()}
     catch(e:any){setError(e.message||'Falha ao desconectar conta.');}
     finally{setWorking(null)}
   };

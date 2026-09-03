@@ -1,5 +1,4 @@
 import dotenv from 'dotenv';
-import { CREDIT_COSTS } from '../../shared/creditCosts.js';
 
 dotenv.config();
 
@@ -69,13 +68,6 @@ export const config = {
     clientEmail: env('FIREBASE_ADMIN_CLIENT_EMAIL'),
     privateKey: env('FIREBASE_ADMIN_PRIVATE_KEY').replace(/\\n/g, '\n')
   },
-  mercadoPago: {
-    enabled: env('PAYMENTS_ENABLED', isTest ? 'true' : 'false').toLowerCase() === 'true',
-    accessToken: env('MERCADO_PAGO_ACCESS_TOKEN', isTest ? 'TEST-mock-access-token-123456' : ''),
-    webhookSecret: env('MERCADO_PAGO_WEBHOOK_SECRET', isTest ? 'TEST-mock-webhook-secret-123456' : ''),
-    publicKey: env('MERCADO_PAGO_PUBLIC_KEY', isTest ? 'TEST-mock-public-key-123456' : ''),
-    billingMode: env('MERCADO_PAGO_BILLING_MODE', 'subscription').toLowerCase() === 'one_time' ? 'one_time' : 'subscription'
-  },
   encryptionKey: env('TOKEN_ENCRYPTION_KEY', isTest ? 'test_token_encryption_key_32bytes_long!' : ''),
   cronSecret: env('CRON_SECRET', isTest ? 'test_cron_secret' : ''),
   adminBootstrap: {
@@ -83,14 +75,13 @@ export const config = {
     key: env('ADMIN_BOOTSTRAP_KEY', isTest ? 'test_admin_bootstrap_key' : '')
   },
   adminBootstrapKey: env('ADMIN_BOOTSTRAP_KEY', isTest ? 'test_admin_bootstrap_key' : ''),
-  freeSignupBonusCredits: Number(env('FREE_SIGNUP_BONUS_CREDITS', '25')),
   support: {
     email: env('SUPPORT_EMAIL', 'brasilportalvip@gmail.com'),
     whatsapp: env('SUPPORT_WHATSAPP')
   },
   blog: {
-    autoEnabled: env('AUTO_BLOG_ENABLED', 'false').toLowerCase() === 'true',
-    author: env('BLOG_AUTHOR', 'Equipe Froc.IA')
+    autoEnabled: env('AUTO_BLOG_ENABLED', isProduction ? 'true' : 'false').toLowerCase() === 'true',
+    author: env('BLOG_AUTHOR', 'Portal Vip Brasil')
   },
   social: {
     meta: {
@@ -119,30 +110,7 @@ export const config = {
       clientId: env('X_CLIENT_ID', isTest ? 'mock_x_client_id' : ''),
       clientSecret: env('X_CLIENT_SECRET', isTest ? 'mock_x_client_secret' : '')
     }
-  },
-  plans: [
-    {
-      id: 'plan_start', name: 'START', price: 49.0, period: 'mês', credits: 100,
-      bonusCredits: 10, totalCredits: 110, popular: false,
-      features: ['110 créditos mensais incluídos', 'Até 2 empresas cadastradas', 'Criação de posts, legendas e CTAs', 'Análise de SEO básica', 'Agendamento de publicações', 'Acesso à Vitrine Froc']
-    },
-    {
-      id: 'plan_pro', name: 'PRO', price: 99.9, period: 'mês', credits: 210,
-      bonusCredits: 20, totalCredits: 230, popular: true,
-      features: ['230 créditos mensais incluídos', 'Até 5 empresas cadastradas', 'Motor Froc AI completo', 'SEO inteligente', 'Autopilot com aprovação manual', 'Artigos para blog', 'Conexões sociais', 'Suporte prioritário']
-    },
-    {
-      id: 'plan_business', name: 'BUSINESS', price: 199.9, period: 'mês', credits: 450,
-      bonusCredits: 30, totalCredits: 480, popular: false,
-      features: ['480 créditos mensais incluídos', 'Até 15 empresas cadastradas', 'Autopilot automático', 'Campanhas multicanal', 'Froc Magazine', 'SEO técnico e Schema', 'Analytics consolidado']
-    },
-    {
-      id: 'plan_agency', name: 'AGENCY', price: 399.9, period: 'mês', credits: 900,
-      bonusCredits: 100, totalCredits: 1000, popular: false,
-      features: ['1.000 créditos mensais incluídos', 'Empresas ilimitadas', 'Prioridade de processamento', 'Autopilot multi-marca', 'Roteiros e prompts avançados', 'Webhooks e integrações', 'Gerente de conta dedicado']
-    }
-  ],
-  creditCosts: CREDIT_COSTS
+  }
 } as const;
 
 
@@ -159,24 +127,20 @@ export function assertProductionConfig(): void {
     ['GEMINI_MEDIA_API_KEY', process.env.GEMINI_MEDIA_API_KEY || '']
   ];
   for (const [name, value] of requiredValues) {
-    if (!value) throw new Error(`[Froc.IA] Configuração de produção incompleta: ${name}`);
+    if (!value) throw new Error(`[Portal Vip Brasil] Configuração de produção incompleta: ${name}`);
   }
 
   // Validação estrita de formato e segurança para APP_URL em produção
   if (!config.appUrl.startsWith('https://')) {
-    throw new Error(`[Froc.IA] APP_URL em produção deve usar HTTPS obrigatório (atual: ${config.appUrl})`);
+    throw new Error(`[Portal Vip Brasil] APP_URL em produção deve usar HTTPS obrigatório (atual: ${config.appUrl})`);
   }
   if (config.appUrl.includes('localhost') || config.appUrl.includes('127.0.0.1')) {
-    throw new Error(`[Froc.IA] APP_URL em produção não pode ser localhost ou 127.0.0.1 (atual: ${config.appUrl})`);
+    throw new Error(`[Portal Vip Brasil] APP_URL em produção não pode ser localhost ou 127.0.0.1 (atual: ${config.appUrl})`);
   }
 
-  if (config.mercadoPago.enabled) {
-    if (!config.mercadoPago.accessToken) throw new Error('[Froc.IA] Configuração de produção incompleta: MERCADO_PAGO_ACCESS_TOKEN');
-    if (!config.mercadoPago.webhookSecret) throw new Error('[Froc.IA] Configuração de produção incompleta: MERCADO_PAGO_WEBHOOK_SECRET');
-  }
 
   if (config.adminBootstrap.enabled && !config.adminBootstrap.key) {
-    throw new Error('[Froc.IA] ADMIN_BOOTSTRAP_KEY obrigatória quando ADMIN_BOOTSTRAP_ENABLED=true');
+    throw new Error('[Portal Vip Brasil] ADMIN_BOOTSTRAP_KEY obrigatória quando ADMIN_BOOTSTRAP_ENABLED=true');
   }
 
   // Validação de pares de credenciais OAuth opcionais
@@ -191,7 +155,7 @@ export function assertProductionConfig(): void {
 
   for (const p of oauthProviders) {
     if (Boolean(p.id) !== Boolean(p.secret)) {
-      throw new Error(`[Froc.IA] Configuração OAuth incompleta para ${p.name}: ${p.idVar} e ${p.secretVar} devem ser configurados juntos.`);
+      throw new Error(`[Portal Vip Brasil] Configuração OAuth incompleta para ${p.name}: ${p.idVar} e ${p.secretVar} devem ser configurados juntos.`);
     }
   }
 }
