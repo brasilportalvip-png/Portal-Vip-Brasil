@@ -46,17 +46,32 @@ export const DashboardPage: React.FC<Props> = ({
   onNavigate,
   onOpenAuth
 }) => {
-  const [status, setStatus] = useState({ hasSeoAudit: false, connectedSocialCount: 0 });
+  const [status, setStatus] = useState({
+    hasSeoAudit: false,
+    connectedSocialCount: 0,
+    autopilotEnabled: false,
+    hasCreatedArticle: false
+  });
   const [isTriggeringDaily, setIsTriggeringDaily] = useState(false);
   const [dailyFeedback, setDailyFeedback] = useState<{ success: boolean; message: string; count?: number } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) {
-      setStatus({ hasSeoAudit: false, connectedSocialCount: 0 });
+      setStatus({
+        hasSeoAudit: false,
+        connectedSocialCount: 0,
+        autopilotEnabled: false,
+        hasCreatedArticle: false
+      });
       return;
     }
-    apiRequest<{ hasSeoAudit: boolean; connectedSocialCount: number }>(
+    apiRequest<{
+      hasSeoAudit: boolean;
+      connectedSocialCount: number;
+      autopilotEnabled: boolean;
+      hasCreatedArticle: boolean;
+    }>(
       `/api/dashboard/status${selectedCompany?.id ? `?companyId=${encodeURIComponent(selectedCompany.id)}` : ''}`
     )
       .then(setStatus)
@@ -125,11 +140,11 @@ export const DashboardPage: React.FC<Props> = ({
   const activationSteps = useMemo(
     () =>
       [
-        ['Ver Vitrine Oficial (7 Sites/Apps)', true, 'vitrine'],
+        ['Ver Vitrine Oficial (7 Sites/Apps)', USER_PORTFOLIO_PROJECTS.length > 0, 'vitrine'],
         ['Auditoria SEO Bing & Google', status.hasSeoAudit, 'seo'],
         ['Conectar Redes Sociais', status.connectedSocialCount > 0, 'redes-sociais'],
-        ['Configurar Automação 1x/dia', true, 'autopilot'],
-        ['Criar Artigo no Blog', true, 'criar-artigo'],
+        ['Configurar Automação 1x/dia', status.autopilotEnabled, 'autopilot'],
+        ['Criar Artigo no Blog', status.hasCreatedArticle, 'criar-artigo'],
         ['Gerar Campanha Multicanal', companyCampaigns.length > 0, 'campanhas']
       ] as const,
     [status, companyCampaigns.length]
@@ -209,8 +224,14 @@ export const DashboardPage: React.FC<Props> = ({
         </div>
 
         {dailyFeedback && (
-          <div className="mt-4 p-3.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-xs text-emerald-300 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+          <div className={`mt-4 p-3.5 rounded-xl border text-xs flex items-center gap-2 ${
+            dailyFeedback.success
+              ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+              : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+          }`}>
+            <CheckCircle2 className={`w-4 h-4 flex-shrink-0 ${
+              dailyFeedback.success ? 'text-emerald-400' : 'text-rose-400'
+            }`} />
             <span>{dailyFeedback.message}</span>
           </div>
         )}
