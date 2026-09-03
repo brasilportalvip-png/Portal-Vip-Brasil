@@ -260,3 +260,29 @@ test('Login administrativo: proprietário configurado recupera acesso sem abrir 
   assert.ok(rules.includes('match /users/{uid}'));
   assert.ok(rules.includes('allow write: if false;'));
 });
+
+
+test('Biblioteca: endpoint e atualização do Autopilot permanecem sincronizados', () => {
+  const app = read('src/App.tsx');
+  const autopilot = read('src/pages/AutopilotPage.tsx');
+  const alma = read('src/pages/AlmaLivingCore.tsx');
+  const router = read('server/production/router.ts');
+
+  assert.ok(router.includes("router.get('/content'"));
+  assert.ok(app.includes('/api/content?companyId='));
+  assert.ok(!app.includes('/api/contents?companyId='));
+
+  assert.ok(app.includes("guardedTab !== 'conteudos'"));
+  assert.ok(app.includes('void refreshContents()'));
+
+  assert.ok(app.includes('onRefreshContents={refreshContents}'));
+  assert.ok(alma.includes('onRefreshContents={onRefreshContents}'));
+
+  assert.ok(autopilot.includes('data?.result?.success'));
+  assert.ok(autopilot.includes('data.result.contentId'));
+  assert.ok(autopilot.includes('await onRefreshContents()'));
+  assert.ok(
+    autopilot.includes('O ciclo terminou sem comprovar a gravação do conteúdo.'),
+    'Autopilot deve falhar visualmente quando não houver prova de gravação.'
+  );
+});
