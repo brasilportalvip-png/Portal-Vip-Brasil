@@ -16,6 +16,14 @@ const appUrl = (isProduction
   ? env('APP_URL')
   : env('APP_URL', 'http://localhost:3000')).replace(/\/$/, '');
 
+const supportEmail = env('SUPPORT_EMAIL', 'brasilportalvip@gmail.com').toLowerCase();
+const privateAdminEmails = env('PORTAL_ADMIN_EMAILS', supportEmail)
+  .split(',')
+  .map((value) => value.trim().toLowerCase())
+  .filter((value, index, list) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && list.indexOf(value) === index
+  );
+
 const CAPACITOR_CORS_ORIGINS = [
   'capacitor://localhost',
   'https://localhost',
@@ -48,6 +56,7 @@ export const config = {
   nodeEnv,
   isProduction,
   privatePortalMode: env('PRIVATE_PORTAL_MODE', isProduction ? 'true' : 'false').toLowerCase() === 'true',
+  privateAdminEmails,
   appUrl,
   corsOrigins,
   geminiApiKey: env('GEMINI_API_KEY'),
@@ -76,7 +85,7 @@ export const config = {
   },
   adminBootstrapKey: env('ADMIN_BOOTSTRAP_KEY', isTest ? 'test_admin_bootstrap_key' : ''),
   support: {
-    email: env('SUPPORT_EMAIL', 'brasilportalvip@gmail.com'),
+    email: supportEmail,
     whatsapp: env('SUPPORT_WHATSAPP')
   },
   blog: {
@@ -141,6 +150,10 @@ export function assertProductionConfig(): void {
 
   if (config.adminBootstrap.enabled && !config.adminBootstrap.key) {
     throw new Error('[Portal Vip Brasil] ADMIN_BOOTSTRAP_KEY obrigatória quando ADMIN_BOOTSTRAP_ENABLED=true');
+  }
+
+  if (config.privatePortalMode && config.privateAdminEmails.length === 0) {
+    throw new Error('[Portal Vip Brasil] Defina ao menos um e-mail de proprietário em PORTAL_ADMIN_EMAILS ou SUPPORT_EMAIL.');
   }
 
   // Validação de pares de credenciais OAuth opcionais
