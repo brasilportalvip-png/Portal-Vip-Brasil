@@ -223,7 +223,7 @@ export const AlmaLivingCore: React.FC<AlmaLivingCoreProps> = ({
       case 'alma-memory':
         return <AlmaMemoryPage />;
       case 'autopilot':
-        return <AutopilotPage selectedCompany={selectedCompany} onRefreshContents={onRefreshContents} onNavigate={onNavigate} />;
+        return <AutopilotPage companies={companies} selectedCompany={selectedCompany} onRefreshContents={onRefreshContents} onNavigate={onNavigate} />;
       case 'criar-conteudo':
         return <CreateContentPage companies={companies} selectedCompany={selectedCompany} onRefreshContents={onRefreshContents} onNavigate={onNavigate} />;
       case 'seo':

@@ -4,10 +4,10 @@ import { config } from '../config/index.js';
 import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, ensureUserProfile, hasAcceptedLatestTerms, requireAdmin, requireAuth } from './auth.js';
 import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, listUserVideoJobs, textAiClient } from './ai.js';
 import { analyzeSeo } from './seo.js';
-import { createOAuthUrl, createPinterestPin, disconnectSocial, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
-import { getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
+import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
+import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
-import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
+import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, createPortalProjectInDb, deletePortalProjectInDb, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall, runDailyPortalMarketingCycle } from './antiFallEngine.js';
 import {
   listBlogArticles,
@@ -107,25 +107,7 @@ function normalizeCompanyField(key: string, value: any): any {
   return safeString(value, limits[key] || 1000);
 }
 
-function portalProjectContext(userId: string, projectId?: string): any | undefined {
-  if (!projectId) return undefined;
-  if (projectId === 'portal_vip') {
-    return {
-      id: 'portal_vip',
-      userId,
-      name: 'Portal Vip Brasil',
-      category: 'Marketing & Automação',
-      description: 'Central privada de marketing e automação do Portal Vip Brasil.',
-      products: [],
-      services: [],
-      keywords: [],
-      isPublicInVitrine: false,
-      virtual: true,
-      portalProject: true
-    };
-  }
-  const project = PORTAL_VIP_PROJECTS.find((item) => item.id === projectId);
-  if (!project) return undefined;
+function projectToCompanyContext(userId: string, project: any): any {
   return {
     id: project.id,
     userId,
@@ -142,10 +124,27 @@ function portalProjectContext(userId: string, projectId?: string): any | undefin
     products: [],
     services: [],
     socialLinks: {},
-    isPublicInVitrine: true,
+    isPublicInVitrine: project.active !== false,
     virtual: true,
-    portalProject: true
+    portalProject: true,
+    active: project.active !== false,
+    dailyMarketingEnabled: project.dailyMarketingEnabled !== false,
+    dailyBlogEnabled: project.dailyBlogEnabled !== false,
+    isSeedProject: project.isSeedProject === true
   };
+}
+
+async function portalProjectContext(userId: string, projectId?: string): Promise<any | undefined> {
+  if (!projectId) return undefined;
+  if (projectId === 'portal_vip') {
+    return {
+      id: 'portal_vip', userId, name: 'Portal Vip Brasil', category: 'Marketing & Automação',
+      description: 'Central privada de marketing e automação do Portal Vip Brasil.', products: [], services: [],
+      keywords: [], isPublicInVitrine: false, virtual: true, portalProject: true, active: true
+    };
+  }
+  const project = await getPortalProjectFromDb(projectId);
+  return project ? projectToCompanyContext(userId, project) : undefined;
 }
 
 export async function ownedCompany(userId: string, companyId?: string): Promise<any | undefined> {
@@ -155,7 +154,7 @@ export async function ownedCompany(userId: string, companyId?: string): Promise<
 export async function requireOwnedCompany(userId: string, companyId: string): Promise<any> {
   const project = await ownedCompany(userId, companyId);
   if (!project) {
-    const error: any = new Error('Projeto oficial não encontrado ou não autorizado.');
+    const error: any = new Error('Projeto não encontrado ou não autorizado.');
     error.statusCode = 404;
     throw error;
   }
@@ -354,17 +353,17 @@ router.get('/dashboard/status', requireAuth, asyncRoute(async (req: Authenticate
   });
 }));
 
-// Compatibilidade interna: aliases antigos retornam somente projetos oficiais.
+// Compatibilidade interna: aliases antigos retornam os projetos ativos do cadastro dinâmico.
 router.get('/companies', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const projects = PORTAL_VIP_PROJECTS
+  const projects = (await listAllPortalProjectsFromDb())
     .filter((project) => project.active !== false)
-    .map((project) => portalProjectContext(req.user!.id, project.id));
+    .map((project) => projectToCompanyContext(req.user!.id, project));
   res.json({ companies: projects, projects });
 }));
 
 router.get('/companies/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const project = portalProjectContext(req.user!.id, safeString(req.params.id, 200));
-  if (!project) return res.status(404).json({ error: 'Projeto oficial não encontrado.' });
+  const project = await portalProjectContext(req.user!.id, safeString(req.params.id, 200));
+  if (!project) return res.status(404).json({ error: 'Projeto não encontrado.' });
   res.json({ company: project, project });
 }));
 
@@ -635,9 +634,10 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
       return res.status(400).json({ error: `A conta de ${plat} não está conectada para este projeto. Conecte-a em Redes Sociais antes de agendar.` });
     }
 
-    const conn = connSnap.docs[0].data() as any;
-    if (conn.status === 'token_expired' || (conn.expiresAt && new Date(conn.expiresAt).getTime() < Date.now())) {
-      return res.status(400).json({ error: `A autenticação com ${plat} expirou. Reconecte a conta em Redes Sociais antes de agendar.` });
+    try {
+      await ensureValidSocialAccessToken(connSnap.docs[0].id);
+    } catch {
+      return res.status(400).json({ error: `A autenticação com ${plat} expirou e não pôde ser renovada automaticamente. Reconecte a conta em Redes Sociais antes de agendar.` });
     }
   }
 
@@ -883,11 +883,11 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
           error: `O canal "${plat}" não está conectado para este projeto. Conecte-o em Redes Sociais antes de ativar o modo automático.`
         });
       }
-      const conn = connSnap.docs[0].data() as any;
-      const isExpired = conn.expiresAt ? new Date(conn.expiresAt).getTime() <= Date.now() : false;
-      if (conn.status !== 'connected' || (!conn.encryptedAccessToken && !conn.accessToken) || isExpired) {
+      try {
+        await ensureValidSocialAccessToken(connSnap.docs[0].id);
+      } catch {
         return res.status(400).json({
-          error: `A conexão do canal "${plat}" expirou ou está inativa. Reconecte-a em Redes Sociais antes de ativar o modo automático.`
+          error: `A conexão do canal "${plat}" expirou e não pôde ser renovada automaticamente. Reconecte-a em Redes Sociais antes de ativar o modo automático.`
         });
       }
     }
@@ -1260,25 +1260,16 @@ function sanitizePublicVitrineProject(project: any) {
 }
 
 router.get('/vitrine', asyncRoute(async (_req, res) => {
-  const projects = PORTAL_VIP_PROJECTS
+  const projects = (await listAllPortalProjectsFromDb())
     .filter((project) => project.active !== false)
     .map((project) => sanitizePublicVitrineProject(project))
     .sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR'));
-
-  // "companies" permanece apenas como alias de compatibilidade de API.
   res.json({ projects, companies: projects });
 }));
 
 router.get('/vitrine/:slug', asyncRoute(async (req, res) => {
-  const param = safeString(req.params.slug, 200);
-  const project = PORTAL_VIP_PROJECTS.find(
-    (item) => item.active !== false && (item.slug === param || item.id === param)
-  );
-
-  if (!project) {
-    return res.status(404).json({ error: 'Projeto oficial não encontrado na Vitrine Pública.' });
-  }
-
+  const project = await getPortalProjectFromDb(safeString(req.params.slug, 200));
+  if (!project || project.active === false) return res.status(404).json({ error: 'Projeto não encontrado na Vitrine Pública.' });
   const publicProject = sanitizePublicVitrineProject(project);
   res.json({ project: publicProject, company: publicProject });
 }));
@@ -1286,51 +1277,99 @@ router.get('/vitrine/:slug', asyncRoute(async (req, res) => {
 // Admin
 router.get('/admin/overview', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const db = firestore();
-  const [contentsSnap, connectionsSnap, blogSnap, scheduledSnap, autopilotSnap] = await Promise.all([
+  const projects = await listAllPortalProjectsFromDb();
+  const projectIds = new Set(projects.map((project) => project.id));
+  const [contentsSnap, connections, blogSnap, blogArticlesSnap, scheduledSnap, autopilotSnap] = await Promise.all([
     db.collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id).get(),
-    db.collection(COLLECTIONS.socialConnections).where('userId', '==', req.user!.id).get(),
+    listConnections(req.user!.id, 'all').catch(() => []),
     db.collection(COLLECTIONS.blogPosts).get(),
+    db.collection(COLLECTIONS.blogArticles).get().catch(() => ({ docs: [] } as any)),
     db.collection(COLLECTIONS.scheduledPosts).where('userId', '==', req.user!.id).get(),
     db.collection(COLLECTIONS.autopilotConfigs).where('userId', '==', req.user!.id).get().catch(() => ({ docs: [] } as any))
   ]);
 
-  const officialIds = new Set(PORTAL_VIP_PROJECTS.map((project) => project.id));
-  const now = Date.now();
-
-  const projectContents = contentsSnap.docs.filter((doc) =>
-    officialIds.has(String((doc.data() as any).companyId || ''))
-  );
-  const validConnections = connectionsSnap.docs.filter((doc) => {
-    const item = doc.data() as any;
-    if (!officialIds.has(String(item.companyId || '')) || item.status !== 'connected') return false;
-    if (!item.expiresAt) return true;
-    const expiresAt = new Date(item.expiresAt).getTime();
-    return Number.isFinite(expiresAt) && expiresAt > now;
-  });
-  const projectScheduled = scheduledSnap.docs.filter((doc) =>
-    officialIds.has(String((doc.data() as any).companyId || ''))
-  );
-  const pendingOrFailed = projectScheduled.filter((doc) =>
-    ['scheduled', 'publishing', 'failed', 'requires_review'].includes(String((doc.data() as any).status || ''))
-  ).length;
-  const totalPublishedArticles = blogSnap.docs.filter(
-    (doc) => (doc.data() as any).status === 'published'
-  ).length;
+  const projectContents = contentsSnap.docs.filter((doc) => projectIds.has(String((doc.data() as any).companyId || '')));
+  const validConnections = (connections as any[]).filter((item) => projectIds.has(String(item.companyId || '')) && item.status === 'connected');
+  const projectScheduled = scheduledSnap.docs.filter((doc) => projectIds.has(String((doc.data() as any).companyId || '')));
+  const pendingOrFailed = projectScheduled.filter((doc) => ['scheduled', 'publishing', 'failed', 'requires_review'].includes(String((doc.data() as any).status || ''))).length;
+  const publishedLegacy = blogSnap.docs.filter((doc) => (doc.data() as any).status === 'published').length;
+  const publishedDynamic = (blogArticlesSnap as any).docs.filter((doc: any) => (doc.data() as any).status === 'published').length;
   const enabledAutopilot = (autopilotSnap as any).docs.filter((doc: any) => {
     const item = doc.data() as any;
-    return item.enabled === true && officialIds.has(String(item.companyId || ''));
+    return item.enabled === true && projectIds.has(String(item.companyId || ''));
   }).length;
 
   res.json({
     stats: {
-      totalProjects: PORTAL_VIP_PROJECTS.filter((project) => project.active !== false).length,
+      totalProjects: projects.filter((project) => project.active !== false).length,
       totalContentsGenerated: projectContents.length,
       totalSocialConnections: validConnections.length,
-      totalPublishedArticles,
+      totalPublishedArticles: publishedLegacy + publishedDynamic,
       pendingOrFailed,
       enabledAutopilot
     },
     users: []
+  });
+}));
+
+router.get('/admin/projects', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  const projects = await listAllPortalProjectsFromDb();
+  res.json({ projects, total: projects.length });
+}));
+
+router.get('/admin/scheduler/diagnostics', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  res.json({ diagnostics: await getSchedulerDiagnostics() });
+}));
+
+router.post('/admin/projects', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const project = await createPortalProjectInDb(req.body || {});
+  await writeAdminLog({ operatorId:req.user!.id, operatorEmail:req.user!.email, action:'create_project', details:{ projectId:project.id, name:project.name } });
+  res.status(201).json({ success:true, project, message:'Projeto cadastrado e incluído automaticamente nos próximos ciclos.' });
+}));
+
+router.patch('/admin/projects/:id', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const project = await updatePortalProjectInDb(req.params.id, req.body || {});
+  if (!project) return res.status(404).json({ error:'Projeto não encontrado.' });
+  await writeAdminLog({ operatorId:req.user!.id, operatorEmail:req.user!.email, action:'update_project', details:{ projectId:project.id } });
+  res.json({ success:true, project });
+}));
+
+router.delete('/admin/projects/:id', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const projectId = safeString(req.params.id, 200);
+  const result = await deletePortalProjectInDb(projectId);
+  if (result.protected) return res.status(409).json({ error:'Os 7 projetos iniciais são protegidos. Use Pausar em vez de excluir.' });
+  if (!result.deleted) return res.status(404).json({ error:'Projeto não encontrado.' });
+
+  const db = firestore();
+  const [connectionsSnap, scheduledSnap] = await Promise.all([
+    db.collection(COLLECTIONS.socialConnections).where('userId', '==', req.user!.id).where('companyId', '==', projectId).limit(200).get(),
+    db.collection(COLLECTIONS.scheduledPosts).where('userId', '==', req.user!.id).where('companyId', '==', projectId).limit(200).get()
+  ]);
+  const batch = db.batch();
+  for (const doc of connectionsSnap.docs) batch.delete(doc.ref);
+  let cancelledSchedules = 0;
+  for (const doc of scheduledSnap.docs) {
+    const status = String((doc.data() as any)?.status || '');
+    if (['scheduled','planned','failed'].includes(status)) {
+      batch.set(doc.ref, { status:'cancelled', cancelledAt:nowIso(), updatedAt:nowIso(), cancelReason:'project_deleted' }, { merge:true });
+      cancelledSchedules += 1;
+    }
+  }
+  batch.set(db.collection(COLLECTIONS.autopilotConfigs).doc(req.user!.id + '_' + projectId), {
+    enabled:false, disabledReason:'project_deleted', updatedAt:nowIso()
+  }, { merge:true });
+  await batch.commit();
+
+  await writeAdminLog({
+    operatorId:req.user!.id,
+    operatorEmail:req.user!.email,
+    action:'delete_project',
+    details:{ projectId, socialConnectionsRemoved:connectionsSnap.size, scheduledPostsCancelled:cancelledSchedules }
+  });
+  res.json({
+    success:true,
+    message:'Projeto removido do cadastro. Conteúdos históricos foram preservados; agendamentos futuros foram cancelados e conexões sociais removidas.',
+    cleanup:{ socialConnectionsRemoved:connectionsSnap.size, scheduledPostsCancelled:cancelledSchedules }
   });
 }));
 
@@ -1732,15 +1771,9 @@ Sitemap: ${config.appUrl.replace(/\/$/, '')}/sitemap.xml
 
 router.get('/portal/projects', asyncRoute(async (_req: Request, res: Response) => {
   let projects = await listAllPortalProjectsFromDb();
-  if (!projects.length) {
-    const seeded = await seedPortalProjectsIfEmpty();
-    projects = seeded.projects;
-  }
-  res.json({
-    brand: PORTAL_VIP_OFFICIAL_ASSETS,
-    projects,
-    total: projects.length
-  });
+  if (!projects.length) projects = (await seedPortalProjectsIfEmpty()).projects;
+  projects = projects.filter((project) => project.active !== false);
+  res.json({ brand: PORTAL_VIP_OFFICIAL_ASSETS, projects, total: projects.length });
 }));
 
 router.post('/portal/projects/seed', requireAuth, requireAdmin, asyncRoute(async (_req: Request, res: Response) => {
@@ -1829,19 +1862,9 @@ router.post('/portal/blog/settings', requireAuth, requireAdmin, asyncRoute(async
 
 router.post('/portal/blog/generate-project-article', requireAuth, requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
   const { projectId, customTopic, customIntent, forceApproval } = req.body || {};
-  const project = PORTAL_VIP_PROJECTS.find((p) => p.id === projectId || p.slug === projectId);
-  if (!project) {
-    return res.status(404).json({ error: 'Projeto não encontrado na vitrine do Portal Vip Brasil.' });
-  }
-
-  const userId = req.user!.id;
-  const result = await generateArticleForProject(project, {
-    customTopic,
-    customIntent,
-    forceApproval,
-    userId
-  });
-
+  const project = await getPortalProjectFromDb(String(projectId || ''));
+  if (!project) return res.status(404).json({ error: 'Projeto não encontrado no Portal Vip Brasil.' });
+  const result = await generateArticleForProject(project, { customTopic, customIntent, forceApproval, userId: req.user!.id });
   res.json(result);
 }));
 

@@ -2,34 +2,26 @@ import { config } from '../config/index.js';
 import { generateAutopilotPost, generatePlatformArticle, generatePost, processPendingVideoJobs } from './ai.js';
 import { runDailyPortalMarketingCycle } from './antiFallEngine.js';
 import { runDailyBlogCycle } from './blogEngine.js';
-import { PORTAL_VIP_PROJECTS } from './almaPortfolio.js';
+import { getPortalProjectFromDb } from './almaPortfolio.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
 import {
   getProviderAutoPublishReason,
   isTextAutoPublishSupported,
   normalizeProvider,
   publishText,
+  ensureValidSocialAccessToken,
   type SocialProvider
 } from './social.js';
 
 
-function schedulerProjectContext(userId: string, projectId: string): any | undefined {
-  const project = PORTAL_VIP_PROJECTS.find((item) => item.id === projectId);
-  if (!project) return undefined;
+async function schedulerProjectContext(userId: string, projectId: string): Promise<any | undefined> {
+  const project = await getPortalProjectFromDb(projectId);
+  if (!project || project.active === false) return undefined;
   return {
-    id: project.id,
-    userId,
-    name: project.name,
-    slug: project.slug,
-    category: project.category,
-    segment: project.segment,
-    description: project.description,
-    website: project.websiteUrl,
-    websiteUrl: project.websiteUrl,
-    androidApp: project.playStoreUrl,
-    targetAudience: project.targetAudience,
-    keywords: project.keywords || [],
-    products: [], services: [], socialLinks: {}, portalProject: true, virtual: true
+    id: project.id, userId, name: project.name, slug: project.slug, category: project.category,
+    segment: project.segment, description: project.description, website: project.websiteUrl,
+    websiteUrl: project.websiteUrl, androidApp: project.playStoreUrl, targetAudience: project.targetAudience,
+    keywords: project.keywords || [], products: [], services: [], socialLinks: {}, portalProject: true, virtual: true
   };
 }
 
@@ -146,6 +138,10 @@ export interface SchedulerPublicRuntime {
   lastCronStatus: SchedulerCycleStatus | null;
   legacyLastLeaseStartedAt: string | null;
   legacyLastLeaseReleasedAt: string | null;
+  lastErrorCount: number;
+  lastErrorStages: string[];
+  lastCronErrorCount: number;
+  lastCronErrorStages: string[];
   checkedAt: string;
   error?: string;
 }
@@ -217,6 +213,8 @@ async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<Sche
       totalCycles: safeNonNegativeInteger(runtime?.totalCycles) + 1,
       lastStartedAt: startedAt,
       lastStatus: 'running',
+      lastErrorCount: 0,
+      lastErrors: null,
       lastTrigger: trigger,
       lastCycleOwner: owner,
       updatedAt: startedAt
@@ -225,6 +223,8 @@ async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<Sche
       runtimePatch.vercelCronCycles = safeNonNegativeInteger(runtime?.vercelCronCycles) + 1;
       runtimePatch.lastCronStartedAt = startedAt;
       runtimePatch.lastCronStatus = 'running';
+      runtimePatch.lastCronErrorCount = 0;
+      runtimePatch.lastCronErrors = null;
     }
     tx.set(runtimeRef, runtimePatch, { merge: true });
 
@@ -232,49 +232,56 @@ async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<Sche
   });
 }
 
+function sanitizeSchedulerErrors(errors: Record<string, string> | number): { count: number; details: Record<string, string> | null } {
+  if (typeof errors === 'number') return { count: safeNonNegativeInteger(errors), details: null };
+  const details: Record<string, string> = {};
+  for (const [key, value] of Object.entries(errors || {}).slice(0, 12)) {
+    const safe = String(value || 'Falha sem mensagem')
+      .replace(/EAA[A-Za-z0-9_-]{10,}/g, '[TOKEN_REMOVIDO]')
+      .replace(/(access_token|refresh_token|client_secret|authorization|code)[=: ]+[^ ,;]+/gi, '$1=[REMOVIDO]')
+      .replace(/Bearer +[A-Za-z0-9._~-]+/gi, 'Bearer [REMOVIDO]')
+      .replace(/[\r\n\t]+/g, ' ')
+      .slice(0, 500);
+    details[String(key).slice(0, 80)] = safe;
+  }
+  return { count: Object.keys(details).length, details: Object.keys(details).length ? details : null };
+}
+
 async function releaseLock(
   lease: SchedulerLease,
   status: Exclude<SchedulerCycleStatus, 'running'> = 'ok',
-  errorCount = 0
+  errors: Record<string, string> | number = 0
 ): Promise<boolean> {
   const db = firestore();
   const ref = db.collection(COLLECTIONS.schedulerLocks).doc('process');
   const runtimeRef = db.collection(COLLECTIONS.systemSettings).doc(SCHEDULER_RUNTIME_DOC);
+  const errorSummary = sanitizeSchedulerErrors(errors);
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const current = snap.data() as any;
-    const stillOwnsLock = Boolean(
-      snap.exists &&
-      current?.owner === lease.owner &&
-      Number(current?.fencingToken) === lease.fencingToken
-    );
+    const stillOwnsLock = Boolean(snap.exists && current?.owner === lease.owner && Number(current?.fencingToken) === lease.fencingToken);
     if (!stillOwnsLock) return false;
-
     const runtimeSnap = await tx.get(runtimeRef);
     const runtime = runtimeSnap.data() as any;
     const finishedAt = nowIso();
-
-    tx.set(ref, {
-      lockedUntil: 0,
-      releasedAt: Date.now(),
-      releasedBy: lease.owner
-    }, { merge: true });
-
+    tx.set(ref, { lockedUntil: 0, releasedAt: Date.now(), releasedBy: lease.owner }, { merge: true });
     if (!runtime?.lastCycleOwner || runtime.lastCycleOwner === lease.owner) {
       const runtimePatch: Record<string, any> = {
         lastFinishedAt: finishedAt,
         lastStatus: status,
-        lastErrorCount: safeNonNegativeInteger(errorCount),
+        lastErrorCount: errorSummary.count,
+        lastErrors: errorSummary.details,
         updatedAt: finishedAt
       };
       if (lease.trigger === 'vercel_cron') {
         runtimePatch.lastCronFinishedAt = finishedAt;
         runtimePatch.lastCronStatus = status;
+        runtimePatch.lastCronErrorCount = errorSummary.count;
+        runtimePatch.lastCronErrors = errorSummary.details;
       }
       tx.set(runtimeRef, runtimePatch, { merge: true });
     }
-
     return true;
   });
 }
@@ -310,6 +317,10 @@ export async function getSchedulerPublicRuntime(): Promise<SchedulerPublicRuntim
       lastCronStartedAt: runtime?.lastCronStartedAt || null,
       lastCronFinishedAt: runtime?.lastCronFinishedAt || null,
       lastCronStatus: knownCycleStatus(runtime?.lastCronStatus),
+      lastErrorCount: safeNonNegativeInteger(runtime?.lastErrorCount),
+      lastErrorStages: runtime?.lastErrors && typeof runtime.lastErrors === 'object' ? Object.keys(runtime.lastErrors).slice(0, 12) : [],
+      lastCronErrorCount: safeNonNegativeInteger(runtime?.lastCronErrorCount),
+      lastCronErrorStages: runtime?.lastCronErrors && typeof runtime.lastCronErrors === 'object' ? Object.keys(runtime.lastCronErrors).slice(0, 12) : [],
       legacyLastLeaseStartedAt,
       legacyLastLeaseReleasedAt,
       checkedAt: nowIso()
@@ -326,13 +337,34 @@ export async function getSchedulerPublicRuntime(): Promise<SchedulerPublicRuntim
       lastCronStartedAt: null,
       lastCronFinishedAt: null,
       lastCronStatus: null,
+      lastErrorCount: 0,
+      lastErrorStages: [],
+      lastCronErrorCount: 0,
+      lastCronErrorStages: [],
       legacyLastLeaseStartedAt: null,
       legacyLastLeaseReleasedAt: null,
       checkedAt: nowIso(),
-      error: 'Falha ao consultar telemetria do scheduler: ' +
-        (err?.message ? String(err.message).slice(0, 200) : 'Erro desconhecido')
+      error: 'Falha ao consultar telemetria do scheduler.'
     };
   }
+}
+
+export async function getSchedulerDiagnostics(): Promise<{
+  lastErrorCount: number;
+  lastErrors: Record<string, string> | null;
+  lastCronErrorCount: number;
+  lastCronErrors: Record<string, string> | null;
+  updatedAt: string | null;
+}> {
+  const snap = await firestore().collection(COLLECTIONS.systemSettings).doc(SCHEDULER_RUNTIME_DOC).get();
+  const runtime = snap.data() as any;
+  return {
+    lastErrorCount: safeNonNegativeInteger(runtime?.lastErrorCount),
+    lastErrors: runtime?.lastErrors && typeof runtime.lastErrors === 'object' ? runtime.lastErrors : null,
+    lastCronErrorCount: safeNonNegativeInteger(runtime?.lastCronErrorCount),
+    lastCronErrors: runtime?.lastCronErrors && typeof runtime.lastCronErrors === 'object' ? runtime.lastCronErrors : null,
+    updatedAt: runtime?.updatedAt || null
+  };
 }
 
 export async function recoverStalePublishingPosts(staleThresholdMinutes = 15): Promise<number> {
@@ -448,8 +480,9 @@ export async function processScheduledPosts(): Promise<number> {
 
       // 2. Revalidação estrita do projeto oficial.
       const projectId = String(post.projectId || post.companyId || '');
-      if (!PORTAL_VIP_PROJECTS.some((project) => project.id === projectId)) {
-        throw new Error('Inconsistência de segurança: projeto oficial do agendamento não reconhecido.');
+      const scheduledProject = await getPortalProjectFromDb(projectId);
+      if (!scheduledProject || scheduledProject.active === false) {
+        throw new Error('Inconsistência de segurança: projeto do agendamento não reconhecido ou pausado.');
       }
 
       // 4. Revalidação de conteúdo e titularidade
@@ -646,7 +679,7 @@ export async function processAutopilot(): Promise<number> {
     const currentSlot = `${dateStr}_h${hour}`;
 
 
-    const company = schedulerProjectContext(ap.userId, ap.companyId);
+    const company = await schedulerProjectContext(ap.userId, ap.companyId);
     if (!company) continue;
 
     // Pre-flight check para modo automático: verificar se TODOS os canais suportam publicação direta e possuem conexão ativa e válida
@@ -681,14 +714,16 @@ export async function processAutopilot(): Promise<number> {
       const connMap = new Map<string, any>();
       for (const d of connsSnap.docs) {
         const c = d.data() as any;
-        connMap.set(c.provider, c);
+        connMap.set(c.provider, { id: d.id, ...c });
       }
 
       let allConnectionsValid = true;
       for (const target of normalizedTargets) {
         const conn = connMap.get(target);
-        const isExpired = conn?.expiresAt ? new Date(conn.expiresAt).getTime() <= Date.now() : false;
-        if (!conn || conn.status !== 'connected' || (!conn.encryptedAccessToken && !conn.accessToken) || isExpired) {
+        if (!conn) { allConnectionsValid = false; break; }
+        try {
+          await ensureValidSocialAccessToken(conn.id);
+        } catch {
           allConnectionsValid = false;
           break;
         }
@@ -808,7 +843,7 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
   message: string;
 }> {
   const db = firestore();
-  const company = schedulerProjectContext(userId, companyId);
+  const company = await schedulerProjectContext(userId, companyId);
   if (!company) {
     const error: any = new Error('Projeto oficial não encontrado.');
     error.statusCode = 404;
@@ -868,14 +903,16 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
     const connMap = new Map<string, any>();
     for (const d of connsSnap.docs) {
       const c = d.data() as any;
-      connMap.set(c.provider, c);
+      connMap.set(c.provider, { id: d.id, ...c });
     }
 
     for (const target of normalizedTargets) {
       const conn = connMap.get(target);
-      const isExpired = conn?.expiresAt ? new Date(conn.expiresAt).getTime() <= Date.now() : false;
-      if (!conn || conn.status !== 'connected' || (!conn.encryptedAccessToken && !conn.accessToken) || isExpired) {
-        throw new Error(`A rede social "${target}" selecionada para o Autopilot automático não possui conexão ativa e válida neste projeto.`);
+      if (!conn) throw new Error(`A rede social "${target}" selecionada para o Autopilot automático não possui conexão neste projeto.`);
+      try {
+        await ensureValidSocialAccessToken(conn.id);
+      } catch {
+        throw new Error(`A rede social "${target}" selecionada para o Autopilot automático expirou e não pôde ser renovada automaticamente.`);
       }
     }
   }
@@ -1035,6 +1072,9 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     try {
       const blogCycleRes = await runDailyBlogCycle();
       portalBlogCount = blogCycleRes.publishedCount + blogCycleRes.pendingCount;
+      if (!blogCycleRes.success) {
+        errors.portalBlog = `Ciclo do Blog teve ${blogCycleRes.failedCount} falha(s), ${blogCycleRes.skippedCount} item(ns) já processado(s), em ${blogCycleRes.totalProjects} projeto(s).`;
+      }
     } catch (err: any) {
       errors.portalBlog = err?.message || String(err);
       console.error('[Scheduler] Erro em runDailyBlogCycle:', err);
@@ -1055,11 +1095,12 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       errors: Object.keys(errors).length > 0 ? errors : undefined,
       processedAt: nowIso()
     };
-  } catch (error) {
+  } catch (error: any) {
     finalStatus = 'failed';
+    errors.scheduler = error?.message || String(error);
     throw error;
   } finally {
-    await releaseLock(lease, finalStatus, Object.keys(errors).length);
+    await releaseLock(lease, finalStatus, errors);
   }
 }
 
@@ -1163,6 +1204,7 @@ export async function processSocialTick(): Promise<{
   }
 
   let socialStatus: Exclude<SchedulerCycleStatus, 'running'> = 'ok';
+  let socialError: string | null = null;
   try {
     const recoveredPublishing = await recoverStalePublishingPosts(15);
     const scheduledPosts = await processScheduledPosts();
@@ -1174,14 +1216,15 @@ export async function processSocialTick(): Promise<{
     };
   } catch (err: any) {
     socialStatus = 'degraded';
+    socialError = err instanceof Error ? err.message : String(err);
     return {
       skipped: false,
       recoveredPublishing: 0,
       scheduledPosts: 0,
-      error: err instanceof Error ? err.message : String(err),
+      error: socialError || 'Falha no ciclo social.',
       processedAt: nowIso()
     };
   } finally {
-    await releaseLock(lease, socialStatus, socialStatus === 'ok' ? 0 : 1);
+    await releaseLock(lease, socialStatus, socialError ? { socialTick: socialError } : 0);
   }
 }

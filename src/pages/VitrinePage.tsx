@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ExternalLink,
   Globe,
@@ -18,6 +18,7 @@ import {
   Copy
 } from 'lucide-react';
 import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND, PortalProject } from '../data/portalProjects';
+import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProjectAdapter';
 import { BRAND } from '../lib/brand';
 import { apiRequest } from '../lib/api';
 
@@ -32,10 +33,20 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [isTriggeringDaily, setIsTriggeringDaily] = useState<boolean>(false);
   const [dailyStatusMessage, setDailyStatusMessage] = useState<string | null>(null);
+  const [projects, setProjects] = useState<PortalProject[]>(USER_PORTFOLIO_PROJECTS);
 
-  const categories = ['todos', 'Espiritualidade & Devoção', 'Oráculos & Guardiões', 'Amor & Atração Magnética', 'Tradição Católica & Fé', 'Inteligência Artificial & Conteúdo', 'Tarot & Cartomancia', 'Automação & Redes Sociais'];
+  useEffect(() => {
+    apiRequest<{ projects: Array<ApiPortalProject & { website?: string; coverUrl?: string; niche?: string }> }>('/api/vitrine')
+      .then((data) => {
+        const dynamic = (data.projects || []).map(portalProjectToDisplay);
+        setProjects(dynamic);
+      })
+      .catch((error) => console.warn('[Vitrine] Falha ao carregar cadastro dinâmico; usando projetos iniciais:', error));
+  }, []);
 
-  const filteredProjects = USER_PORTFOLIO_PROJECTS.filter((project) => {
+  const categories = useMemo(() => ['todos', ...Array.from(new Set(projects.map((project) => project.category).filter(Boolean)))], [projects]);
+
+  const filteredProjects = projects.filter((project) => {
     const matchesCategory = selectedCategory === 'todos' || project.category === selectedCategory;
     const matchesSearch =
       project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -56,11 +67,13 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
     setIsTriggeringDaily(true);
     setDailyStatusMessage(null);
     try {
-      const res = await apiRequest<{ success: boolean; publishedCount: number; itemsGenerated: any[] }>('/api/portal/daily-pulse', {
+      const res = await apiRequest<{ success: boolean; generatedCount: number; scheduledCount: number; skippedCount: number; errors?: any[] }>('/api/portal/daily-pulse', {
         method: 'POST'
       });
       if (res.success) {
-        setDailyStatusMessage(`Sucesso! ${res.publishedCount} publicações geradas e programadas com SEO para redes sociais.`);
+        setDailyStatusMessage(`Ciclo concluído: ${res.generatedCount} conteúdo(s) gerado(s), ${res.scheduledCount} agendamento(s) social(is) e ${res.skippedCount} já processado(s) hoje.`);
+      } else {
+        setDailyStatusMessage(`Falha parcial: ${res.generatedCount || 0} conteúdo(s) gerado(s) e ${res.errors?.length || 0} falha(s).`);
       }
     } catch (err: any) {
       setDailyStatusMessage(`Falha: ${err?.message || 'o ciclo diário não foi confirmado pelo backend.'}`);

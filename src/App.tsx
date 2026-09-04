@@ -36,7 +36,7 @@ import { AdminPage } from './pages/AdminPage';
 import type { Campaign, Company, ContentItem, ScheduledPost, User } from './types';
 import { ApiRequestError, apiRequest, isApiAbortError } from './lib/api';
 import { auth } from './lib/firebase';
-import { initialPortalProject, PORTAL_PROJECT_COMPANIES } from './lib/portalProjectAdapter';
+import { initialPortalProject, portalProjectsToCompanies, PORTAL_PROJECT_COMPANIES, type ApiPortalProject } from './lib/portalProjectAdapter';
 
 const TAB_PATH: Record<string, string> = {
   home: '/',
@@ -196,41 +196,56 @@ export function App() {
   }, [commitNavigation]);
 
   const refreshContents = useCallback(async () => {
-    if (!user || !selectedCompany) return;
+    if (!user) return;
     try {
-      const data = await apiRequest<{ items: ContentItem[] }>(`/api/content?companyId=${encodeURIComponent(selectedCompany.id)}`);
+      const data = await apiRequest<{ items: ContentItem[] }>('/api/content');
       if (Array.isArray(data?.items)) setContentItems(data.items);
     } catch (err) {
       if (!isApiAbortError(err)) console.warn('Erro ao carregar conteúdos:', err);
     }
-  }, [selectedCompany, user]);
+  }, [user]);
 
   const refreshSchedule = useCallback(async () => {
-    if (!user || !selectedCompany) return;
+    if (!user) return;
     try {
-      const data = await apiRequest<{ posts: ScheduledPost[] }>(`/api/schedule?companyId=${encodeURIComponent(selectedCompany.id)}`);
-      if (Array.isArray(data?.posts)) setScheduledPosts(data.posts);
+      const data = await apiRequest<{ scheduledPosts: ScheduledPost[] }>('/api/content/scheduled');
+      if (Array.isArray(data?.scheduledPosts)) setScheduledPosts(data.scheduledPosts);
     } catch (err) {
       if (!isApiAbortError(err)) console.warn('Erro ao carregar agendamentos:', err);
     }
-  }, [selectedCompany, user]);
+  }, [user]);
 
   const refreshCampaigns = useCallback(async () => {
-    if (!user || !selectedCompany) return;
+    if (!user) return;
     try {
-      const data = await apiRequest<{ campaigns: Campaign[] }>(`/api/campaigns?companyId=${encodeURIComponent(selectedCompany.id)}`);
+      const data = await apiRequest<{ campaigns: Campaign[] }>('/api/campaigns');
       if (Array.isArray(data?.campaigns)) setCampaigns(data.campaigns);
     } catch (err) {
       if (!isApiAbortError(err)) console.warn('Erro ao carregar campanhas:', err);
     }
-  }, [selectedCompany, user]);
+  }, [user]);
 
-  const refreshCompanies = useCallback(async (_signal?: AbortSignal, _epoch?: number) => {
-    setCompanies(PORTAL_PROJECT_COMPANIES);
-    setSelectedCompany((current) => {
-      if (current && PORTAL_PROJECT_COMPANIES.some((project) => project.id === current.id)) return current;
-      return initialPortalProject();
-    });
+  const refreshCompanies = useCallback(async (signal?: AbortSignal, epoch?: number) => {
+    try {
+      const data = await apiRequest<{ projects: ApiPortalProject[] }>('/api/portal/projects', {
+        signal,
+        timeoutMs: 12_000
+      });
+      if (epoch !== undefined && epoch !== sessionEpochRef.current) return;
+      const nextProjects = portalProjectsToCompanies((data.projects || []).filter((project) => project.active !== false));
+      setCompanies(nextProjects);
+      setSelectedCompany((current) => {
+        if (current && nextProjects.some((project) => project.id === current.id)) return current;
+        return initialPortalProject(nextProjects);
+      });
+    } catch (err) {
+      if (!isApiAbortError(err)) console.warn('Erro ao carregar projetos dinâmicos; usando sementes locais:', err);
+      if (epoch !== undefined && epoch !== sessionEpochRef.current) return;
+      setCompanies(PORTAL_PROJECT_COMPANIES);
+      setSelectedCompany((current) => current && PORTAL_PROJECT_COMPANIES.some((project) => project.id === current.id)
+        ? current
+        : initialPortalProject(PORTAL_PROJECT_COMPANIES));
+    }
   }, []);
 
   const reloadSession = useCallback(async () => {
@@ -315,9 +330,9 @@ export function App() {
       : currentTab;
 
   useEffect(() => {
-    if (guardedTab !== 'conteudos' || !user || !selectedCompany) return;
+    if (guardedTab !== 'conteudos' || !user) return;
     void refreshContents();
-  }, [guardedTab, refreshContents, selectedCompany, user]);
+  }, [guardedTab, refreshContents, user]);
 
   const needsTermsConsent = Boolean(
     user && (
@@ -382,6 +397,7 @@ export function App() {
       case 'autopilot':
         return (
           <AutopilotPage
+            companies={companies}
             selectedCompany={selectedCompany}
             onRefreshContents={refreshContents}
             onNavigate={navigate}
@@ -457,7 +473,7 @@ export function App() {
       case 'conteudos':
         return (
           <ContentsLibraryPage
-            selectedCompany={selectedCompany}
+            companies={companies}
             contentItems={contentItems}
             onRefreshContents={refreshContents}
             onNavigate={navigate}
@@ -485,7 +501,7 @@ export function App() {
       case 'apps-compliance':
         return <LegalPage initialSection={currentTab} onNavigate={navigate} />;
       case 'admin':
-        return isAdmin ? <AdminPage onNavigate={navigate} /> : null;
+        return isAdmin ? <AdminPage onNavigate={navigate} onProjectsChanged={() => refreshCompanies()} /> : null;
       default:
         return (
           <DashboardPage
