@@ -36,6 +36,7 @@ export function portalProjectToCompany(project: ApiPortalProject): Company {
     name: project.name,
     slug: project.slug,
     logoUrl: project.logoUrl,
+    bannerUrl: project.bannerUrl,
     description: project.description || '',
     businessType: 'online',
     onlineChannels: ['Site / Aplicativo', 'Redes Sociais'],
@@ -87,7 +88,10 @@ export function portalProjectToDisplay(project: ApiPortalProject & { website?: s
     targetAudience: project.targetAudience || '',
     socialMarketingAngles: Array.isArray(project.socialMarketingAngles) ? project.socialMarketingAngles : [],
     bingSeoKeywords: Array.isArray(project.bingSeoKeywords) ? project.bingSeoKeywords : (Array.isArray(project.keywords) ? project.keywords : []),
-    color: 'from-cyan-500/20 to-blue-600/10'
+    color: 'from-cyan-500/20 to-blue-600/10',
+    active: project.active !== false,
+    dailyMarketingEnabled: project.dailyMarketingEnabled !== false,
+    dailyBlogEnabled: project.dailyBlogEnabled !== false
   };
 }
 

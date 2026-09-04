@@ -24,6 +24,13 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
   const [error, setError] = useState('');
 
   const projectNames = useMemo(() => new Map(companies.map((project) => [project.id, project.name])), [companies]);
+  const brandAssets = useMemo(() => companies.flatMap((project) => {
+    if (projectFilter !== 'all' && project.id !== projectFilter) return [];
+    const assets: Array<{ id: string; projectId: string; projectName: string; label: string; url: string }> = [];
+    if (project.logoUrl) assets.push({ id: `${project.id}:logo`, projectId: project.id, projectName: project.name, label: 'Logo', url: project.logoUrl });
+    if (project.bannerUrl && project.bannerUrl !== project.logoUrl) assets.push({ id: `${project.id}:banner`, projectId: project.id, projectName: project.name, label: 'Capa / Banner', url: project.bannerUrl });
+    return assets;
+  }), [companies, projectFilter]);
 
   const items = useMemo(
     () => contentItems.filter((item) =>
@@ -120,6 +127,21 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
           ))}
         </div>
       </div>
+
+      {brandAssets.length > 0 && (
+        <section className="rounded-3xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div><h3 className="text-sm font-black text-white">Ativos de marca dos projetos</h3><p className="mt-1 text-[11px] text-slate-400">Logos e capas cadastrados no Admin ficam disponíveis aqui para reutilização.</p></div>
+            <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-[10px] font-black text-cyan-300">{brandAssets.length} arquivo(s)</span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {brandAssets.map((asset) => <article key={asset.id} className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/60">
+              <div className="aspect-video bg-slate-950"><img src={asset.url} alt={`${asset.label} de ${asset.projectName}`} loading="lazy" className="h-full w-full object-contain"/></div>
+              <div className="p-3"><div className="text-[10px] font-black uppercase text-cyan-300">{asset.label}</div><div className="mt-1 truncate text-xs font-bold text-white">{asset.projectName}</div><div className="mt-3 grid grid-cols-2 gap-2"><a href={asset.url} target="_blank" rel="noreferrer" className="flex min-h-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-[10px] font-bold text-slate-300">Abrir</a><a href={asset.url} target="_blank" rel="noreferrer" download className="flex min-h-9 items-center justify-center rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-[10px] font-bold text-cyan-300">Baixar</a></div></div>
+            </article>)}
+          </div>
+        </section>
+      )}
 
       {items.length ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">

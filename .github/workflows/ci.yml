@@ -26,3 +26,24 @@ jobs:
 
       - name: Run Quality Gate Check
         run: npm run check
+
+  smoke-production:
+    name: Production Smoke After Merge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify deployed production commit and public runtime
+        env:
+          EXPECTED_RELEASE: portal-final-r5c-20260904
+          PRODUCTION_URL: https://portal-vip-brasil.vercel.app
+        run: node test/productionSmoke.mjs

@@ -18,6 +18,9 @@ export interface PortalProject {
   socialMarketingAngles: string[];
   bingSeoKeywords: string[];
   color: string;
+  active?: boolean;
+  dailyMarketingEnabled?: boolean;
+  dailyBlogEnabled?: boolean;
 }
 
 export const PORTAL_VIP_BRAND = {

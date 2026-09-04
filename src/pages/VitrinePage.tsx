@@ -31,8 +31,6 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeProjectModal, setActiveProjectModal] = useState<PortalProject | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [isTriggeringDaily, setIsTriggeringDaily] = useState<boolean>(false);
-  const [dailyStatusMessage, setDailyStatusMessage] = useState<string | null>(null);
   const [projects, setProjects] = useState<PortalProject[]>(USER_PORTFOLIO_PROJECTS);
 
   useEffect(() => {
@@ -43,6 +41,37 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
       })
       .catch((error) => console.warn('[Vitrine] Falha ao carregar cadastro dinâmico; usando projetos iniciais:', error));
   }, []);
+
+  const openProject = (project: PortalProject, updateHistory = true) => {
+    setActiveProjectModal(project);
+    if (updateHistory) {
+      const target = `/vitrine/${encodeURIComponent(project.slug)}`;
+      if (window.location.pathname !== target) window.history.pushState({ tab: 'vitrine', slug: project.slug }, '', target);
+    }
+  };
+
+  const closeProject = () => {
+    setActiveProjectModal(null);
+    if (window.location.pathname.startsWith('/vitrine/')) {
+      window.history.pushState({ tab: 'vitrine' }, '', '/vitrine');
+    }
+  };
+
+  useEffect(() => {
+    const syncProjectFromPath = () => {
+      const match = window.location.pathname.match(/^\/vitrine\/([^/]+)\/?$/);
+      if (!match) {
+        setActiveProjectModal(null);
+        return;
+      }
+      const slug = decodeURIComponent(match[1]);
+      const found = projects.find((project) => project.slug === slug || project.id === slug);
+      setActiveProjectModal(found || null);
+    };
+    syncProjectFromPath();
+    window.addEventListener('popstate', syncProjectFromPath);
+    return () => window.removeEventListener('popstate', syncProjectFromPath);
+  }, [projects]);
 
   const categories = useMemo(() => ['todos', ...Array.from(new Set(projects.map((project) => project.category).filter(Boolean)))], [projects]);
 
@@ -60,25 +89,6 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
       navigator.clipboard.writeText(text);
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
-    }
-  };
-
-  const handleTriggerDailyPulse = async () => {
-    setIsTriggeringDaily(true);
-    setDailyStatusMessage(null);
-    try {
-      const res = await apiRequest<{ success: boolean; generatedCount: number; scheduledCount: number; skippedCount: number; errors?: any[] }>('/api/portal/daily-pulse', {
-        method: 'POST'
-      });
-      if (res.success) {
-        setDailyStatusMessage(`Ciclo concluído: ${res.generatedCount} conteúdo(s) gerado(s), ${res.scheduledCount} agendamento(s) social(is) e ${res.skippedCount} já processado(s) hoje.`);
-      } else {
-        setDailyStatusMessage(`Falha parcial: ${res.generatedCount || 0} conteúdo(s) gerado(s) e ${res.errors?.length || 0} falha(s).`);
-      }
-    } catch (err: any) {
-      setDailyStatusMessage(`Falha: ${err?.message || 'o ciclo diário não foi confirmado pelo backend.'}`);
-    } finally {
-      setIsTriggeringDaily(false);
     }
   };
 
@@ -145,7 +155,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                     Vitrine Oficial de Projetos & Marketing
                   </span>
                   <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                    Bing & Google SEO Indexado
+                    SEO preparado para Bing & Google
                   </span>
                 </div>
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white">
@@ -164,34 +174,16 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                 <span>Automação Diária de Marketing (1x/dia)</span>
               </div>
               <p className="text-xs text-slate-400 max-w-xs">
-                A IA seleciona cada site da vitrine e gera publicações de fotos, vídeos e SEO para as redes sociais.
+                A IA percorre cada projeto ativo, gera conteúdo e publica diretamente apenas nos canais conectados e compatíveis. Imagens e vídeos seguem o fluxo próprio de cada plataforma.
               </p>
               <button
-                onClick={handleTriggerDailyPulse}
-                disabled={isTriggeringDaily}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95 disabled:opacity-50"
+                onClick={() => onNavigate?.('admin')}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95"
               >
-                {isTriggeringDaily ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    Gerando Divulgação...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-slate-950" />
-                    Disparar Divulgação Agora
-                  </>
-                )}
+                <ShieldCheck className="w-4 h-4" />
+                Abrir Administração
               </button>
-              {dailyStatusMessage && (
-                <div className={`text-[11px] px-3 py-1.5 rounded-lg w-full border ${
-                  dailyStatusMessage.startsWith('Falha:')
-                    ? 'text-rose-300 bg-rose-950/40 border-rose-500/30'
-                    : 'text-emerald-400 bg-emerald-950/40 border-emerald-500/30'
-                }`}>
-                  {dailyStatusMessage}
-                </div>
-              )}
+              <div className="text-[11px] text-slate-500">Execução manual e diagnóstico ficam restritos ao administrador autenticado.</div>
             </div>
           </div>
 
@@ -341,7 +333,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                     </a>
                   ) : (
                     <button
-                      onClick={() => setActiveProjectModal(project)}
+                      onClick={() => openProject(project)}
                       className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-800/60 hover:bg-slate-800 text-slate-300 text-xs font-medium rounded-xl transition-all border border-slate-700"
                     >
                       <Tag className="w-3.5 h-3.5 text-cyan-400" />
@@ -369,7 +361,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                   </button>
 
                   <button
-                    onClick={() => setActiveProjectModal(project)}
+                    onClick={() => openProject(project)}
                     className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-semibold"
                   >
                     <span>SEO & Redes</span>
@@ -391,7 +383,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
               <div>
                 <h4 className="text-sm font-bold text-white">SEO Bing & Google Avançado</h4>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Todos os 7 sites e aplicativos contam com metadados estruturados Schema.org, OpenGraph, Canonical e Sitemap integrado.
+                  {projects.length} projeto(s) ativo(s) participam da Vitrine e do sitemap dinâmico, com metadados públicos preparados para indexação.
                 </p>
               </div>
             </div>
@@ -403,7 +395,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
               <div>
                 <h4 className="text-sm font-bold text-white">Proteção Anti-Quedas (2s)</h4>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Failover contínuo entre os modelos Gemini 3.7, 3.6 e 3.5 com latência controlada e garantia de resposta sem interrupções.
+                  Failover entre modelos Gemini atuais e fallbacks compatíveis, com contingência segura quando nenhum provedor responde a tempo.
                 </p>
               </div>
             </div>
@@ -415,7 +407,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
               <div>
                 <h4 className="text-sm font-bold text-white">Publicação 1x ao Dia</h4>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  A IA analisa seu portfólio diariamente e programa posts de fotos, vídeos e copys magnéticas em todas as redes sociais.
+                  O ciclo diário percorre todos os projetos ativos com marketing habilitado. Publicação automática só ocorre em conexões válidas e formatos suportados; canais de mídia exigem imagem ou vídeo compatível.
                 </p>
               </div>
             </div>
@@ -428,7 +420,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
           <div className="relative w-full max-w-2xl bg-slate-900 border border-cyan-500/40 rounded-2xl p-6 sm:p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
             <button
-              onClick={() => setActiveProjectModal(null)}
+              onClick={closeProject}
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-lg bg-slate-800"
             >
               ✕

@@ -115,6 +115,7 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
   const[projectForm,setProjectForm]=useState<ProjectForm>(EMPTY_PROJECT);
   const[editingProjectId,setEditingProjectId]=useState<string|null>(null);
   const[savingProject,setSavingProject]=useState(false);
+  const[runningScheduler,setRunningScheduler]=useState(false);
 
   const loadOverview=async()=>{
     const d=await apiRequest<{stats:Partial<AdminStats>}>('/api/admin/overview');
@@ -150,6 +151,22 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
   useEffect(()=>{void refresh()},[]);
 
   const activeCount=useMemo(()=>projects.filter((project)=>project.active!==false).length,[projects]);
+
+  const runSchedulerNow=async()=>{
+    setRunningScheduler(true);setFeedback('');
+    try{
+      const d=await apiRequest<{success:boolean;result:any}>('/api/admin/scheduler/run-now',{method:'POST',timeoutMs:290_000});
+      const errors=Object.keys(d.result?.errors||{});
+      setFeedback(d.result?.skipped
+        ? 'O coordenador ja estava em execucao; nenhuma segunda instancia foi iniciada.'
+        : errors.length
+          ? `Ciclo completo executado com ${errors.length} etapa(s) em estado degradado: ${errors.join(', ')}. Veja o diagnostico abaixo.`
+          : 'Ciclo completo executado pelo mesmo coordenador do cron sem falhas registradas.');
+      await Promise.all([loadOverview(),loadSchedulerDiagnostics(),loadProjects()]);
+      await onProjectsChanged?.();
+    }catch(err:any){setFeedback(err.message||'Falha ao executar o ciclo completo.');}
+    finally{setRunningScheduler(false);}
+  };
 
   const ticketStatus=async(id:string,status:string)=>{
     try{
@@ -263,13 +280,17 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
       <section className="froc-panel">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h3 className="froc-section-title">Diagnóstico do último cron</h3>
-            <p className="mt-2 text-xs text-slate-400">Os detalhes ficam visíveis somente para administrador. O /health público mostra apenas os módulos afetados, sem mensagens internas.</p>
+            <h3 className="froc-section-title">Diagnóstico da última execução do scheduler</h3>
+            <p className="mt-2 text-xs text-slate-400">O botão abaixo usa exatamente o mesmo coordenador, lock e pipeline do cron. Os detalhes ficam visíveis somente para administrador.</p>
           </div>
-          <div className={`rounded-xl border px-3 py-2 text-xs font-black ${schedulerDiagnostics.lastCronErrorCount>0?'border-amber-500/30 bg-amber-500/10 text-amber-300':'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>{schedulerDiagnostics.lastCronErrorCount>0?`${schedulerDiagnostics.lastCronErrorCount} falha(s)`:'Sem falhas registradas'}</div>
+          <div className="flex flex-col gap-2 sm:items-end">
+            <div className={`rounded-xl border px-3 py-2 text-xs font-black ${schedulerDiagnostics.lastErrorCount>0?'border-amber-500/30 bg-amber-500/10 text-amber-300':'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'}`}>{schedulerDiagnostics.lastErrorCount>0?`${schedulerDiagnostics.lastErrorCount} falha(s) na última execução`:'Última execução sem falhas'}</div>
+            <button onClick={()=>void runSchedulerNow()} disabled={runningScheduler} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-4 text-[11px] font-black text-cyan-200 disabled:opacity-50"><PlayCircle size={14}/>{runningScheduler?'Executando ciclo completo...':'Executar ciclo completo agora'}</button>
+          </div>
         </div>
-        {schedulerDiagnostics.lastCronErrors&&Object.keys(schedulerDiagnostics.lastCronErrors).length>0?<div className="mt-4 space-y-2">{Object.entries(schedulerDiagnostics.lastCronErrors).map(([stage,message])=><div key={stage} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3"><div className="text-[10px] font-black uppercase tracking-wider text-amber-300">{stage}</div><div className="mt-1 text-xs leading-5 text-slate-300">{message}</div></div>)}</div>:<div className="mt-4 text-xs text-slate-500">Nenhum erro detalhado persistido para o último ciclo do Vercel Cron.</div>}
-        {schedulerDiagnostics.updatedAt&&<div className="mt-3 text-[10px] text-slate-600">Telemetria atualizada: {new Date(schedulerDiagnostics.updatedAt).toLocaleString('pt-BR')}</div>}
+        {schedulerDiagnostics.lastErrors&&Object.keys(schedulerDiagnostics.lastErrors).length>0?<div className="mt-4 space-y-2">{Object.entries(schedulerDiagnostics.lastErrors).map(([stage,message])=><div key={stage} className="rounded-xl border border-slate-800 bg-slate-950/60 p-3"><div className="text-[10px] font-black uppercase tracking-wider text-amber-300">{stage}</div><div className="mt-1 text-xs leading-5 text-slate-300">{message}</div></div>)}</div>:<div className="mt-4 text-xs text-slate-500">Nenhum erro detalhado persistido para a última execução.</div>}
+        <div className="mt-3 text-[10px] text-slate-600">Último Vercel Cron: {schedulerDiagnostics.lastCronErrorCount>0?`${schedulerDiagnostics.lastCronErrorCount} falha(s)`:'sem falhas registradas'}.</div>
+        {schedulerDiagnostics.updatedAt&&<div className="mt-1 text-[10px] text-slate-600">Telemetria atualizada: {new Date(schedulerDiagnostics.updatedAt).toLocaleString('pt-BR')}</div>}
       </section>
     </>}
 

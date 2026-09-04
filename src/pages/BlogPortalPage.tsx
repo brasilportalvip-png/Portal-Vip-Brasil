@@ -50,6 +50,7 @@ interface BlogPortalPageProps {
 }
 
 export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageProps) {
+  const isAdmin = user?.role === 'admin';
   const [articles, setArticles] = useState<PortalBlogArticle[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
@@ -82,15 +83,14 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
     setLoading(true);
     try {
       const data = await apiRequest<{ articles: PortalBlogArticle[]; total: number }>('/api/portal/blog/articles');
-      if (data?.articles && Array.isArray(data.articles) && data.articles.length > 0) {
+      if (Array.isArray(data?.articles)) {
         setArticles(data.articles);
       } else {
-        // Fallback to local articles converted to schema
-        setArticles(convertLocalArticles(BLOG_ARTICLES));
+        setArticles([]);
       }
     } catch (err) {
-      console.warn('[BlogPortal] Erro ao buscar artigos do backend, usando dados locais:', err);
-      setArticles(convertLocalArticles(BLOG_ARTICLES));
+      console.warn('[BlogPortal] Erro ao buscar artigos do backend:', err);
+      setArticles(import.meta.env.DEV ? convertLocalArticles(BLOG_ARTICLES) : []);
     } finally {
       setLoading(false);
     }
@@ -109,14 +109,48 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       .catch((error) => console.warn('[BlogPortal] Falha ao carregar projetos dinâmicos; usando projetos iniciais:', error));
   }, []);
 
-  // Check URL slug to auto-open article
-  useEffect(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/blog/') && articles.length > 0) {
-      const slug = path.replace('/blog/', '').replace(/\/$/, '');
-      const found = articles.find((a) => a.slug === slug);
-      if (found) setReadingArticle(found);
+  const openArticle = (article: PortalBlogArticle, updateHistory = true) => {
+    setReadingArticle(article);
+    if (updateHistory) {
+      const target = `/blog/${encodeURIComponent(article.slug)}`;
+      if (window.location.pathname !== target) window.history.pushState({ tab: 'blog', slug: article.slug }, '', target);
     }
+  };
+
+  const closeArticle = () => {
+    setReadingArticle(null);
+    if (window.location.pathname.startsWith('/blog/')) window.history.pushState({ tab: 'blog' }, '', '/blog');
+  };
+
+  // Deep-link real: artigos fora da primeira pagina tambem abrem pelo slug dedicado.
+  useEffect(() => {
+    let cancelled = false;
+    const syncArticleFromPath = async () => {
+      const match = window.location.pathname.match(/^\/blog\/([^/]+)\/?$/);
+      if (!match) {
+        if (!cancelled) setReadingArticle(null);
+        return;
+      }
+      const slug = decodeURIComponent(match[1]);
+      const found = articles.find((article) => article.slug === slug);
+      if (found) {
+        if (!cancelled) setReadingArticle(found);
+        return;
+      }
+      try {
+        const data = await apiRequest<{ article: PortalBlogArticle }>(`/api/portal/blog/articles/${encodeURIComponent(slug)}`);
+        if (!cancelled && data?.article) setReadingArticle(data.article);
+      } catch (error) {
+        if (!cancelled) {
+          console.warn('[BlogPortal] Artigo do deep-link nao foi encontrado:', error);
+          setReadingArticle(null);
+        }
+      }
+    };
+    void syncArticleFromPath();
+    const onPopState = () => { void syncArticleFromPath(); };
+    window.addEventListener('popstate', onPopState);
+    return () => { cancelled = true; window.removeEventListener('popstate', onPopState); };
   }, [articles]);
 
   function convertLocalArticles(list: any[]): PortalBlogArticle[] {
@@ -236,6 +270,11 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
 
   const blogCategories = useMemo(() => ['Todos', ...Array.from(new Set([...BLOG_CATEGORIES.filter((cat) => cat !== 'Todos'), ...articles.map((article) => article.category).filter(Boolean)]))], [articles]);
 
+  const blogEnabledProjectCount = useMemo(
+    () => portalProjects.filter((project) => project.dailyBlogEnabled !== false).length,
+    [portalProjects]
+  );
+
   // Featured article
   const featuredArticle = useMemo(() => {
     return articles.find((a) => a.featured) || articles[0] || null;
@@ -250,11 +289,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       return next;
     });
 
-    // Update local count
-    setArticles((prev) =>
-      prev.map((a) => (a.id === articleId ? { ...a, likes: a.likes + (isLiked ? -1 : 1) } : a))
-    );
-
+    // A métrica-base vem da API; o estado local de curtida é somado apenas na renderização.
     void trackAnalyticsEvent(isLiked ? 'blog_unlike' : 'blog_like', { article_id: articleId });
   };
 
@@ -384,7 +419,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 </span>
               </span>
               <p className="text-[11px] text-slate-400 hidden sm:block">
-                Espiritualidade, Oráculos, Orações & Aplicativos na Google Play Store
+                Conteúdo, SEO, projetos digitais & aplicativos do Portal Vip Brasil
               </p>
             </div>
           </div>
@@ -476,7 +511,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               {/* Featured Article Card */}
               <div
-                onClick={() => setReadingArticle(featuredArticle)}
+                onClick={() => openArticle(featuredArticle)}
                 className="lg:col-span-8 cursor-pointer group rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-cyan-500/50 p-6 sm:p-8 transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 backdrop-blur-md"
               >
                 <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -538,7 +573,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                   </div>
 
                   <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                    Esteira preparada para <strong className="text-white">1 artigo por projeto ativo por dia</strong>, com trava contra duplicação. A execução real do cron é confirmada pela telemetria do painel administrativo.
+                    Esteira preparada para <strong className="text-white">até 1 artigo por projeto com Blog diário habilitado</strong>, com trava contra duplicação. A execução real do cron é confirmada pela telemetria do painel administrativo.
                   </p>
 
                   <div className="space-y-2 mb-4 text-xs">
@@ -548,15 +583,15 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                     </div>
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80">
                       <span className="text-slate-400">Meta Diária:</span>
-                      <span className="font-bold text-emerald-400">{portalProjects.length} Artigos / dia</span>
+                      <span className="font-bold text-emerald-400">{blogEnabledProjectCount} projeto(s) elegível(is)</span>
                     </div>
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80">
                       <span className="text-slate-400">IndexNow Protocol:</span>
-                      <span className="font-bold text-white">Habilitado</span>
+                      <span className="font-bold text-white">Quando configurado</span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {isAdmin ? <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button
                       onClick={() => setShowGenerateModal(true)}
                       className="w-full py-2.5 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 transition-all flex items-center justify-center gap-1.5"
@@ -564,7 +599,6 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                       <PlusCircle className="w-3.5 h-3.5" />
                       <span>Gerar Artigo</span>
                     </button>
-
                     <button
                       onClick={handleTriggerDailyCycle}
                       disabled={isTriggeringDaily}
@@ -573,7 +607,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                       <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isTriggeringDaily ? 'animate-spin' : ''}`} />
                       <span>{isTriggeringDaily ? 'Gerando...' : 'Ciclo Completo'}</span>
                     </button>
-                  </div>
+                  </div> : <button onClick={onOpenAuth} className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-xs font-bold text-slate-300">Acesso administrativo para executar</button>}
 
                   {dailyMsg && (
                     <div className="mt-3 p-2.5 rounded-xl bg-cyan-950/60 border border-cyan-500/30 text-xs text-cyan-200 flex items-start gap-2">
@@ -710,13 +744,13 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
             <p className="text-xs text-slate-400 max-w-md mx-auto mb-5">
               Não encontramos artigos com os filtros selecionados. Você pode gerar um novo artigo agora mesmo para este projeto.
             </p>
-            <button
+            {isAdmin ? <button
               onClick={() => setShowGenerateModal(true)}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/20 inline-flex items-center gap-2"
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span>Gerar Artigo para este Projeto</span>
-            </button>
+            </button> : <button onClick={onOpenAuth} className="px-4 py-2 rounded-xl border border-slate-700 bg-slate-900 text-slate-300 font-bold text-xs">Acesso administrativo</button>}
           </div>
         ) : (
           /* Articles Grid */
@@ -726,7 +760,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
               return (
                 <article
                   key={article.id}
-                  onClick={() => setReadingArticle(article)}
+                  onClick={() => openArticle(article)}
                   className="group flex flex-col justify-between bg-slate-900/70 border border-slate-800/90 hover:border-cyan-500/40 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 cursor-pointer backdrop-blur-sm"
                 >
                   <div>
@@ -850,7 +884,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 Todos os Projetos Interligados por Rede de Artigos e Links Internos
               </h3>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
-                O motor do Portal Vip Brasil publica 1 novo artigo a cada 24h para cada site e app ativo, contendo dados estruturados Schema.org, metadados Canonical, OpenGraph, protocolo IndexNow e CTAs diretos para download na Google Play Store.
+                O ciclo editorial está preparado para gerar até 1 artigo diário por projeto ativo, com Schema.org, Canonical, OpenGraph, IndexNow quando configurado e links oficiais — incluindo Play Store somente quando o projeto possuir aplicativo.
               </p>
 
               <div className="flex flex-wrap gap-2 text-xs">
@@ -888,7 +922,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
           <div className="relative w-full max-w-4xl bg-slate-900 border border-cyan-500/40 rounded-3xl p-5 sm:p-10 shadow-2xl my-6 max-h-[92vh] overflow-y-auto">
             {/* Close Button */}
             <button
-              onClick={() => setReadingArticle(null)}
+              onClick={closeArticle}
               className="sticky top-0 float-right z-10 text-slate-400 hover:text-white p-2 rounded-xl bg-slate-800/90 border border-slate-700 transition-colors shadow-lg"
             >
               ✕
@@ -896,7 +930,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
 
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 text-xs text-slate-400 mb-3">
-              <span className="hover:text-cyan-400 cursor-pointer" onClick={() => setReadingArticle(null)}>
+              <span className="hover:text-cyan-400 cursor-pointer" onClick={closeArticle}>
                 Blog
               </span>
               <span>/</span>
@@ -1135,7 +1169,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
               </button>
 
               <button
-                onClick={() => setReadingArticle(null)}
+                onClick={closeArticle}
                 className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs transition-colors"
               >
                 Fechar Artigo
@@ -1447,7 +1481,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                     <button
                       onClick={() => {
                         setShowGenerateModal(false);
-                        setReadingArticle(genFeedback.article!);
+                        openArticle(genFeedback.article!);
                       }}
                       className="mt-2 text-cyan-400 underline font-bold"
                     >
