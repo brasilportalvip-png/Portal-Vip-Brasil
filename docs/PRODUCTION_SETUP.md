@@ -1,118 +1,142 @@
-# GUIA DE CONFIGURAÇÃO EXTERNA DE PRODUÇÃO (PRODUCTION SETUP)
+# Portal Vip Brasil — configuração externa de produção
 
-Este guia orienta a equipe de DevOps e Administradores na configuração das contas e serviços externos necessários para a entrada em produção do **Froc.IA Marketing Engine**.
+Produção oficial: `https://portal-vip-brasil.vercel.app`
 
----
+Este documento descreve apenas a arquitetura atual. O Portal não possui cadastro público, planos, carteira de créditos ou integração Mercado Pago.
 
-### SEÇÃO A — FIREBASE CONSOLE
+## 1. Firebase
 
-#### 1. Criação e Configuração do Projeto
-- Acesse o [Firebase Console](https://console.firebase.google.com/) e selecione o projeto de produção.
-- **Authentication**:
-  - Habilite o provedor de **E-mail / Senha** em *Sign-in method*.
-  - Habilite o provedor **Google** (se utilizado no frontend).
-  - Em *Authorized domains*, adicione o domínio da aplicação na Vercel (ex: `seu-app.vercel.app`) e seu domínio customizado.
-- **Firestore Database**:
-  - Crie o banco de dados Firestore no modo de produção na região mais próxima ao seu público (ex: `southamerica-east1` em São Paulo ou `us-central1`).
-  - Deploy das regras de segurança: `firebase deploy --only firestore:rules` (utilizando o arquivo `firestore.rules` do repositório).
-  - Deploy dos índices compostos: `firebase deploy --only firestore:indexes` (utilizando o arquivo `firestore.indexes.json`).
-- **Firebase Storage**:
-  - Habilite o Storage para upload de logos e criativos de mídia.
-- **Service Account / Admin SDK**:
-  - Em *Project Settings > Service accounts*, gere uma nova chave privada (*Generate new private key*).
-  - Extraia `project_id`, `client_email` e `private_key` para configurar nas variáveis de ambiente do backend.
+### Authentication
 
----
+- Habilite **E-mail/Senha** para o login administrativo atual.
+- Cadastre o e-mail proprietário em `PORTAL_ADMIN_EMAILS`.
+- O backend valida o ID token com Firebase Admin e revogação habilitada.
+- O privilégio administrativo vem de custom claims e/ou do e-mail proprietário configurado.
+- `ADMIN_BOOTSTRAP_ENABLED` deve permanecer `false` após a configuração inicial.
 
-### SEÇÃO B — VERCEL
+### Firestore
 
-#### 1. Configuração do Projeto e Build
-- Conecte o repositório GitHub à Vercel.
-- **Framework Preset**: Vite / Other.
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
-- **Install Command**: `npm ci`
-- O arquivo `vercel.json` na raiz gerencia os rewrites da API Express (`api/index.ts`) e o cron job.
+- Use banco de produção.
+- Publique `firestore.rules`.
+- Publique `firestore.indexes.json`.
+- O cliente não recebe permissão de escrita direta nas coleções operacionais.
 
-#### 2. Agendamento do Cron Job
-- O cron job está configurado em `vercel.json` para rodar a cada 10 minutos (`*/10 * * * *`) chamando `/api/cron/process`.
-- **Requisito Externo**: O agendamento de 10 minutos na Vercel requer um plano Pro ou superior. Caso utilize o plano Hobby, configure um serviço externo de cron (ex: GitHub Actions Cron, EasyCron, Cron-Job.org, Cloud Scheduler) disparando `GET https://seu-dominio.com/api/cron/process` com o header `Authorization: Bearer <CRON_SECRET>`.
+### Storage
 
----
+- Publique `storage.rules`.
+- O acesso de escrita do cliente permanece bloqueado; operações privilegiadas usam backend/Admin SDK.
 
-### SEÇÃO C — GOOGLE GEMINI AI
+### Credencial Firebase Admin
 
-#### 1. Obtenção da Chave de API
-- Acesse o [Google AI Studio](https://aistudio.google.com/) e crie uma API Key para o projeto.
-- Configure a variável de ambiente `GEMINI_API_KEY` na Vercel.
-- Modelos padrão configurados no engine:
-  - Texto e Estratégia: `gemini-2.5-flash`
-  - Modelos Pro: `gemini-3.1-pro-preview`
-  - Fallback Rápido: `gemini-3.1-flash-lite`
-  - Geração de Imagem: `gemini-3.1-flash-image`
+Configure somente no ambiente de servidor:
 
----
+- `FIREBASE_ADMIN_PROJECT_ID`
+- `FIREBASE_ADMIN_CLIENT_EMAIL`
+- `FIREBASE_ADMIN_PRIVATE_KEY`
 
-### SEÇÃO D — MERCADO PAGO
+**Segurança obrigatória:** confirme no Google Cloud IAM que qualquer chave Firebase Admin que tenha aparecido no histórico antigo do GitHub foi revogada.
 
-#### 1. Credenciais de Produção
-- Acesse o painel de desenvolvedores do [Mercado Pago](https://www.mercadopago.com.br/developers).
-- Em *Suas integrações > Credenciais de produção*, obtenha:
-  - **Access Token** (`MERCADO_PAGO_ACCESS_TOKEN`)
-  - **Public Key** (`MERCADO_PAGO_PUBLIC_KEY`)
-- Configure o **Webhook** em *Notificações Webhook*:
-  - **URL de Produção**: `https://seu-dominio.com/api/webhooks/mercadopago`
-  - **Eventos Assinados**: Selecionar Pagamentos (`payment`), Assinaturas / Pré-aprovações (`subscription_preapproval`, `subscription_authorized_payment`).
-  - **Secret do Webhook**: Copie a chave secreta gerada para a variável `MERCADO_PAGO_WEBHOOK_SECRET`.
+## 2. Vercel
 
----
+Configuração esperada:
 
-### SEÇÃO E — PROVEDORES OAUTH E MATRIZ REAL DE PUBLICAÇÃO SOCIAL
+- Install Command: `npm ci`
+- Build Command: `npm run build`
+- Output: `dist`
+- Node: 22.x
+- npm: 10.x
 
-Para cada plataforma que desejar habilitar a conexão social no painel:
+O `vercel.json` controla API, SSR público, headers, cache, SPA e cron.
 
-| Provedor | Variáveis Necessárias | URL de Callback Autorizada | Scopes / Requisitos |
-| :--- | :--- | :--- | :--- |
-| **Facebook Page** | `META_APP_ID`, `META_APP_SECRET` | `https://seu-dominio.com/api/social/facebook/callback` | `pages_show_list`, `pages_read_engagement`, `pages_manage_posts`, `public_profile` |
-| **Instagram Business** | `META_APP_ID`, `META_APP_SECRET` | `https://seu-dominio.com/api/social/instagram/callback` | `instagram_basic`, `instagram_content_publish`, `pages_show_list` |
-| **LinkedIn** | `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET`, `LINKEDIN_API_VERSION` | `https://seu-dominio.com/api/social/linkedin/callback` | `openid`, `profile`, `email`, `w_member_social` |
-| **YouTube** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | `https://seu-dominio.com/api/social/youtube/callback` | `openid`, `email`, `profile`, `https://www.googleapis.com/auth/youtube.upload` |
-| **X (Twitter)** | `X_CLIENT_ID`, `X_CLIENT_SECRET` | `https://seu-dominio.com/api/social/x/callback` | `tweet.read`, `tweet.write`, `users.read`, `offline.access` |
-| **TikTok** | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | `https://seu-dominio.com/api/social/tiktok/callback` | `user.info.basic`, `video.publish`, `video.upload` |
-| **Pinterest** | `PINTEREST_APP_ID`, `PINTEREST_APP_SECRET` | `https://seu-dominio.com/api/social/pinterest/callback` | `pins:read`, `pins:write`, `boards:read`, `user_accounts:read` |
+### Cron oficial
 
-#### Matriz de Suporte Real de Publicação (Código Backend `social.ts`):
+Endpoint:
 
-| Provedor | Conexão OAuth | Publicação de Texto | Publicação de Mídia | Refresh Automático | Aprovação Externa Necessária |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **X (Twitter)** | SIM (OAuth 2.0 PKCE) | SIM (API v2 Tweets) | NÃO | SIM (offline.access) | Developer Portal App (Write permission) |
-| **Facebook** | SIM (OAuth 2.0) | SIM (Graph API /feed em Páginas) | NÃO | SIM (Token Longa Duração 60d) | Meta App Review (pages_manage_posts) |
-| **LinkedIn** | SIM (OAuth 2.0) | SIM (rest/posts) | NÃO | MANUAL/RECONNECT | LinkedIn Developer Approval (w_member_social) |
-| **Instagram** | SIM (Conta profissional via Página FB) | NÃO (Requer mídia) | NÃO | SIM (Token Longa Duração Meta) | Meta App Review (instagram_content_publish) |
-| **YouTube** | SIM (Google OAuth) | NÃO (Plataforma de vídeo) | NÃO | SIM (Google offline access) | Google Cloud Verification |
-| **TikTok** | SIM (OAuth 2.0 PKCE) | NÃO (Plataforma de vídeo) | NÃO | SIM (TikTok refresh token) | TikTok Developer Commercial Review |
-| **Pinterest** | SIM (OAuth 2.0) | NÃO (Pins exigem mídia) | NÃO | SIM (Pinterest refresh token) | Pinterest App Approval |
+`GET /api/cron/process`
 
----
+Agenda:
 
-### SEÇÃO F — GITHUB & CI/CD
+`0 13 * * *`
 
-1. **Branch Protection**:
-   - Acesse as configurações do repositório no GitHub (*Settings > Branches*).
-   - Adicione regra de proteção para a branch `main`:
-     - Marque *Require a pull request before merging*.
-     - Marque *Require status checks to pass before merging*.
-     - Selecione o status check do workflow do CI: `Typecheck, Test & Build Gate`.
-2. **GitHub Secrets**:
-   - Caso configure deploy automatizado no futuro via GitHub Actions, adicione os secrets necessários (`VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`).
+Timezone operacional:
 
----
+`America/Sao_Paulo`
 
-### SEÇÃO G — SMOKE TESTS FINAIS EM PRODUÇÃO
+O endpoint exige:
 
-Após aplicar as configurações e realizar o primeiro deploy:
-1. Validar endpoint de integridade: `curl -I https://seu-dominio.com/api/health` (deve retornar HTTP 200).
-2. Criar uma conta de teste real e verificar registro no Firebase Auth.
-3. Testar a geração de 1 post com IA e confirmar débito correto de créditos.
-4. Simular 1 pagamento no Mercado Pago Sandbox e confirmar transição de plano no webhook.
-5. Disparar teste do cron com o Bearer token para validar execução do scheduler.
+`Authorization: Bearer <CRON_SECRET>`
+
+Não exponha `CRON_SECRET` no frontend.
+
+## 3. Variáveis obrigatórias
+
+Consulte `.env.example`. Em produção, o backend exige os contratos críticos, incluindo:
+
+- `APP_URL=https://portal-vip-brasil.vercel.app`
+- `PORTAL_ADMIN_EMAILS`
+- `CRON_SECRET`
+- `TOKEN_ENCRYPTION_KEY`
+- `FIREBASE_ADMIN_PROJECT_ID`
+- `FIREBASE_ADMIN_CLIENT_EMAIL`
+- `FIREBASE_ADMIN_PRIVATE_KEY`
+- `GEMINI_API_KEY`
+- `GEMINI_MEDIA_API_KEY`
+- `INDEXNOW_KEY`
+
+As variáveis `VITE_FIREBASE_*` são configuração pública do Firebase Web SDK.
+
+## 4. Gemini
+
+Modelos padrão do projeto são definidos no backend e podem ser sobrescritos por ambiente.
+
+O comitê confirmou compatibilidade da família configurada de texto, imagem e Veo com a documentação atual do Google em setembro de 2026.
+
+Nunca coloque chave Gemini em variável `VITE_*`.
+
+## 5. OAuth social
+
+Configure apenas os provedores realmente usados. Cada par `CLIENT_ID/SECRET` deve estar completo.
+
+Callbacks seguem:
+
+`https://portal-vip-brasil.vercel.app/api/social/<provider>/callback`
+
+### Matriz atual
+
+| Provedor | OAuth | Texto direto no motor atual | Mídia/fluxo específico | Observação |
+|---|---|---:|---:|---|
+| Facebook Page | sim | sim | limitado | requer Page Access Token/permissões aprovadas |
+| LinkedIn | sim | sim | limitado | requer `w_member_social` aprovado |
+| X | sim, PKCE | sim | limitado | requer permissão de escrita |
+| Instagram Professional | sim | não | sim/específico | publicação exige mídia |
+| YouTube | sim | não | sim/específico | upload de vídeo |
+| TikTok | sim, PKCE | não | draft/upload | escopos atuais: `user.info.basic`, `video.upload` |
+| Pinterest | sim | não | sim/específico | pins exigem conteúdo visual |
+
+As aprovações de Meta/Google/LinkedIn/TikTok/Pinterest/X são externas ao repositório.
+
+## 6. GitHub / CI
+
+O workflow `.github/workflows/ci.yml` executa:
+
+1. `npm ci`
+2. `npm audit --omit=dev --audit-level=moderate`
+3. `npm run check`
+4. após merge no `main`, smoke contra a produção real
+
+Proteja `main` exigindo o status **Typecheck, Test & Build Gate** antes do merge.
+
+## 7. Go-live
+
+Antes de declarar segurança 100%:
+
+- CI do PR verde;
+- Vercel verde;
+- smoke pós-merge verde;
+- Firebase Admin key histórica revogada;
+- credenciais de produção presentes apenas na Vercel;
+- `ADMIN_BOOTSTRAP_ENABLED=false`;
+- cada provedor social que será usado realmente autorizado no painel externo;
+- e-mail proprietário consegue efetuar login administrativo.
+
+Não repita manualmente testes que o CI e o smoke já executaram com sucesso.

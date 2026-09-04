@@ -3,8 +3,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.froc.ia',
-  appName: 'Froc.IA',
+  appId: 'com.portalvipbrasil.app',
+  appName: 'Portal Vip Brasil',
   webDir: 'dist',
   server: {
     androidScheme: 'https'
