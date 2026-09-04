@@ -9,8 +9,10 @@ async function request(path, options = {}) {
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 20_000);
   try {
     return await fetch(`${base}${path}`, {
+      method: options.method || 'GET',
+      body: options.body,
       redirect: 'follow',
-      headers: { 'User-Agent': 'PortalVipBrasil-Production-Smoke/1.0', ...(options.headers || {}) },
+      headers: { 'User-Agent': 'PortalVipBrasil-Production-Smoke/2.0', ...(options.headers || {}) },
       signal: controller.signal
     });
   } finally {
@@ -24,6 +26,11 @@ async function json(path) {
   assert.equal(response.status, 200, `${path} respondeu HTTP ${response.status}: ${body.slice(0, 300)}`);
   try { return JSON.parse(body); }
   catch { throw new Error(`${path} não retornou JSON válido: ${body.slice(0, 300)}`); }
+}
+
+function assertHeader(response, name, matcher, message) {
+  const value = response.headers.get(name) || '';
+  assert.match(value, matcher, message || `Header ${name} inválido ou ausente: ${value}`);
 }
 
 async function waitForExpectedDeployment() {
@@ -44,15 +51,34 @@ async function waitForExpectedDeployment() {
 
 console.log(`[smoke] Portal Vip Brasil: ${base}`);
 const health = await waitForExpectedDeployment();
+
 assert.equal(health?.database?.status, 'healthy', 'Firestore de produção deve estar healthy.');
 assert.equal(health?.automation?.cronSecretConfigured, true, 'CRON_SECRET deve estar configurado.');
 assert.equal(health?.automation?.nativeCronConfigured, true, 'Cron nativo Vercel deve estar configurado.');
 assert.equal(health?.automation?.scheduleUtc, '0 13 * * *', 'Agenda oficial do cron mudou inesperadamente.');
 assert.equal(health?.automation?.timezone, 'America/Sao_Paulo');
 
+const healthResponse = await request('/api/health');
+assert.equal(healthResponse.status, 200, '/api/health não respondeu 200.');
+assertHeader(healthResponse, 'cache-control', /no-store/i, 'API deve permanecer sem cache em produção.');
+
 const root = await request('/');
 assert.equal(root.status, 200, 'Home pública não respondeu 200.');
+assertHeader(root, 'content-security-policy', /default-src 'self'/i, 'CSP de produção ausente.');
+assertHeader(root, 'strict-transport-security', /max-age=/i, 'HSTS de produção ausente.');
+assertHeader(root, 'x-content-type-options', /nosniff/i, 'X-Content-Type-Options ausente.');
+assertHeader(root, 'x-frame-options', /deny/i, 'Proteção contra framing ausente.');
+assertHeader(root, 'referrer-policy', /strict-origin-when-cross-origin/i, 'Referrer-Policy inesperada.');
 assert.match(await root.text(), /Portal Vip Brasil/i);
+
+const unauthAdmin = await request('/api/admin/scheduler/run-now', { method: 'POST' });
+assert.ok([401, 403].includes(unauthAdmin.status), `Endpoint administrativo sem token respondeu ${unauthAdmin.status}; esperado 401/403.`);
+
+for (const blockedPath of ['/alma', '/creditos']) {
+  const blocked = await request(blockedPath);
+  assert.equal(blocked.status, 404, `${blockedPath} deve responder 404 real.`);
+  assertHeader(blocked, 'x-robots-tag', /noindex/i, `${blockedPath} deve permanecer noindex.`);
+}
 
 const projectsPayload = await json('/api/portal/projects');
 assert.ok(Array.isArray(projectsPayload.projects) && projectsPayload.projects.length > 0, 'API pública de projetos está vazia.');
@@ -82,6 +108,7 @@ if (blogPayload.articles.length > 0) {
   assert.ok(article.relatedProjectSlug, 'Contrato público do Blog não retornou relatedProjectSlug.');
   assert.equal(article.schemaJsonLd?.['@type'], 'Article', 'Contrato público do Blog não retornou Schema Article.');
   assert.ok(Array.isArray(article.socialRepurpose?.twitter?.thread), 'Contrato público do Blog não retornou pacote social do X.');
+
   const articlePath = `/blog/${encodeURIComponent(article.slug)}`;
   const articlePage = await request(articlePath);
   assert.equal(articlePage.status, 200, `Página individual ${articlePath} não respondeu 200.`);
@@ -107,8 +134,15 @@ assert.equal(manifest.name, 'Portal Vip Brasil');
 assert.equal(manifest.scope, '/');
 assert.ok(Array.isArray(manifest.icons) && manifest.icons.length >= 2, 'Manifest PWA sem ícones esperados.');
 
+const serviceWorker = await request('/sw.js');
+assert.equal(serviceWorker.status, 200, 'Service Worker não respondeu 200.');
+assertHeader(serviceWorker, 'service-worker-allowed', /^\/$/, 'Service-Worker-Allowed deve ser /.');
+assertHeader(serviceWorker, 'cache-control', /no-cache|no-store/i, 'Service Worker não pode ficar preso em cache longo.');
+
 const indexNow = await request('/indexnow-key.txt');
 assert.equal(indexNow.status, 200, 'indexnow-key.txt não respondeu 200.');
 assert.match((await indexNow.text()).trim(), /^[A-Za-z0-9-]{8,128}$/);
 
-console.log(`[smoke] OK — ${projectsPayload.projects.length} projeto(s), Firestore healthy, rotas individuais/SEO/PWA/IndexNow verificados.`);
+console.log(
+  `[smoke] OK — ${projectsPayload.projects.length} projeto(s), Firestore/cron, auth boundary, headers, rotas, SEO/PWA/IndexNow verificados.`
+);
