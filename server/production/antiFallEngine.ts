@@ -2,7 +2,7 @@ import { config } from '../config/index.js';
 import { getAdminAuth } from '../providers/firebaseAdmin.js';
 import { textAiClient } from './ai.js';
 import { type PortalProjectItem, listAllPortalProjectsFromDb, seedPortalProjectsIfEmpty } from './almaPortfolio.js';
-import { isTextAutoPublishSupported, normalizeProvider, type SocialProvider } from './social.js';
+import { ensureValidSocialAccessToken, isTextAutoPublishSupported, normalizeProvider, type SocialProvider } from './social.js';
 import { COLLECTIONS, createNotification, firestore, nowIso, stableId } from './store.js';
 
 export interface AntiFallModelAttempt {
@@ -41,10 +41,11 @@ export async function executeAiWith2SecAntiFall(data: {
   const startGlobal = Date.now();
 
   for (const item of ANTI_FALL_MODELS) {
-    const candidateModel = item.model || item.fallbackAlias;
-    const modelStart = Date.now();
+    const candidates = Array.from(new Set([item.model, item.fallbackAlias].filter(Boolean)));
+    for (const candidateModel of candidates) {
+      const modelStart = Date.now();
 
-    try {
+      try {
       const responsePromise = textAiClient().models.generateContent({
         model: candidateModel,
         contents: data.prompt,
@@ -87,7 +88,8 @@ export async function executeAiWith2SecAntiFall(data: {
         success: false,
         error: errorMsg
       });
-      console.warn(`[Anti-Quedas 2s] Failover acionado do Tier ${item.tier} (${candidateModel}): ${errorMsg}`);
+        console.warn(`[Anti-Quedas 2s] Failover acionado do Tier ${item.tier} (${candidateModel}): ${errorMsg}`);
+      }
     }
   }
 
@@ -179,16 +181,19 @@ async function validDirectTargets(db: any, userId: string, project: PortalProjec
     .where('userId', '==', userId)
     .where('companyId', '==', project.id)
     .get();
-  const now = Date.now();
   const targets = new Set<SocialProvider>();
 
   for (const doc of snap.docs) {
     const conn = doc.data() as any;
     const provider = normalizeProvider(conn?.provider);
     if (!provider || !isTextAutoPublishSupported(provider) || !projectAllowsProvider(project, provider)) continue;
-    const expired = conn?.expiresAt ? new Date(conn.expiresAt).getTime() <= now : false;
-    if (conn?.status !== 'connected' || expired || (!conn?.encryptedAccessToken && !conn?.accessToken)) continue;
-    targets.add(provider);
+    if (!conn?.encryptedAccessToken && !conn?.accessToken) continue;
+    try {
+      await ensureValidSocialAccessToken(doc.id);
+      targets.add(provider);
+    } catch {
+      // Sem token utilizável/renovável, o canal fica fora deste ciclo sem bloquear os demais projetos.
+    }
   }
 
   return [...targets];
@@ -232,7 +237,7 @@ export async function runDailyPortalMarketingCycle(userId?: string): Promise<{
   }
 
   const selectedProjects = allProjects.filter((p) => p.active !== false && p.dailyMarketingEnabled !== false);
-  const projectsToProcess = selectedProjects.length > 0 ? selectedProjects : allProjects;
+  const projectsToProcess = selectedProjects;
 
   for (const project of projectsToProcess) {
     const claimRef = await acquireDailyMarketingClaim(db, targetUserId, project.id, todayDate);
@@ -365,12 +370,16 @@ Responda em JSON com: "headline", "body", "cta", "hashtags", "keywords", "visual
   }
 
   if (itemsGenerated.length > 0) {
-    await createNotification({
-      userId: targetUserId,
-      title: 'Ciclo diário do Portal Vip Brasil concluído',
-      message: `${itemsGenerated.length} conteúdo(s) gerado(s); ${scheduledCount} projeto(s) com publicação direta agendada em conexão válida.`,
-      type: 'autopilot_ready'
-    });
+    try {
+      await createNotification({
+        userId: targetUserId,
+        title: 'Ciclo diário do Portal Vip Brasil concluído',
+        message: `${itemsGenerated.length} conteúdo(s) gerado(s); ${scheduledCount} projeto(s) com publicação direta agendada em conexão válida.`,
+        type: 'autopilot_ready'
+      });
+    } catch (notificationError) {
+      console.warn('[Portal Vip Divulgação Diária] Conteúdo concluído, mas a notificação administrativa falhou:', notificationError);
+    }
   }
 
   return {

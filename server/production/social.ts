@@ -775,14 +775,24 @@ export async function listConnections(userId: string, companyId?: string) {
   if (!companyId || companyId === 'all') {
     snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).get();
   } else {
-    snap = await firestore()
-      .collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', userId)
-      .where('companyId', '==', companyId)
-      .get();
+    snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).where('companyId', '==', companyId).get();
   }
-  return snap.docs.map((doc) => {
-    const item = doc.data() as any;
+
+  const output: any[] = [];
+  for (const doc of snap.docs) {
+    let item = doc.data() as any;
+    const expiresAt = item.expiresAt ? new Date(item.expiresAt).getTime() : Infinity;
+    const nearingExpiry = Number.isFinite(expiresAt) && expiresAt - Date.now() < 5 * 60 * 1000;
+    if ((nearingExpiry || item.status === 'token_expired') && item.encryptedRefreshToken) {
+      try {
+        await ensureValidSocialAccessToken(doc.id);
+        const fresh = await doc.ref.get();
+        if (fresh.exists) item = fresh.data() as any;
+      } catch {
+        const fresh = await doc.ref.get().catch(() => null);
+        if (fresh?.exists) item = fresh.data() as any;
+      }
+    }
     const {
       encryptedAccessToken: _encryptedAccessToken,
       encryptedRefreshToken: _encryptedRefreshToken,
@@ -791,14 +801,16 @@ export async function listConnections(userId: string, companyId?: string) {
       token: _token,
       ...safe
     } = item;
-    const isExpired = item.expiresAt ? new Date(item.expiresAt).getTime() < Date.now() : false;
-    return {
+    const finalExpiry = item.expiresAt ? new Date(item.expiresAt).getTime() : Infinity;
+    const expired = Number.isFinite(finalExpiry) && finalExpiry <= Date.now();
+    output.push({
       id: doc.id,
       ...safe,
       ...(safe.errorMessage ? { errorMessage: sanitizeProviderMessage(safe.errorMessage, 'Falha na conexão social.') } : {}),
-      status: isExpired ? 'token_expired' : item.status || 'connected'
-    };
-  });
+      status: expired ? 'token_expired' : item.status || 'connected'
+    });
+  }
+  return output;
 }
 
 export async function disconnectSocial(userId: string, companyId: string, provider: string): Promise<boolean> {
@@ -957,16 +969,16 @@ export async function ensureValidSocialAccessToken(connectionIdOrDoc: string | a
   }
 
   const decryptAccessToken = (record: any): string => {
-    const stored = record?.encryptedAccessToken || record?.accessToken;
-    if (!stored) throw new Error('Token de acesso social não encontrado.');
-    try {
-      return decrypt(stored);
-    } catch {
-      throw new Error('Token de acesso social inválido. Reconecte a conta.');
+    if (record?.encryptedAccessToken) {
+      try { return decrypt(record.encryptedAccessToken); }
+      catch { throw new Error('Token de acesso social criptografado inválido. Reconecte a conta.'); }
     }
+    if (record?.accessToken) return String(record.accessToken);
+    throw new Error('Token de acesso social não encontrado.');
   };
 
   const isUsable = (record: any, at = Date.now()): boolean => {
+    if (record?.status && record.status !== 'connected') return false;
     if (!record?.encryptedAccessToken && !record?.accessToken) return false;
     if (!record?.expiresAt) return true;
     const expiresAt = new Date(record.expiresAt).getTime();
@@ -982,6 +994,9 @@ export async function ensureValidSocialAccessToken(connectionIdOrDoc: string | a
 
   if (!rawRefreshToken) {
     const expiresAt = connection.expiresAt ? new Date(connection.expiresAt).getTime() : Infinity;
+    if (connection?.status && connection.status !== 'connected') {
+      throw new Error(`A conexão com ${connection.provider} está inativa e não possui refresh_token para recuperação automática. Reconecte a conta.`);
+    }
     if (expiresAt <= Date.now()) {
       await docRef.update({
         status: 'token_expired',
@@ -1134,13 +1149,13 @@ export async function publishText(data: {
   const connDoc = snap.docs[0];
   const connection = connDoc.data() as any;
 
-  if (connection.status !== 'connected' || (!connection.encryptedAccessToken && !connection.accessToken)) {
+  if (!connection.encryptedAccessToken && !connection.accessToken) {
     return {
       provider: data.provider,
       externalId: null,
       externalState: 'confirmed_failed',
       retrySafe: false,
-      error: `Conexão com ${data.provider} inativa ou sem token.`
+      error: `Conexão com ${data.provider} sem token de acesso.`
     };
   }
 
@@ -1614,13 +1629,7 @@ export async function uploadTikTokDraftVideo(data: {
     throw new Error('Conta TikTok não conectada para este projeto. Conecte sua conta TikTok em Redes Sociais.');
   }
 
-  const connection = snap.docs[0].data() as any;
-  if (connection.expiresAt && new Date(connection.expiresAt).getTime() < Date.now()) {
-    await snap.docs[0].ref.update({ status: 'token_expired', updatedAt: nowIso() }).catch(() => undefined);
-    throw new Error('A autenticação com o TikTok expirou. Reconecte a conta nas configurações de Redes Sociais.');
-  }
-
-  const token = decrypt(connection.encryptedAccessToken);
+  const token = await ensureValidSocialAccessToken(snap.docs[0].id);
 
   // 1. Inicializar upload no modo Inbox / Draft (Content Posting API - Inbox video)
   const initEndpoint = 'https://open.tiktokapis.com/v2/post/publish/inbox/video/init/';
@@ -2179,62 +2188,35 @@ export function isProviderConfigured(provider: SocialProvider): { configured: bo
 }
 
 export async function getSocialReadiness(companyId: string, userId?: string): Promise<Record<string, any>> {
-  const db = firestore();
-  let query: any = db.collection(COLLECTIONS.socialConnections).where('companyId', '==', companyId);
-  if (userId) {
-    query = query.where('userId', '==', userId);
-  }
-  const connectionsSnap = await query.get();
-
-  const connections = connectionsSnap.docs.map((d: any) => ({ id: d.id, ...d.data() })) as any[];
-  const findConn = (p: SocialProvider) => connections.find((c) => c.provider === p);
-
+  const connections = userId
+    ? await listConnections(userId, companyId)
+    : (await firestore().collection(COLLECTIONS.socialConnections).where('companyId', '==', companyId).get()).docs.map((d: any) => ({ id: d.id, ...d.data() }));
+  const findConn = (p: SocialProvider) => connections.find((c: any) => c.provider === p);
   const providers: SocialProvider[] = ['facebook', 'instagram', 'linkedin', 'x', 'tiktok', 'youtube', 'pinterest'];
   const readiness: Record<string, any> = {
-    companyId,
-    healthy: true,
-    checkedAt: nowIso(),
-    connectedCount: 0,
-    summary: '',
-    scheduler: {
-      cronSecretConfigured: Boolean(config.cronSecret),
-      nativeCronConfigured: true
-    },
+    companyId, healthy: true, checkedAt: nowIso(), connectedCount: 0, summary: '',
+    scheduler: { cronSecretConfigured: Boolean(config.cronSecret), nativeCronConfigured: true },
     linkedinApiVersionConfigured: Boolean(config.social.linkedin.apiVersion)
   };
-
   const capabilitiesMap: Record<SocialProvider, string> = {
-    facebook: 'text_publish',
-    instagram: 'media_publish',
-    linkedin: 'text_publish',
-    x: 'text_publish',
-    tiktok: 'draft_video',
-    youtube: 'video_upload',
-    pinterest: 'pin_publish'
+    facebook: 'text_publish', instagram: 'media_publish', linkedin: 'text_publish', x: 'text_publish',
+    tiktok: 'draft_video', youtube: 'video_upload', pinterest: 'pin_publish'
   };
-
   let connectedCount = 0;
   for (const p of providers) {
-    const conn = findConn(p);
+    const conn: any = findConn(p);
     const { configured } = isProviderConfigured(p);
     const isConnected = Boolean(conn && conn.status === 'connected');
-    if (isConnected) connectedCount++;
+    if (isConnected) connectedCount += 1;
     readiness[p] = {
-      oauthConfigured: configured,
-      connected: isConnected,
-      status: conn?.status || 'disconnected',
-      accountId: conn?.accountId || null,
-      pageId: conn?.pageId || null,
-      accountName: conn?.accountName || null,
-      expiresAt: conn?.expiresAt || null,
-      capability: capabilitiesMap[p]
+      oauthConfigured: configured, connected: isConnected, status: conn?.status || 'disconnected',
+      accountId: conn?.accountId || null, pageId: conn?.pageId || null, accountName: conn?.accountName || null,
+      expiresAt: conn?.expiresAt || null, capability: capabilitiesMap[p]
     };
   }
-
   readiness.connectedCount = connectedCount;
   readiness.summary = connectedCount > 0
     ? `${connectedCount} canal(is) configurado(s) e operacional(is) para este projeto.`
     : 'Nenhum canal social conectado para este projeto.';
-
   return readiness;
 }

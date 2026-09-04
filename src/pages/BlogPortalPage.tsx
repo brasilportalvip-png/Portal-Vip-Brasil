@@ -37,7 +37,8 @@ import {
   Twitter
 } from 'lucide-react';
 import { BLOG_ARTICLES, BLOG_CATEGORIES } from '../data/blogArticles';
-import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND } from '../data/portalProjects';
+import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND, type PortalProject } from '../data/portalProjects';
+import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProjectAdapter';
 import { apiRequest } from '../lib/api';
 import { trackAnalyticsEvent } from '../lib/firebase';
 import type { PortalBlogArticle, BlogArticleSection, BlogFaqItem } from '../types/blog';
@@ -63,6 +64,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
   const [showRepurposeModal, setShowRepurposeModal] = useState<PortalBlogArticle | null>(null);
   const [showSchemaModal, setShowSchemaModal] = useState<PortalBlogArticle | null>(null);
   const [activeRepurposeTab, setActiveRepurposeTab] = useState<'instagram' | 'linkedin' | 'facebook' | 'twitter'>('instagram');
+  const [portalProjects, setPortalProjects] = useState<PortalProject[]>(USER_PORTFOLIO_PROJECTS);
 
   // Generator Modal state
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -96,6 +98,15 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
 
   useEffect(() => {
     fetchArticles();
+    apiRequest<{ projects: Array<ApiPortalProject & { website?: string; coverUrl?: string; niche?: string }> }>('/api/vitrine')
+      .then((data) => {
+        const dynamic = (data.projects || []).map(portalProjectToDisplay);
+        setPortalProjects(dynamic);
+        if (dynamic.length) {
+          setGenProjectId((current) => dynamic.some((project) => project.id === current) ? current : dynamic[0].id);
+        }
+      })
+      .catch((error) => console.warn('[BlogPortal] Falha ao carregar projetos dinâmicos; usando projetos iniciais:', error));
   }, []);
 
   // Check URL slug to auto-open article
@@ -222,6 +233,8 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       return matchesCategory && matchesProject && matchesSearch;
     });
   }, [articles, selectedCategory, selectedProjectId, searchQuery]);
+
+  const blogCategories = useMemo(() => ['Todos', ...Array.from(new Set([...BLOG_CATEGORIES.filter((cat) => cat !== 'Todos'), ...articles.map((article) => article.category).filter(Boolean)]))], [articles]);
 
   // Featured article
   const featuredArticle = useMemo(() => {
@@ -396,7 +409,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
               className="hover:text-cyan-400 transition-colors flex items-center gap-1 text-slate-200"
             >
               <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-              Vitrine de Apps ({USER_PORTFOLIO_PROJECTS.length})
+              Vitrine de Apps ({portalProjects.length})
             </button>
             <button
               onClick={() => setSelectedCategory('Espiritualidade & Fé')}
@@ -531,11 +544,11 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                   <div className="space-y-2 mb-4 text-xs">
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80">
                       <span className="text-slate-400">Projetos Monitorados:</span>
-                      <span className="font-bold text-cyan-300">{USER_PORTFOLIO_PROJECTS.length} Sites & Apps</span>
+                      <span className="font-bold text-cyan-300">{portalProjects.length} Sites & Apps</span>
                     </div>
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80">
                       <span className="text-slate-400">Meta Diária:</span>
-                      <span className="font-bold text-emerald-400">{USER_PORTFOLIO_PROJECTS.length} Artigos / dia</span>
+                      <span className="font-bold text-emerald-400">{portalProjects.length} Artigos / dia</span>
                     </div>
                     <div className="flex items-center justify-between p-2 rounded-xl bg-slate-950/60 border border-slate-800/80">
                       <span className="text-slate-400">IndexNow Protocol:</span>
@@ -627,7 +640,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 Todos os Projetos
               </button>
 
-              {USER_PORTFOLIO_PROJECTS.map((proj) => (
+              {portalProjects.map((proj) => (
                 <button
                   key={proj.id}
                   onClick={() => setSelectedProjectId(proj.id)}
@@ -646,7 +659,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
 
           {/* Filter by Category */}
           <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            {BLOG_CATEGORIES.map((cat) => (
+            {blogCategories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
@@ -834,14 +847,14 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 <span>Tráfego Orgânico & Autoridade Temática</span>
               </div>
               <h3 className="text-xl sm:text-2xl font-black text-white mb-2">
-                Todos os 7 Projetos Interligados por Rede de Artigos e Links Internos
+                Todos os Projetos Interligados por Rede de Artigos e Links Internos
               </h3>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-4">
                 O motor do Portal Vip Brasil publica 1 novo artigo a cada 24h para cada site e app ativo, contendo dados estruturados Schema.org, metadados Canonical, OpenGraph, protocolo IndexNow e CTAs diretos para download na Google Play Store.
               </p>
 
               <div className="flex flex-wrap gap-2 text-xs">
-                {USER_PORTFOLIO_PROJECTS.map((p) => (
+                {portalProjects.map((p) => (
                   <button
                     key={p.id}
                     onClick={() => setSelectedProjectId(p.id)}
@@ -1389,7 +1402,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                   onChange={(e) => setGenProjectId(e.target.value)}
                   className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:border-cyan-500 focus:outline-none"
                 >
-                  {USER_PORTFOLIO_PROJECTS.map((proj) => (
+                  {portalProjects.map((proj) => (
                     <option key={proj.id} value={proj.id}>
                       {proj.name} ({proj.segment})
                     </option>

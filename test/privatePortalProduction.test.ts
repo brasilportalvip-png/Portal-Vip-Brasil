@@ -269,7 +269,8 @@ test('Biblioteca: endpoint e atualização do Autopilot permanecem sincronizados
   const router = read('server/production/router.ts');
 
   assert.ok(router.includes("router.get('/content'"));
-  assert.ok(app.includes('/api/content?companyId='));
+  assert.ok(app.includes("'/api/content'"));
+  assert.ok(!app.includes('/api/content?companyId='));
   assert.ok(!app.includes('/api/contents?companyId='));
 
   assert.ok(app.includes("guardedTab !== 'conteudos'"));

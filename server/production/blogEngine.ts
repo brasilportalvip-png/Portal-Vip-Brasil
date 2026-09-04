@@ -919,7 +919,7 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
   }
 
   const activeProjects = allProjects.filter((p) => p.active !== false && p.dailyBlogEnabled !== false);
-  const projectsToProcess = activeProjects.length > 0 ? activeProjects : allProjects;
+  const projectsToProcess = activeProjects;
   const cycleDate = new Date().toISOString().slice(0, 10);
 
   console.log(`[BlogEngine] Iniciando ciclo diário idempotente para ${projectsToProcess.length} projetos.`);
