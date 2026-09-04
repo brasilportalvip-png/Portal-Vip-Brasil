@@ -17,7 +17,8 @@ import {
   getBlogSettings,
   updateBlogSettings,
   INITIAL_SEEDED_ARTICLES,
-  notifyIndexNow
+  notifyIndexNow,
+  serializeBlogArticleForPublic
 } from './blogEngine.js';
 import multer from 'multer';
 
@@ -206,6 +207,10 @@ router.get('/health', asyncRoute(async (_req, res) => {
     database: dbHealth,
     environment: config.nodeEnv,
     appUrl: config.appUrl,
+    deployment: {
+      platform: process.env.VERCEL ? 'vercel' : 'node',
+      release: 'portal-final-r5c-20260904'
+    },
     automation: {
       cronSecretConfigured: Boolean(config.cronSecret),
       nativeCronConfigured: true,
@@ -1321,6 +1326,17 @@ router.get('/admin/scheduler/diagnostics', requireAdmin, asyncRoute(async (_req:
   res.json({ diagnostics: await getSchedulerDiagnostics() });
 }));
 
+router.post('/admin/scheduler/run-now', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const result = await processSchedulerTick({ trigger: 'authorized_api' });
+  await writeAdminLog({
+    operatorId: req.user!.id,
+    operatorEmail: req.user!.email,
+    action: 'run_scheduler_now',
+    details: { skipped: Boolean((result as any)?.skipped), errors: Object.keys((result as any)?.errors || {}) }
+  });
+  res.json({ success: Object.keys((result as any)?.errors || {}).length === 0, result });
+}));
+
 router.post('/admin/projects', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const project = await createPortalProjectInDb(req.body || {});
   await writeAdminLog({ operatorId:req.user!.id, operatorEmail:req.user!.email, action:'create_project', details:{ projectId:project.id, name:project.name } });
@@ -1783,7 +1799,7 @@ router.post('/portal/projects/seed', requireAuth, requireAdmin, asyncRoute(async
 
 router.get('/portal/projects/:slug', asyncRoute(async (req: Request, res: Response) => {
   const project = await getPortalProjectFromDb(req.params.slug);
-  if (!project) return res.status(404).json({ error: 'Projeto não encontrado na Vitrine Portal Vip Brasil.' });
+  if (!project || project.active === false) return res.status(404).json({ error: 'Projeto não encontrado na Vitrine Portal Vip Brasil.' });
   res.json({ project });
 }));
 
@@ -1837,16 +1853,19 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
   const offset = req.query.offset ? Number(req.query.offset) : 0;
 
   const result = await listBlogArticles({ category, projectId, query, status, limit, offset });
+  const projectMap = new Map((await listAllPortalProjectsFromDb()).map((project) => [project.id, project]));
+  const articles = result.articles.map((article) => serializeBlogArticleForPublic(article, projectMap.get(article.relatedProjectId)));
   res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-  res.json(result);
+  res.json({ ...result, articles });
 }));
 
 router.get('/portal/blog/articles/:slug', asyncRoute(async (req: Request, res: Response) => {
   const article = await getBlogArticleBySlug(req.params.slug);
   if (!article) return res.status(404).json({ error: 'Artigo não encontrado no Blog do Portal Vip Brasil.' });
+  const project = await getPortalProjectFromDb(article.relatedProjectId);
 
   res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
-  res.json({ article });
+  res.json({ article: serializeBlogArticleForPublic(article, project) });
 }));
 
 router.get('/portal/blog/settings', requireAuth, requireAdmin, asyncRoute(async (_req: Request, res: Response) => {
@@ -1865,13 +1884,17 @@ router.post('/portal/blog/generate-project-article', requireAuth, requireAdmin, 
   const project = await getPortalProjectFromDb(String(projectId || ''));
   if (!project) return res.status(404).json({ error: 'Projeto não encontrado no Portal Vip Brasil.' });
   const result = await generateArticleForProject(project, { customTopic, customIntent, forceApproval, userId: req.user!.id });
-  res.json(result);
+  res.json({ ...result, article: serializeBlogArticleForPublic(result.article, project) });
 }));
 
 router.post('/portal/blog/daily-cycle', requireAuth, requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user!.id;
   const result = await runDailyBlogCycle(userId);
-  res.json(result);
+  const projectMap = new Map((await listAllPortalProjectsFromDb()).map((project) => [project.id, project]));
+  res.json({
+    ...result,
+    articlesGenerated: result.articlesGenerated.map((article) => serializeBlogArticleForPublic(article, projectMap.get(article.relatedProjectId)))
+  });
 }));
 
 router.patch('/portal/blog/articles/:id/status', requireAuth, requireAdmin, asyncRoute(async (req: Request, res: Response) => {

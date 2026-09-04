@@ -282,11 +282,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     primaryKeyword: 'poder das crenças',
     secondaryKeywords: ['orações de prosperidade', 'decretos diários', 'fé inabalável'],
     searchIntent: 'educational',
-    author: {
-      name: 'Equipe Magia das Crenças',
-      avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl,
-      role: 'Mentores Espirituais'
-    },
+    author: { name: 'Equipe Editorial Portal Vip Brasil', avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl, role: 'Conteúdo Editorial' },
     publishedAt: '2026-09-01T08:00:00.000Z',
     updatedAt: '2026-09-01T08:00:00.000Z',
     readTime: '5 min de leitura',
@@ -340,7 +336,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     ],
     socialCampaign: {
       instagram: {
-        caption: '✨ Desperte o poder das suas crenças! Novo artigo no Blog Oficial do Portal Vip Brasil ensina como atrair prosperidade e abrir caminhos hoje. Link na bio!',
+        caption: '✨ Desperte o poder das suas crenças! Novo artigo no Blog Oficial do Portal Vip Brasil ensina como atrair prosperidade e abrir caminhos hoje. Leia no Portal Vip Brasil.',
         hashtags: ['#MagiaDasCrencas', '#Prosperidade', '#Fe', '#PortalVipBrasil', '#DecretoDoDia'],
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=instagram&utm_medium=social&utm_campaign=blog_magia_crencas'
       },
@@ -353,16 +349,16 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=linkedin&utm_medium=social&utm_campaign=blog_magia_crencas'
       },
       x: {
-        tweetText: 'Aprenda como desbloquear seus caminhos com o poder dos decretos diários no blog @portalvipbrasil:',
+        tweetText: 'Aprenda como desbloquear seus caminhos com o poder dos decretos diários no Blog Portal Vip Brasil:',
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=x&utm_medium=social&utm_campaign=blog_magia_crencas'
       }
     },
     status: 'published',
-    views: 1420,
-    likes: 384,
-    shares: 92,
-    clicksWebsite: 215,
-    clicksPlayStore: 147,
+    views: 0,
+    likes: 0,
+    shares: 0,
+    clicksWebsite: 0,
+    clicksPlayStore: 0,
     createdAt: '2026-09-01T08:00:00.000Z',
     generationModel: 'gemini-3.7-flash'
   },
@@ -378,11 +374,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     primaryKeyword: 'exu responde',
     secondaryKeywords: ['conselho de guardião', 'oráculo de encruzilhada'],
     searchIntent: 'informational',
-    author: {
-      name: 'Guardião dos Caminhos',
-      avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl,
-      role: 'Estudos de Matriz Africana'
-    },
+    author: { name: 'Equipe Editorial Portal Vip Brasil', avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl, role: 'Conteúdo Editorial' },
     publishedAt: '2026-08-30T09:00:00.000Z',
     updatedAt: '2026-08-30T09:00:00.000Z',
     readTime: '6 min de leitura',
@@ -431,11 +423,11 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       { label: 'Artigo: Maria Padilha e Magnetismo', url: '/blog/maria-padilha-rainha-oracao-para-autoestima-e-amor-proprio' }
     ],
     status: 'published',
-    views: 1890,
-    likes: 512,
-    shares: 110,
-    clicksWebsite: 340,
-    clicksPlayStore: 228,
+    views: 0,
+    likes: 0,
+    shares: 0,
+    clicksWebsite: 0,
+    clicksPlayStore: 0,
     createdAt: '2026-08-30T09:00:00.000Z',
     generationModel: 'gemini-3.7-flash'
   }
@@ -486,6 +478,100 @@ export async function updateBlogSettings(partial: Partial<BlogSettings>): Promis
   return updated;
 }
 
+export function serializeBlogArticleForPublic(article: StoredBlogArticle, project?: PortalProjectItem): Record<string, any> {
+  const knownProject = project || PORTAL_VIP_PROJECTS.find((item) => item.id === article.relatedProjectId);
+  const relatedProjectSlug = knownProject?.slug || slugify(article.relatedProjectName || article.relatedProjectId);
+  const canonicalUrl = `${config.appUrl.replace(/\/$/, '')}/blog/${article.slug}`;
+  const words = [
+    article.introduction || '',
+    ...(article.sections || []).flatMap((section) => [
+      section.h2,
+      section.content,
+      ...(section.h3s || []).flatMap((sub) => [sub.h3, sub.content])
+    ]),
+    article.conclusion || '',
+    article.callToAction || ''
+  ].filter(Boolean);
+  const social = article.socialCampaign;
+  const searchIntent = ['commercial', 'navigational', 'informational'].includes(article.searchIntent)
+    ? article.searchIntent
+    : 'informational';
+
+  return {
+    id: article.id,
+    slug: article.slug,
+    title: article.title,
+    subtitle: article.excerpt,
+    excerpt: article.excerpt,
+    metaDescription: article.metaDescription,
+    keywords: [...new Set([article.primaryKeyword, ...(article.secondaryKeywords || []), ...(article.tags || [])].filter(Boolean))],
+    category: article.category,
+    targetAudience: knownProject?.targetAudience || '',
+    searchIntent,
+    coverImage: article.coverImage,
+    coverImageAlt: article.coverAlt,
+    readingTimeMinutes: Number.parseInt(article.readTime || '', 10) || 5,
+    readTime: article.readTime,
+    contentMarkdown: words.join('\n\n'),
+    sections: article.sections || [],
+    keyTakeaways: [],
+    faq: article.faqSection || [],
+    relatedProjectId: article.relatedProjectId,
+    relatedProjectName: article.relatedProjectName,
+    relatedProjectSlug,
+    relatedProjectUrl: article.relatedProjectUrl,
+    relatedPlayStoreUrl: article.relatedPlayStoreUrl,
+    canonicalUrl,
+    schemaJsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      headline: article.title,
+      description: article.metaDescription || article.excerpt,
+      image: article.coverImage ? [article.coverImage] : undefined,
+      datePublished: article.publishedAt,
+      dateModified: article.updatedAt || article.publishedAt,
+      author: { '@type': 'Organization', name: article.author?.name || 'Portal Vip Brasil' },
+      publisher: { '@type': 'Organization', name: 'Portal Vip Brasil' },
+      mainEntityOfPage: canonicalUrl
+    },
+    socialRepurpose: {
+      instagram: {
+        caption: social?.instagram?.caption || article.excerpt,
+        hashtags: social?.instagram?.hashtags || [],
+        utmUrl: social?.instagram?.utmUrl || canonicalUrl
+      },
+      facebook: {
+        postText: social?.facebook?.postText || article.excerpt,
+        utmUrl: social?.facebook?.utmUrl || canonicalUrl
+      },
+      linkedin: {
+        postText: social?.linkedin?.postText || article.excerpt,
+        professionalTakeaway: '',
+        utmUrl: social?.linkedin?.utmUrl || canonicalUrl
+      },
+      twitter: {
+        thread: [social?.x?.tweetText, social?.x?.utmUrl].filter(Boolean),
+        utmUrl: social?.x?.utmUrl || canonicalUrl
+      }
+    },
+    author: {
+      name: article.author?.name || 'Portal Vip Brasil',
+      role: article.author?.role || 'Equipe Editorial',
+      avatar: article.author?.avatar || PORTAL_VIP_OFFICIAL_ASSETS.logoUrl,
+      bio: 'Conteúdo editorial do Portal Vip Brasil associado ao projeto oficial informado neste artigo.'
+    },
+    views: Number(article.views || 0),
+    likes: Number(article.likes || 0),
+    shares: Number(article.shares || 0),
+    clicksWebsite: Number(article.clicksWebsite || 0),
+    clicksPlayStore: Number(article.clicksPlayStore || 0),
+    publishedAt: article.publishedAt,
+    updatedAt: article.updatedAt,
+    status: article.status,
+    featured: Boolean(article.featured)
+  };
+}
+
 /**
  * Lista artigos do Blog com filtros e paginação
  */
@@ -514,9 +600,13 @@ export async function listBlogArticles(filters: {
     const snap = await queryRef.orderBy('publishedAt', 'desc').get();
     let items: StoredBlogArticle[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
 
-    // Se o banco estiver vazio, carrega os artigos seedados
+    // Se o banco estiver vazio para este recorte, o fallback editorial respeita os mesmos filtros.
     if (items.length === 0) {
-      items = [...INITIAL_SEEDED_ARTICLES];
+      items = INITIAL_SEEDED_ARTICLES.filter((article) =>
+        (!filters.status || filters.status === 'all' || article.status === filters.status) &&
+        (!filters.projectId || article.relatedProjectId === filters.projectId) &&
+        (!filters.category || filters.category === 'Todos' || article.category === filters.category)
+      );
     }
 
     // Busca textual se houver query
@@ -558,6 +648,7 @@ export async function getBlogArticleBySlug(slug: string): Promise<StoredBlogArti
     const snap = await firestore()
       .collection(COLLECTIONS.blogArticles)
       .where('slug', '==', clean)
+      .where('status', '==', 'published')
       .limit(1)
       .get();
 
@@ -764,7 +855,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
       sections: [
         {
           h2: `Conheça ${project.name} e Seus Principais Benefícios`,
-          content: `${project.description}\n\nCom foco em alta qualidade, a plataforma reúne ${project.highlights.join(', ')}.`
+          content: `${project.description}\n\nEntre os recursos cadastrados estão: ${project.highlights.join(', ')}.`
         },
         {
           h2: 'Como Começar a Utilizar Hoje Mesmo',
@@ -781,7 +872,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
           answer: `Você pode acessar pelo endereço oficial ${project.websiteUrl}.`
         }
       ],
-      conclusion: `${project.name} representa inovação e dedicação para transformar sua experiência com excelência.`,
+      conclusion: `Consulte as informações oficiais de ${project.name} e utilize somente os recursos descritos nos canais cadastrados.`,
       callToAction: `Acesse agora o site oficial ${project.websiteUrl} e confira as novidades.`,
       socialCampaign: {
         instagram: { caption: `Confira o novo artigo sobre ${project.name} no Blog Portal Vip Brasil!`, hashtags: ['#PortalVipBrasil', '#Tecnologia', '#Marketing'] },
@@ -799,7 +890,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     : [
         {
           h2: `Conheça ${project.name} e Seus Principais Benefícios`,
-          content: `${project.description}\n\nCom foco em alta qualidade, a plataforma reúne ${project.highlights.join(', ')}.`
+          content: `${project.description}\n\nEntre os recursos cadastrados estão: ${project.highlights.join(', ')}.`
         },
         {
           h2: 'Como Começar a Utilizar Hoje Mesmo',
@@ -875,7 +966,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     ],
     socialCampaign,
     status: targetStatus,
-    views: 1,
+    views: 0,
     likes: 0,
     shares: 0,
     clicksWebsite: 0,

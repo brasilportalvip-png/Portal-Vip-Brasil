@@ -111,6 +111,10 @@ function routeFromPath(path: string): RouteResolution {
   if (match) {
     return { tab: match[0], canonicalPath: match[1], known: true };
   }
+  const dynamicPublicMatch = clean.match(/^\/(blog|vitrine)\/[^/]+$/);
+  if (dynamicPublicMatch) {
+    return { tab: dynamicPublicMatch[1], canonicalPath: clean, known: true };
+  }
   const rootSegment = clean.replace(/^\//, '').split('/')[0] || '';
   const aliased = canonicalTab(rootSegment);
   if (aliased && TAB_PATH[aliased]) {
@@ -184,7 +188,10 @@ export function App() {
 
   useEffect(() => {
     const initialRoute = routeFromPath(window.location.pathname);
-    commitNavigation(initialRoute.tab, 'replace');
+    setCurrentTab(initialRoute.tab);
+    if (!initialRoute.known && window.location.pathname !== initialRoute.canonicalPath) {
+      window.history.replaceState({ tab: initialRoute.tab }, '', initialRoute.canonicalPath);
+    }
 
     const handlePopState = () => {
       const resolved = routeFromPath(window.location.pathname);
@@ -193,7 +200,7 @@ export function App() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [commitNavigation]);
+  }, []);
 
   const refreshContents = useCallback(async () => {
     if (!user) return;

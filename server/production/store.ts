@@ -186,6 +186,7 @@ function nestedFieldValue(item: any, field: string): any {
 
 class MemoryQuery {
   protected filters: Array<{ field: string; op: string; val: any }> = [];
+  protected orderings: Array<{ field: string; direction: 'asc' | 'desc' }> = [];
   protected limitCount?: number;
 
   constructor(public colName: string) {}
@@ -193,6 +194,16 @@ class MemoryQuery {
   where(field: string, op: string, val: any): MemoryQuery {
     const query = new MemoryQuery(this.colName);
     query.filters = [...this.filters, { field, op, val: cloneMemoryValue(val) }];
+    query.orderings = [...this.orderings];
+    query.limitCount = this.limitCount;
+    return query;
+  }
+
+  orderBy(field: string, direction: 'asc' | 'desc' = 'asc'): MemoryQuery {
+    if (!field || !['asc', 'desc'].includes(direction)) throw new TypeError('Invalid in-memory Firestore orderBy.');
+    const query = new MemoryQuery(this.colName);
+    query.filters = [...this.filters];
+    query.orderings = [...this.orderings, { field, direction }];
     query.limitCount = this.limitCount;
     return query;
   }
@@ -201,6 +212,7 @@ class MemoryQuery {
     if (!Number.isSafeInteger(value) || value < 0) throw new RangeError('Firestore query limit must be a non-negative safe integer.');
     const query = new MemoryQuery(this.colName);
     query.filters = [...this.filters];
+    query.orderings = [...this.orderings];
     query.limitCount = value;
     return query;
   }
@@ -227,6 +239,19 @@ class MemoryQuery {
             filter.val.some((value) => itemValue.includes(value));
         }
         throw new TypeError(`Unsupported in-memory Firestore operator: ${filter.op}`);
+      });
+    }
+
+    if (this.orderings.length > 0) {
+      items.sort((a, b) => {
+        for (const ordering of this.orderings) {
+          const av = nestedFieldValue(a, ordering.field);
+          const bv = nestedFieldValue(b, ordering.field);
+          if (av === bv) continue;
+          const comparison = av === undefined || av === null ? -1 : bv === undefined || bv === null ? 1 : av < bv ? -1 : 1;
+          return ordering.direction === 'desc' ? -comparison : comparison;
+        }
+        return 0;
       });
     }
 

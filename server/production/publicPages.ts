@@ -1,5 +1,6 @@
 import { config } from '../config/index.js';
-import { PORTAL_VIP_OFFICIAL_ASSETS, PORTAL_VIP_PROJECTS, getProjectBySlug } from './almaPortfolio.js';
+import { PORTAL_VIP_OFFICIAL_ASSETS, getPortalProjectFromDb } from './almaPortfolio.js';
+import { INITIAL_SEEDED_ARTICLES } from './blogEngine.js';
 import { COLLECTIONS, firestore } from './store.js';
 
 function esc(value: any): string {
@@ -48,31 +49,37 @@ async function metaFor(pathname: string): Promise<PublicMeta> {
     return {
       ...fallback,
       title: 'Vitrine Oficial de Sites & Aplicativos — Portal Vip Brasil',
-      description: 'Conheça nosso portfólio de sites e aplicativos da Play Store: Magia das Crenças, Exu Responde, Maria Padilha, Manual Católico, Froc IA, Oráculos TS e Marketing Engine.'
+      description: 'Conheça a vitrine dinâmica de sites, aplicativos e projetos digitais ativos do Portal Vip Brasil.'
     };
   }
 
   const vitrineMatch = pathname.match(/^\/vitrine\/([^/]+)$/);
   if (vitrineMatch) {
     const slug = decodeURIComponent(vitrineMatch[1]);
-    const localProject = getProjectBySlug(slug);
-    if (localProject) {
-      const canonical = `${base}/vitrine/${encodeURIComponent(localProject.slug)}`;
+    const project = await getPortalProjectFromDb(slug);
+    if (project && project.active !== false) {
+      const canonical = `${base}/vitrine/${encodeURIComponent(project.slug)}`;
       return {
-        title: `${localProject.name} — Vitrine Portal Vip Brasil`,
-        description: description(localProject.description, `${localProject.name} no Portal Vip Brasil.`),
+        title: `${project.name} — Vitrine Portal Vip Brasil`,
+        description: description(project.description, `${project.name} no Portal Vip Brasil.`),
         canonical,
-        image: localProject.bannerUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl,
+        image: project.bannerUrl || project.logoUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl,
         type: 'website',
         status: 200,
-        schema: {
+        schema: project.hasApp ? {
           '@context': 'https://schema.org',
           '@type': 'SoftwareApplication',
-          name: localProject.name,
-          url: localProject.websiteUrl,
-          applicationCategory: localProject.category,
-          operatingSystem: localProject.hasApp ? 'Web, Android' : 'Web',
-          description: localProject.description
+          name: project.name,
+          url: project.websiteUrl,
+          applicationCategory: project.category,
+          operatingSystem: 'Web, Android',
+          description: project.description
+        } : {
+          '@context': 'https://schema.org',
+          '@type': 'WebSite',
+          name: project.name,
+          url: project.websiteUrl,
+          description: project.description
         }
       };
     }
@@ -96,9 +103,10 @@ async function metaFor(pathname: string): Promise<PublicMeta> {
         db.collection(COLLECTIONS.blogPosts).where('slug', '==', slug).where('status', '==', 'published').limit(1).get()
       ]);
       const doc = !articleSnap.empty ? articleSnap.docs[0] : !postSnap.empty ? postSnap.docs[0] : null;
-      if (!doc) return { ...fallback, status: 404, title: 'Artigo não encontrado — Portal Vip Brasil', description: 'Este artigo não está disponível no blog do Portal Vip Brasil.' };
+      const seeded = !doc ? INITIAL_SEEDED_ARTICLES.find((item) => item.slug === slug) : undefined;
+      if (!doc && !seeded) return { ...fallback, status: 404, title: 'Artigo não encontrado — Portal Vip Brasil', description: 'Este artigo não está disponível no blog do Portal Vip Brasil.' };
 
-      const post = { id: doc.id, ...doc.data() } as any;
+      const post = doc ? ({ id: doc.id, ...doc.data() } as any) : seeded as any;
       const canonical = `${base}/blog/${encodeURIComponent(post.slug)}`;
       const authorName = typeof post.author === 'object' ? post.author?.name : post.author;
       const image = post.coverImage || post.featuredImageUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl;
