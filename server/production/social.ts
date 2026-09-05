@@ -162,7 +162,7 @@ export async function createOAuthUrl(data: { provider: SocialProvider; userId: s
       break;
     case 'x':
       url = new URL('https://x.com/i/oauth2/authorize');
-      url.search = new URLSearchParams({ response_type: 'code', client_id: credentials.clientId, redirect_uri: redirectUri, scope: 'tweet.read tweet.write users.read offline.access', state, code_challenge: base64UrlSha256(codeVerifier), code_challenge_method: 'S256' }).toString();
+      url.search = new URLSearchParams({ response_type: 'code', client_id: credentials.clientId, redirect_uri: redirectUri, scope: 'tweet.read tweet.write users.read media.write offline.access', state, code_challenge: base64UrlSha256(codeVerifier), code_challenge_method: 'S256' }).toString();
       break;
     case 'facebook':
       url = new URL(`https://www.facebook.com/${config.social.meta.graphVersion}/dialog/oauth`);
@@ -2199,8 +2199,8 @@ export async function getSocialReadiness(companyId: string, userId?: string): Pr
     linkedinApiVersionConfigured: Boolean(config.social.linkedin.apiVersion)
   };
   const capabilitiesMap: Record<SocialProvider, string> = {
-    facebook: 'text_publish', instagram: 'media_publish', linkedin: 'text_publish', x: 'text_publish',
-    tiktok: 'draft_video', youtube: 'video_upload', pinterest: 'pin_publish'
+    facebook: 'text_image_video', instagram: 'image_video_reel', linkedin: 'text_image_video', x: 'text_image_video',
+    tiktok: 'image_video_draft', youtube: 'video_upload', pinterest: 'image_video_pin'
   };
   let connectedCount = 0;
   for (const p of providers) {

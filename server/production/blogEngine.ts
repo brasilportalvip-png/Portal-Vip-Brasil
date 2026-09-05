@@ -2,6 +2,8 @@ import { config } from '../config/index.js';
 import { COLLECTIONS, firestore, newId, nowIso, stableId } from './store.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug, PortalProjectItem, listAllPortalProjectsFromDb, seedPortalProjectsIfEmpty } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall } from './antiFallEngine.js';
+import { generateMarketingImage } from './ai.js';
+import { getAdminAuth } from '../providers/firebaseAdmin.js';
 
 function safeString(value: any, max = 5000): string {
   return String(value ?? '').trim().slice(0, max);
@@ -68,6 +70,8 @@ export interface StoredBlogArticle {
   featured: boolean;
   coverImage: string;
   coverAlt: string;
+  coverImageStoragePath?: string;
+  coverImageGenerated?: boolean;
   sections: BlogArticleSection[];
   faqSection: BlogFaqItem[];
   conclusion: string;
@@ -585,22 +589,19 @@ export async function listBlogArticles(filters: {
 }): Promise<{ articles: StoredBlogArticle[]; total: number }> {
   try {
     const db = firestore();
-    let queryRef: FirebaseFirestore.Query = db.collection(COLLECTIONS.blogArticles);
-
-    if (filters.status && filters.status !== 'all') {
-      queryRef = queryRef.where('status', '==', filters.status);
-    }
-    if (filters.projectId) {
-      queryRef = queryRef.where('relatedProjectId', '==', filters.projectId);
-    }
-    if (filters.category && filters.category !== 'Todos') {
-      queryRef = queryRef.where('category', '==', filters.category);
-    }
-
-    const snap = await queryRef.orderBy('publishedAt', 'desc').get();
+    const snap = await db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').limit(500).get();
     let items: StoredBlogArticle[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
 
-    // Se o banco estiver vazio para este recorte, o fallback editorial respeita os mesmos filtros.
+    if (filters.status && filters.status !== 'all') {
+      items = items.filter((article) => article.status === filters.status);
+    }
+    if (filters.projectId) {
+      items = items.filter((article) => article.relatedProjectId === filters.projectId);
+    }
+    if (filters.category && filters.category !== 'Todos') {
+      items = items.filter((article) => article.category === filters.category);
+    }
+
     if (items.length === 0) {
       items = INITIAL_SEEDED_ARTICLES.filter((article) =>
         (!filters.status || filters.status === 'all' || article.status === filters.status) &&
@@ -609,32 +610,29 @@ export async function listBlogArticles(filters: {
       );
     }
 
-    // Busca textual se houver query
     if (filters.query) {
       const q = filters.query.toLowerCase().trim();
       items = items.filter((art) =>
         art.title.toLowerCase().includes(q) ||
         art.excerpt.toLowerCase().includes(q) ||
         art.tags?.some((t) => t.toLowerCase().includes(q)) ||
-        art.primaryKeyword?.toLowerCase().includes(q)
+        art.primaryKeyword?.toLowerCase().includes(q) ||
+        art.secondaryKeywords?.some((keyword) => keyword.toLowerCase().includes(q))
       );
     }
 
+    items.sort((a, b) => String(b.publishedAt || b.createdAt || '').localeCompare(String(a.publishedAt || a.createdAt || '')));
     const total = items.length;
-    const limit = filters.limit || 50;
-    const offset = filters.offset || 0;
-    const paginated = items.slice(offset, offset + limit);
-
-    return { articles: paginated, total };
+    const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
+    const offset = Math.max(Number(filters.offset || 0), 0);
+    return { articles: items.slice(offset, offset + limit), total };
   } catch (err) {
     console.warn('[BlogEngine] Erro ao listar artigos do Firestore, usando fallback local:', err);
     let items = [...INITIAL_SEEDED_ARTICLES];
-    if (filters.category && filters.category !== 'Todos') {
-      items = items.filter((a) => a.category === filters.category);
-    }
-    if (filters.projectId) {
-      items = items.filter((a) => a.relatedProjectId === filters.projectId);
-    }
+    if (filters.status && filters.status !== 'all') items = items.filter((a) => a.status === filters.status);
+    if (filters.category && filters.category !== 'Todos') items = items.filter((a) => a.category === filters.category);
+    if (filters.projectId) items = items.filter((a) => a.relatedProjectId === filters.projectId);
+    items.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
     return { articles: items, total: items.length };
   }
 }
@@ -648,19 +646,14 @@ export async function getBlogArticleBySlug(slug: string): Promise<StoredBlogArti
     const snap = await firestore()
       .collection(COLLECTIONS.blogArticles)
       .where('slug', '==', clean)
-      .where('status', '==', 'published')
-      .limit(1)
+      .limit(10)
       .get();
 
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      return { id: doc.id, ...(doc.data() as any) };
-    }
+    const publishedDoc = snap.docs.find((doc) => String((doc.data() as any)?.status || '') === 'published');
+    if (publishedDoc) return { id: publishedDoc.id, ...(publishedDoc.data() as any) };
   } catch (err) {
     console.warn('[BlogEngine] Erro ao buscar artigo por slug no Firestore:', err);
   }
-
-  // Fallback nos artigos seedados
   return INITIAL_SEEDED_ARTICLES.find((a) => a.slug === clean || a.id === slug);
 }
 
@@ -716,6 +709,81 @@ export async function notifyIndexNow(urls: string[]): Promise<{ submitted: boole
   }
 }
 
+function normalizeBlogAutomationUserId(value: unknown): string {
+  const id = String(value || '').trim();
+  return id && id.length <= 128 && !id.includes('/') ? id : '';
+}
+
+async function resolveBlogAutomationUserId(explicitUserId?: string): Promise<string | undefined> {
+  const explicit = normalizeBlogAutomationUserId(explicitUserId);
+  if (explicit) return explicit;
+  const ownerEmail = config.privateAdminEmails[0];
+  const auth = getAdminAuth();
+  if (!ownerEmail || !auth) return undefined;
+  try {
+    const record = await auth.getUserByEmail(ownerEmail);
+    const uid = normalizeBlogAutomationUserId(record?.uid);
+    return uid || undefined;
+  } catch (error) {
+    console.warn('[BlogEngine] Proprietário não pôde ser resolvido para repurpose social; artigo continuará normalmente.', error);
+    return undefined;
+  }
+}
+
+function buildDynamicTopicR81(
+  project: PortalProjectItem,
+  pastTitles: string[],
+  cycleDate: string
+): {
+  topic: string;
+  primaryKeyword: string;
+  secondaryKeywords: string[];
+  searchIntent: StoredBlogArticle['searchIntent'];
+  category: string;
+} {
+  const keywords = [...new Set([
+    ...(project.bingSeoKeywords || []),
+    ...(project.keywords || []),
+    project.name
+  ].map((item) => String(item || '').trim()).filter(Boolean))].slice(0, 16);
+  const safeKeywords = keywords.length ? keywords : [project.name];
+  const templates: Array<{ intent: StoredBlogArticle['searchIntent']; build: (keyword: string) => string }> = [
+    { intent: 'guide', build: (keyword) => project.name + ': guia prático sobre ' + keyword + ' e como começar' },
+    { intent: 'tutorial', build: (keyword) => 'Como usar ' + keyword + ' com ' + project.name + ': passo a passo para iniciantes' },
+    { intent: 'informational', build: (keyword) => keyword + ': principais dúvidas, conceitos e boas práticas em ' + project.name },
+    { intent: 'educational', build: (keyword) => 'Erros comuns sobre ' + keyword + ' e como ' + project.name + ' ajuda a evitá-los' },
+    { intent: 'commercial', build: (keyword) => project.name + ' vale a pena para quem busca ' + keyword + '? Recursos e acesso oficial' },
+    { intent: 'navigational', build: (keyword) => 'Onde encontrar ' + project.name + ' para ' + keyword + ': site e canais oficiais' }
+  ];
+  const normalizedPast = new Set(pastTitles.map((title) => String(title || '').trim().toLowerCase()));
+  const offset = pastTitles.length;
+  const attempts = Math.max(1, safeKeywords.length * templates.length);
+  for (let i = 0; i < attempts; i += 1) {
+    const position = offset + i;
+    const keyword = safeKeywords[position % safeKeywords.length];
+    const template = templates[Math.floor(position / safeKeywords.length) % templates.length];
+    const topic = template.build(keyword);
+    if (!normalizedPast.has(topic.toLowerCase())) {
+      return {
+        topic,
+        primaryKeyword: keyword.toLowerCase(),
+        secondaryKeywords: safeKeywords.filter((item) => item !== keyword).slice(0, 5),
+        searchIntent: template.intent,
+        category: project.category
+      };
+    }
+  }
+  const keyword = safeKeywords[offset % safeKeywords.length];
+  const companion = safeKeywords[(offset + 1) % safeKeywords.length] || project.name;
+  return {
+    topic: 'Como ' + keyword + ' se conecta a ' + companion + ' em ' + project.name + ': guia prático ' + cycleDate,
+    primaryKeyword: keyword.toLowerCase(),
+    secondaryKeywords: safeKeywords.filter((item) => item !== keyword).slice(0, 5),
+    searchIntent: 'guide',
+    category: project.category
+  };
+}
+
 /**
  * Gera 1 artigo inédito com IA para um projeto específico
  */
@@ -733,35 +801,40 @@ export async function generateArticleForProject(
   const db = firestore();
   const todayIso = nowIso();
 
-  // 1. Pesquisa de histórico anterior para evitar pauta duplicada
-  let pastTitles: string[] = [];
+  // 1. Pesquisa de histórico anterior para evitar pauta, palavra-chave e slug duplicados
+  let pastArticles: Array<{ title: string; slug: string; primaryKeyword: string }> = [];
   try {
     const pastSnap = await db
       .collection(COLLECTIONS.blogArticles)
       .where('relatedProjectId', '==', project.id)
-      .limit(20)
       .get();
-    pastTitles = pastSnap.docs.map((d) => (d.data() as any).title);
+    pastArticles = pastSnap.docs.map((d) => {
+      const item = d.data() as any;
+      return {
+        title: String(item.title || ''),
+        slug: String(item.slug || ''),
+        primaryKeyword: String(item.primaryKeyword || '')
+      };
+    });
   } catch {
-    pastTitles = INITIAL_SEEDED_ARTICLES.filter((a) => a.relatedProjectId === project.id).map((a) => a.title);
+    pastArticles = INITIAL_SEEDED_ARTICLES
+      .filter((a) => a.relatedProjectId === project.id)
+      .map((a) => ({ title: a.title, slug: a.slug, primaryKeyword: a.primaryKeyword }));
   }
+  const pastTitles = pastArticles.map((item) => item.title).filter(Boolean);
 
-  // 2. Seleciona pauta inédita do pool ou gera dinamicamente
+  // 2. Seleciona pauta inédita; quando o pool acaba, cria um novo ângulo long-tail em vez de repetir o primeiro tema.
   const pool = PROJECT_TOPIC_POOLS[project.id] || [];
+  const cycleDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
   let chosenTopicItem = pool.find((item) => !pastTitles.some((t) => t.toLowerCase() === item.topic.toLowerCase()));
-  if (!chosenTopicItem) {
-    chosenTopicItem = pool[0] || {
-      topic: `Guia Completo de ${project.name}: Como Aproveitar Todos os Recursos e Benefícios`,
-      primaryKeyword: project.name.toLowerCase(),
-      secondaryKeywords: project.keywords,
-      searchIntent: 'guide',
-      category: project.category
-    };
-  }
+  if (!chosenTopicItem) chosenTopicItem = buildDynamicTopicR81(project, pastTitles, cycleDate);
 
   const topic = options?.customTopic || chosenTopicItem.topic;
   const primaryKeyword = chosenTopicItem.primaryKeyword || project.keywords[0] || project.name;
   const searchIntent = options?.customIntent || chosenTopicItem.searchIntent || 'educational';
+
 
   // 3. Prompt de Engenharia Editorial para o Gemini com JSON estruturado
   const prompt = `Você é o Redator-Chefe e Especialista em SEO do Portal Vip Brasil.
@@ -898,12 +971,22 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
         }
       ];
 
-  const finalSlug = slugify(parsed.suggestedSlug || parsed.title || topic);
   const articleId = options?.articleId || newId('blog_art');
+  let finalSlug = slugify(parsed.suggestedSlug || parsed.title || topic);
+  try {
+    const slugSnap = await db.collection(COLLECTIONS.blogArticles).where('slug', '==', finalSlug).limit(5).get();
+    const collision = slugSnap.docs.some((doc) => doc.id !== articleId);
+    if (collision) {
+      const dateSuffix = todayIso.slice(0, 10).replace(/-/g, '');
+      finalSlug = slugify(finalSlug + '-' + dateSuffix + '-' + stableId(articleId).slice(0, 6));
+    }
+  } catch {
+    // O ID diário determinístico ainda evita duplicação do mesmo ciclo se a checagem de slug falhar.
+  }
   const targetStatus = (options?.forceApproval || settings.mode === 'approval') ? 'pending_approval' : 'published';
 
   // URLs com UTM tracking para redes sociais
-  const articlePublicUrl = `https://portal-vip-brasil.vercel.app/blog/${finalSlug}`;
+  const articlePublicUrl = config.appUrl.replace(/\/$/, '') + '/blog/' + finalSlug;
   const socialCampaign: SocialRepurposePack = {
     instagram: {
       caption: parsed.socialCampaign?.instagram?.caption || articleExcerpt,
@@ -924,20 +1007,70 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     }
   };
 
-  const coverImage = project.bannerUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl;
+  let coverImage = project.bannerUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl;
+  let coverImageStoragePath: string | undefined;
+  let coverImageGenerated = false;
+  try {
+    const generatedCover = await generateMarketingImage({
+      userId: options?.userId || 'portal_vip_blog_automation',
+      company: {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        category: project.category,
+        segment: project.segment,
+        targetAudience: project.targetAudience,
+        keywords: project.keywords || [],
+        website: project.websiteUrl,
+        websiteUrl: project.websiteUrl
+      },
+      theme: 'Imagem editorial original para o artigo "' + String(parsed.title || topic) + '". Contexto: ' + project.name + '. Palavra-chave principal: ' + primaryKeyword + '. Sem logotipos de terceiros e sem texto longo na arte.',
+      style: 'Fotografia editorial premium, realista, limpa, relevante ao tema e apropriada para Google Discover e redes sociais',
+      aspectRatio: '16:9',
+      resolution: '1K'
+    });
+    if (generatedCover?.imageUrl) {
+      coverImage = generatedCover.imageUrl;
+      coverImageStoragePath = generatedCover.storagePath;
+      coverImageGenerated = true;
+    }
+  } catch (coverError) {
+    console.warn('[BlogEngine] Capa IA indisponível para ' + project.id + '; usando banner oficial como fallback seguro.', coverError);
+  }
+
+  const relatedInternalLinks: Array<{ label: string; url: string }> = [
+    { label: 'Conheça ' + project.name + ' na Vitrine Portal Vip Brasil', url: '/vitrine/' + project.slug },
+    { label: 'Acesse o site oficial de ' + project.name, url: project.websiteUrl }
+  ];
+  try {
+    const relatedSnap = await db.collection(COLLECTIONS.blogArticles)
+      .where('relatedProjectId', '==', project.id)
+      .limit(20)
+      .get();
+    const related = relatedSnap.docs
+      .map((doc) => ({ id: doc.id, ...(doc.data() as any) }))
+      .filter((item: any) => item.status === 'published' && item.slug && item.slug !== finalSlug)
+      .sort((a: any, b: any) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')))
+      .slice(0, 3);
+    for (const item of related) {
+      relatedInternalLinks.push({ label: String(item.title || 'Artigo relacionado'), url: '/blog/' + item.slug });
+    }
+  } catch {
+    // Links essenciais de vitrine/site já existem; artigos relacionados são enriquecimento opcional.
+  }
 
   const newArticle: StoredBlogArticle = {
     id: articleId,
     slug: finalSlug,
     title: parsed.title || topic,
-    seoTitle: parsed.seoTitle || `${parsed.title || topic} | Portal Vip Brasil`,
-    metaDescription: parsed.metaDescription || articleExcerpt,
+    seoTitle: safeString(parsed.seoTitle || String(parsed.title || topic) + ' | Portal Vip Brasil', 65),
+    metaDescription: safeString(parsed.metaDescription || articleExcerpt, 160),
     excerpt: articleExcerpt,
     introduction: parsed.introduction || undefined,
     category: parsed.category || project.category,
-    tags: Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : project.keywords,
-    primaryKeyword: parsed.primaryKeyword || primaryKeyword,
-    secondaryKeywords: Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords : [],
+    tags: Array.from(new Set<string>((Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : project.keywords).map((item: any) => String(item || '').trim()).filter((item: string) => item.length > 0))).slice(0, 12),
+    primaryKeyword: safeString(parsed.primaryKeyword || primaryKeyword, 160),
+    secondaryKeywords: Array.from(new Set<string>((Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords : chosenTopicItem.secondaryKeywords || []).map((item: any) => String(item || '').trim()).filter((item: string) => item.length > 0))).slice(0, 12),
     searchIntent,
     author: {
       name: settings.defaultAuthorName,
@@ -949,7 +1082,9 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     readTime: parsed.readTime || '5 min de leitura',
     featured: false,
     coverImage,
-    coverAlt: parsed.coverAlt || `Capa do artigo ${parsed.title || topic}`,
+    coverAlt: safeString(parsed.coverAlt || 'Imagem editorial sobre ' + primaryKeyword + ' no artigo ' + String(parsed.title || topic), 240),
+    coverImageStoragePath,
+    coverImageGenerated,
     sections: articleSections,
     faqSection: Array.isArray(parsed.faqSection) ? parsed.faqSection : [],
     conclusion: parsed.conclusion || '',
@@ -960,10 +1095,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     relatedProjectUrl: project.websiteUrl,
     relatedPlayStoreUrl: project.playStoreUrl,
     hasApp: Boolean(project.hasApp),
-    internalLinks: [
-      { label: 'Vitrine Oficial de Projetos', url: '/vitrine' },
-      { label: `Página Oficial de ${project.name}`, url: project.websiteUrl }
-    ],
+    internalLinks: relatedInternalLinks,
     socialCampaign,
     status: targetStatus,
     views: 0,
@@ -982,9 +1114,72 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     throw new Error('Falha ao persistir o artigo diário no Firestore.');
   }
 
-  // Notifica IndexNow se estiver publicado
+  // Notifica IndexNow se estiver publicado (Bing e mecanismos participantes).
   if (targetStatus === 'published' && settings.indexNowEnabled) {
     await notifyIndexNow([articlePublicUrl]);
+  }
+
+  // Repurpose social do artigo: cria uma única fila idempotente para conexões compatíveis com imagem/texto.
+  if (targetStatus === 'published' && settings.autoSocialRepurpose && options?.userId) {
+    try {
+      const connectionsSnap = await db.collection(COLLECTIONS.socialConnections)
+        .where('userId', '==', options.userId)
+        .where('companyId', '==', project.id)
+        .get();
+      // TikTok não entra no repurpose fotográfico automático: PHOTO/PULL_FROM_URL exige domínio/URL verificado pelo TikTok.
+      // O Autopilot R8 atende TikTok com vídeo FILE_UPLOAD, que não depende desse requisito externo.
+      const allowed = new Set(['facebook', 'instagram', 'linkedin', 'x', 'pinterest']);
+      const platforms = [...new Set(connectionsSnap.docs
+        .map((doc) => doc.data() as any)
+        .filter((connection) => String(connection.status || 'connected') === 'connected')
+        .map((connection) => String(connection.provider || '').toLowerCase())
+        .filter((provider) => allowed.has(provider)))];
+
+      if (platforms.length > 0) {
+        const socialContentId = 'blog-social-' + stableId(articleId).slice(0, 48);
+        const socialScheduleId = 'blog-sched-' + stableId(articleId + ':social').slice(0, 48);
+        await db.collection(COLLECTIONS.contentItems).doc(socialContentId).set({
+          id: socialContentId,
+          userId: options.userId,
+          companyId: project.id,
+          type: 'post',
+          title: '[Artigo] ' + newArticle.title,
+          headline: newArticle.title,
+          body: newArticle.excerpt,
+          cta: articlePublicUrl,
+          hashtags: socialCampaign.instagram.hashtags || [],
+          keywords: [newArticle.primaryKeyword, ...(newArticle.secondaryKeywords || [])].filter(Boolean),
+          imageUrl: newArticle.coverImage,
+          targetPlatform: platforms[0],
+          creditsUsed: 0,
+          status: 'scheduled',
+          metadata: {
+            source: 'daily_blog_seo',
+            blogArticleId: articleId,
+            articleUrl: articlePublicUrl,
+            coverImageGenerated
+          },
+          createdAt: nowIso(),
+          updatedAt: nowIso()
+        }, { merge: true });
+        await db.collection(COLLECTIONS.scheduledPosts).doc(socialScheduleId).set({
+          id: socialScheduleId,
+          userId: options.userId,
+          companyId: project.id,
+          contentItemId: socialContentId,
+          platforms,
+          scheduledFor: nowIso(),
+          status: 'scheduled',
+          autopilotGenerated: true,
+          blogRepurpose: true,
+          createdAt: nowIso(),
+          updatedAt: nowIso()
+        }, { merge: true });
+      }
+    } catch (socialError) {
+      // Falha social não desfaz artigo já persistido/indexável.
+      console.warn('[BlogEngine] Artigo publicado; repurpose social ignorado neste ciclo por falha não bloqueante.', socialError);
+    }
   }
 
   return { success: true, article: newArticle };
@@ -1009,47 +1204,64 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
     allProjects = seeded.projects;
   }
 
-  const activeProjects = allProjects.filter((p) => p.active !== false && p.dailyBlogEnabled !== false);
-  const projectsToProcess = activeProjects;
-  const cycleDate = new Date().toISOString().slice(0, 10);
+  const projectsToProcess = allProjects.filter((p) => p.active !== false && p.dailyBlogEnabled !== false);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const partMap: Record<string, string> = {};
+  for (const part of parts) partMap[part.type] = part.value;
+  const cycleDate = partMap.year + '-' + partMap.month + '-' + partMap.day;
 
-  console.log(`[BlogEngine] Iniciando ciclo diário idempotente para ${projectsToProcess.length} projetos.`);
+  const automationUserId = await resolveBlogAutomationUserId(userId);
+  console.log('[BlogEngine] Iniciando ciclo diário SEO idempotente para ' + projectsToProcess.length + ' projetos.');
   const articlesGenerated: StoredBlogArticle[] = [];
   let publishedCount = 0;
   let pendingCount = 0;
   let skippedCount = 0;
   let failedCount = 0;
+  let cursor = 0;
 
-  for (const project of projectsToProcess) {
-    const claimRef = await acquireDailyBlogClaim(project.id, cycleDate);
-    if (!claimRef) {
-      skippedCount += 1;
-      continue;
+  const worker = async () => {
+    while (true) {
+      const currentIndex = cursor++;
+      if (currentIndex >= projectsToProcess.length) return;
+      const project = projectsToProcess[currentIndex];
+      const claimRef = await acquireDailyBlogClaim(project.id, cycleDate);
+      if (!claimRef) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const deterministicArticleId = 'daily-blog-' + stableId(cycleDate + ':' + project.id).slice(0, 48);
+      try {
+        const res = await generateArticleForProject(project, { userId: automationUserId, articleId: deterministicArticleId });
+        if (!res.success || !res.article) throw new Error('Geração do artigo não retornou persistência confirmada.');
+
+        articlesGenerated.push(res.article);
+        if (res.article.status === 'published') publishedCount += 1;
+        else pendingCount += 1;
+
+        await claimRef.set({
+          status: 'completed', lockedUntil: 0, articleId: deterministicArticleId,
+          completedAt: nowIso(), updatedAt: nowIso()
+        }, { merge: true });
+      } catch (err: any) {
+        failedCount += 1;
+        const message = err?.message ? String(err.message).slice(0, 500) : String(err).slice(0, 500);
+        await claimRef.set({
+          status: 'failed', lockedUntil: 0, lastError: message, failedAt: nowIso(), updatedAt: nowIso()
+        }, { merge: true }).catch(() => undefined);
+        console.error('[BlogEngine] Falha no projeto ' + project.name + ':', message);
+      }
     }
+  };
 
-    const deterministicArticleId = `daily-blog-${stableId(`${cycleDate}:${project.id}`).slice(0, 48)}`;
-    try {
-      const res = await generateArticleForProject(project, { userId, articleId: deterministicArticleId });
-      if (!res.success || !res.article) throw new Error('Geração do artigo não retornou persistência confirmada.');
-
-      articlesGenerated.push(res.article);
-      if (res.article.status === 'published') publishedCount += 1;
-      else pendingCount += 1;
-
-      await claimRef.set({
-        status: 'completed', lockedUntil: 0, articleId: deterministicArticleId,
-        completedAt: nowIso(), updatedAt: nowIso()
-      }, { merge: true });
-    } catch (err: any) {
-      failedCount += 1;
-      const message = err?.message ? String(err.message).slice(0, 500) : String(err).slice(0, 500);
-      await claimRef.set({
-        status: 'failed', lockedUntil: 0, lastError: message, failedAt: nowIso(), updatedAt: nowIso()
-      }, { merge: true }).catch(() => undefined);
-      console.error(`[BlogEngine] Falha no projeto ${project.name}:`, message);
-    }
+  const concurrency = Math.min(3, projectsToProcess.length);
+  if (concurrency > 0) {
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
   }
 
+  articlesGenerated.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
   return {
     success: failedCount === 0,
     articlesGenerated,
