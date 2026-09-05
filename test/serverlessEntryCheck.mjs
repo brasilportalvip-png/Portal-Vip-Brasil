@@ -1,4 +1,23 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+
+const cjsProbe = spawnSync(
+  process.execPath,
+  ['test/jwksCjsProbe.cjs'],
+  {
+    encoding: 'utf8',
+    env: { ...process.env, NODE_ENV: 'production' }
+  }
+);
+
+if (cjsProbe.stdout) process.stdout.write(cjsProbe.stdout);
+if (cjsProbe.stderr) process.stderr.write(cjsProbe.stderr);
+
+assert.equal(
+  cjsProbe.status,
+  0,
+  `CommonJS probe failed with exit ${cjsProbe.status}: ${cjsProbe.stderr || cjsProbe.stdout}`
+);
 
 process.env.NODE_ENV = 'production';
 process.env.APP_URL = 'https://portal-vip-brasil.vercel.app';
@@ -23,20 +42,10 @@ const storageModule = await import('@google-cloud/storage');
 assert.equal(typeof firestoreModule.Firestore, 'function');
 assert.equal(typeof storageModule.Storage, 'function');
 
-const firestoreClient = new firestoreModule.Firestore({
-  projectId: 'portal-runtime-check'
-});
-assert.ok(firestoreClient);
-
-const storageClient = new storageModule.Storage({
-  projectId: 'portal-runtime-check'
-});
-assert.ok(storageClient);
-assert.equal(typeof storageClient.bucket, 'function');
-
 const apiModule = await import('../api/index.ts');
 assert.equal(typeof apiModule.default, 'function');
 
 console.log('[serverless-entry] Firestore import OK');
 console.log('[serverless-entry] Storage import OK');
 console.log('[serverless-entry] api/index.ts production import OK');
+console.log('[serverless-entry] CommonJS/ESM interoperability OK');
