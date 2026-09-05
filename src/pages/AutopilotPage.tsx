@@ -23,12 +23,12 @@ interface AutopilotConfig {
 
 const channels = [
   { name: 'Facebook', direct: true },
+  { name: 'Instagram', direct: true },
   { name: 'LinkedIn', direct: true },
   { name: 'X', direct: true },
-  { name: 'Instagram', direct: false },
-  { name: 'TikTok', direct: false },
-  { name: 'YouTube', direct: false },
-  { name: 'Pinterest', direct: false }
+  { name: 'TikTok', direct: true },
+  { name: 'YouTube', direct: true },
+  { name: 'Pinterest', direct: true }
 ];
 
 export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onRefreshContents, onNavigate }) => {
@@ -50,23 +50,20 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   const patch = (value: Partial<AutopilotConfig>) => setCfg((current) => current ? { ...current, ...value } : current);
   const setMode = (mode: AutopilotConfig['mode']) => {
     if (!cfg) return;
-    if (mode === 'automatic') {
-      const compatible = cfg.targetPlatforms.filter((name) => ['Facebook','LinkedIn','X'].includes(name));
-      patch({ mode, targetPlatforms: compatible.length ? compatible : ['Facebook'] });
-    } else patch({ mode });
+    patch({ mode });
   };
   const toggleChannel = (name: string, direct: boolean) => {
     if (!cfg) return;
     if (cfg.mode === 'automatic' && !direct) {
-      setMessage(`${name} exige mídia ou fluxo específico e não será usado como publicação textual automática.`);
+      setMessage(`${name} usa o fluxo multimídia específico da própria rede.`);
       return;
     }
     patch({ targetPlatforms: cfg.targetPlatforms.includes(name) ? cfg.targetPlatforms.filter((item) => item !== name) : [...cfg.targetPlatforms, name] });
   };
   const save = async () => {
     if (!cfg || !selectedCompany) return;
-    if (cfg.mode === 'automatic' && !cfg.targetPlatforms.some((p) => ['Facebook','LinkedIn','X'].includes(p))) {
-      setMessage('Selecione Facebook, LinkedIn ou X para publicação textual automática.');
+    if (cfg.mode === 'automatic' && cfg.targetPlatforms.length === 0) {
+      setMessage('Selecione ao menos uma rede social para o Autopilot multimídia.');
       return;
     }
     setSaving(true); setMessage('');
@@ -112,7 +109,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
       {message && <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4 text-xs text-cyan-200">{message}</div>}
       {loading && !cfg ? <div className="grid min-h-48 place-items-center text-xs text-slate-400">Carregando configuração…</div> : cfg ? <section className="froc-panel space-y-6">
         <div><h3 className="froc-section-title">Frequência específica</h3><div className="mt-3 grid gap-3 md:grid-cols-3">{([['daily','Diariamente'],['3_times_week','3x por semana'],['weekly','Semanalmente']] as const).map(([id,label]) => <button key={id} onClick={() => patch({ frequency: id })} className={`min-h-16 rounded-2xl border p-4 text-left text-xs font-bold ${cfg.frequency===id?'border-cyan-400 bg-cyan-500/10 text-white':'border-slate-700 bg-slate-900 text-slate-300'}`}>{label}</button>)}</div></div>
-        <div className="border-t border-slate-800 pt-5"><h3 className="froc-section-title">Modo de operação social</h3><div className="mt-3 grid gap-3 md:grid-cols-2"><button onClick={() => setMode('manual_approval')} className={`rounded-2xl border p-4 text-left ${cfg.mode==='manual_approval'?'border-cyan-400 bg-cyan-500/10':'border-slate-700 bg-slate-900'}`}><div className="flex items-center gap-2 text-xs font-bold text-white"><ShieldCheck size={16} className="text-cyan-400"/>Aprovação manual</div><p className="mt-1 text-[11px] text-slate-400">Gera e salva para revisão.</p></button><button onClick={() => setMode('automatic')} className={`rounded-2xl border p-4 text-left ${cfg.mode==='automatic'?'border-cyan-400 bg-cyan-500/10':'border-slate-700 bg-slate-900'}`}><div className="flex items-center gap-2 text-xs font-bold text-white"><Rocket size={16} className="text-cyan-400"/>Automático</div><p className="mt-1 text-[11px] text-slate-400">Publica apenas nos canais compatíveis e conectados ao projeto correto.</p></button></div></div>
+        <div className="border-t border-slate-800 pt-5"><h3 className="froc-section-title">Modo de operação social</h3><div className="mt-3 grid gap-3 md:grid-cols-2"><button onClick={() => setMode('manual_approval')} className={`rounded-2xl border p-4 text-left ${cfg.mode==='manual_approval'?'border-cyan-400 bg-cyan-500/10':'border-slate-700 bg-slate-900'}`}><div className="flex items-center gap-2 text-xs font-bold text-white"><ShieldCheck size={16} className="text-cyan-400"/>Aprovação manual</div><p className="mt-1 text-[11px] text-slate-400">Gera e salva para revisão.</p></button><button onClick={() => setMode('automatic')} className={`rounded-2xl border p-4 text-left ${cfg.mode==='automatic'?'border-cyan-400 bg-cyan-500/10':'border-slate-700 bg-slate-900'}`}><div className="flex items-center gap-2 text-xs font-bold text-white"><Rocket size={16} className="text-cyan-400"/>Automático</div><p className="mt-1 text-[11px] text-slate-400">Cria mídia e publica nos canais conectados. TikTok recebe rascunho para confirmação; YouTube usa fila de vídeo Veo.</p></button></div></div>
         <div className="border-t border-slate-800 pt-5"><h3 className="froc-section-title">Canais alvo</h3><div className="mt-3 flex flex-wrap gap-2">{channels.map((ch) => { const selected = cfg.targetPlatforms.includes(ch.name); const disabled = cfg.mode==='automatic' && !ch.direct; return <button key={ch.name} onClick={() => toggleChannel(ch.name,ch.direct)} className={`min-h-10 rounded-xl border px-3 text-xs font-semibold ${disabled?'cursor-not-allowed border-slate-800 bg-slate-950 text-slate-600':selected?'border-cyan-400/60 bg-cyan-500/10 text-cyan-200':'border-slate-700 bg-slate-900 text-slate-400'}`}>{ch.name}{disabled?' · mídia/revisão':''}</button>; })}</div></div>
         <label className="block border-t border-slate-800 pt-5 text-xs font-semibold text-slate-300">Objetivo principal<textarea value={cfg.primaryGoal || ''} onChange={(e) => patch({ primaryGoal: e.target.value })} className="froc-input mt-1.5 min-h-24"/></label>
         {cfg.lastRunAt && <p className="text-[11px] text-slate-500">Última execução específica: {new Date(cfg.lastRunAt).toLocaleString('pt-BR')}</p>}

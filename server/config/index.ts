@@ -102,7 +102,7 @@ export const config = {
     linkedin: {
       clientId: env('LINKEDIN_CLIENT_ID', isTest ? 'mock_linkedin_client_id' : ''),
       clientSecret: env('LINKEDIN_CLIENT_SECRET', isTest ? 'mock_linkedin_client_secret' : ''),
-      apiVersion: env('LINKEDIN_API_VERSION')
+      apiVersion: env('LINKEDIN_API_VERSION', '202608')
     },
     google: {
       clientId: env('GOOGLE_CLIENT_ID', isTest ? 'mock_google_client_id' : ''),

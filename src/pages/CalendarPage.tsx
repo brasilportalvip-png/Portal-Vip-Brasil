@@ -12,14 +12,14 @@ interface Props {
 }
 
 const PLATFORM_OPTIONS = [
-  { id: 'Facebook', label: 'Facebook Page', icon: '📘', autoPublish: true, note: 'Publicação direta de texto via API Graph' },
-  { id: 'LinkedIn', label: 'LinkedIn', icon: '💼', autoPublish: true, note: 'Publicação direta de texto' },
-  { id: 'X', label: 'X', icon: '𝕏', autoPublish: true, note: 'Publicação direta de texto (até 280 caracteres)' },
-  { id: 'Instagram', label: 'Instagram', icon: '📸', autoPublish: false, note: 'Exige mídia visual obrigatória (imagem/vídeo) via Meta Graph' },
-  { id: 'TikTok', label: 'TikTok', icon: '🎵', autoPublish: false, note: 'Envio exclusivo de vídeo MP4 via aba Redes Sociais' },
-  { id: 'YouTube', label: 'YouTube', icon: '▶️', autoPublish: false, note: 'Exige arquivo de vídeo para publicação' },
-  { id: 'Pinterest', label: 'Pinterest', icon: '📌', autoPublish: false, note: 'Exige imagem e URL de destino para Pins' },
-];
+  { id: 'Facebook', label: 'Facebook Page', icon: '📘', autoPublish: true, note: 'Texto, imagem ou vídeo via Meta Graph' },
+  { id: 'Instagram', label: 'Instagram', icon: '📸', autoPublish: true, note: 'Imagem ou Reel em conta profissional' },
+  { id: 'LinkedIn', label: 'LinkedIn', icon: '💼', autoPublish: true, note: 'Texto, imagem ou vídeo via Posts API' },
+  { id: 'X', label: 'X', icon: '𝕏', autoPublish: true, note: 'Texto, imagem ou vídeo via API do X' },
+  { id: 'TikTok', label: 'TikTok', icon: '🎵', autoPublish: true, note: 'Vídeo/foto; automação diária entrega rascunho para confirmação no TikTok' },
+  { id: 'YouTube', label: 'YouTube', icon: '▶️', autoPublish: true, note: 'Vídeo/Short via upload resumível; padrão não listado' },
+  { id: 'Pinterest', label: 'Pinterest', icon: '📌', autoPublish: true, note: 'Pin com imagem ou vídeo na pasta disponível' },
+]
 
 export const CalendarPage: React.FC<Props> = ({
   scheduledPosts,
@@ -199,7 +199,7 @@ export const CalendarPage: React.FC<Props> = ({
             <CalendarIcon className="text-cyan-400" />
             Calendário Editorial
           </h2>
-          <p className="text-xs text-slate-400">Agendamento real e publicação automática em redes sociais com acompanhamento de status.</p>
+          <p className="text-xs text-slate-400">Agendamento multimídia real em 7 redes. O executor automático roda uma vez por dia e processa tudo que estiver vencido.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => void onRefreshSchedule()} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-300 hover:border-slate-600">
@@ -384,7 +384,7 @@ export const CalendarPage: React.FC<Props> = ({
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h3 className="text-base font-black text-white">Agendamento & Planejamento</h3>
-                <p className="text-[11px] text-slate-400">Configure a publicação para execução automática ou registro editorial.</p>
+                <p className="text-[11px] text-slate-400">Configure texto, imagem ou vídeo. A fila automática é processada uma vez por dia.</p>
               </div>
               <button type="button" onClick={() => setModal(false)} className="rounded-xl p-2 text-slate-400 hover:text-white">
                 <X size={18} />
@@ -395,14 +395,7 @@ export const CalendarPage: React.FC<Props> = ({
             <div className="mb-4 grid grid-cols-2 gap-2 rounded-2xl bg-slate-950/60 p-1 border border-slate-800">
               <button
                 type="button"
-                onClick={() => {
-                  setScheduleMode('auto');
-                  // Remove unsupported auto publish platforms
-                  setPlatforms((prev) => {
-                    const filtered = prev.filter((p) => ['Facebook', 'LinkedIn', 'X'].includes(p));
-                    return filtered.length ? filtered : ['Facebook'];
-                  });
-                }}
+                onClick={() => setScheduleMode('auto')}
                 className={`flex flex-col items-center justify-center py-2 px-3 rounded-xl text-xs font-bold transition ${
                   scheduleMode === 'auto'
                     ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
@@ -472,7 +465,7 @@ export const CalendarPage: React.FC<Props> = ({
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="text-xs font-semibold text-slate-300">Redes Sociais de Destino *</div>
                   {scheduleMode === 'auto' && (
-                    <span className="text-[10px] text-cyan-300">Auto-publicação textual direta: Facebook, LinkedIn e X</span>
+                    <span className="text-[10px] text-cyan-300">Auto-publicação multimídia: 7 redes conforme mídia e conexão</span>
                   )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

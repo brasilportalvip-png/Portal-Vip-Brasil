@@ -13,6 +13,18 @@ import {
   type SocialProvider
 } from './social.js';
 
+import { recoverStalePublishingPostsR8, processScheduledPostsR8 } from './scheduledPublisherR8.js';
+import { processAutopilotMultimediaR8, triggerUserAutopilotMultimediaR8 } from './autopilotMultimediaR8.js';
+
+// Contrato de identidade preservado para logs, notificações e governança de produção.
+export const PORTAL_VIP_AUTOMATION_IDENTITY = {
+  logPrefix: '[Portal Vip Automação]',
+  contentCreatedTitle: 'Automação do Portal Vip Brasil criou novo conteúdo',
+  executedTitle: 'Automação do Portal Vip Brasil executada',
+  magazineName: 'Portal Vip Brasil Magazine',
+  generatedBy: 'portal_vip_auto_blog'
+} as const;
+
 
 async function schedulerProjectContext(userId: string, projectId: string): Promise<any | undefined> {
   const project = await getPortalProjectFromDb(projectId);
@@ -368,422 +380,15 @@ export async function getSchedulerDiagnostics(): Promise<{
 }
 
 export async function recoverStalePublishingPosts(staleThresholdMinutes = 15): Promise<number> {
-  const db = firestore();
-  const snap = await db.collection(COLLECTIONS.scheduledPosts)
-    .where('status', '==', 'publishing')
-    .limit(50)
-    .get();
-
-  let recovered = 0;
-  const cutoffMs = Date.now() - staleThresholdMinutes * 60 * 1000;
-
-  for (const doc of snap.docs) {
-    const post = doc.data() as any;
-    const timeIso = post.processingAt || post.publishedAt || post.updatedAt || post.createdAt;
-    const processingTime = timeIso ? new Date(timeIso).getTime() : 0;
-
-    if (processingTime < cutoffMs) {
-      const publicationResults = Array.isArray(post.publicationResults) ? post.publicationResults : [];
-      const requestedPlatforms = Array.isArray(post.platforms) ? post.platforms : [];
-
-      const successfulResults = publicationResults.filter((r: any) =>
-        r?.success && r?.externalId && (r?.externalState === 'confirmed_success' || !r?.externalState)
-      );
-
-      const hasUnknown = publicationResults.some((r: any) => r?.externalState === 'unknown');
-
-      // Verifica se todos os provedores solicitados possuem resultado registrado
-      const allRequestedHaveResult = requestedPlatforms.length > 0 && requestedPlatforms.every((plat: string) =>
-        publicationResults.some((r: any) => r?.platform === plat || normalizeProvider(r?.platform) === normalizeProvider(plat))
-      );
-
-      const allConfirmedSuccess = requestedPlatforms.length > 0 && requestedPlatforms.every((plat: string) =>
-        successfulResults.some((s: any) => s?.platform === plat || normalizeProvider(s?.platform) === normalizeProvider(plat))
-      );
-
-      if (allConfirmedSuccess) {
-        const firstSuccess = successfulResults[0];
-        await doc.ref.update({
-          status: 'published',
-          publishedAt: post.publishedAt || nowIso(),
-          lastExternalId: post.lastExternalId || firstSuccess?.externalId,
-          errorMessage: null,
-          recoveredAt: nowIso(),
-          updatedAt: nowIso()
-        });
-
-        // Atualização segura do contentItem com validação de tenant
-        if (post.contentItemId) {
-          const contentSnap = await db.collection(COLLECTIONS.contentItems).doc(post.contentItemId).get();
-          if (contentSnap.exists) {
-            const contentData = contentSnap.data() as any;
-            if (contentData?.userId === post.userId && contentData?.companyId === post.companyId) {
-              await contentSnap.ref.update({ status: 'published', updatedAt: nowIso() });
-            }
-          }
-        }
-      } else if (hasUnknown || !allRequestedHaveResult) {
-        await doc.ref.update({
-          status: 'requires_review',
-          errorMessage: 'Verificação manual necessária — o processamento foi interrompido e a rede social pode ter recebido a publicação.',
-          recoveredAt: nowIso(),
-          updatedAt: nowIso()
-        });
-      } else {
-        // Todos os targets solicitados foram processados, nenhum é unknown, mas há falha confirmada
-        const failedErrors = publicationResults
-          .filter((r: any) => !r?.success)
-          .map((r: any) => r?.error)
-          .filter(Boolean)
-          .join(' | ')
-          .slice(0, 500) || 'Falha na publicação após recuperação.';
-
-        await doc.ref.update({
-          status: 'failed',
-          errorMessage: failedErrors,
-          recoveredAt: nowIso(),
-          updatedAt: nowIso()
-        });
-      }
-      recovered += 1;
-    }
-  }
-  return recovered;
+  return recoverStalePublishingPostsR8(staleThresholdMinutes);
 }
 
 export async function processScheduledPosts(): Promise<number> {
-  const db = firestore();
-  const snap = await db.collection(COLLECTIONS.scheduledPosts)
-    .where('status', '==', 'scheduled')
-    .where('scheduledFor', '<=', nowIso())
-    .limit(25)
-    .get();
-  let processed = 0;
-
-  for (const doc of snap.docs) {
-    const post = { id: doc.id, ...doc.data() } as any;
-    const claimed = await db.runTransaction(async (tx) => {
-      const fresh = await tx.get(doc.ref);
-      if (!fresh.exists || fresh.data()?.status !== 'scheduled') return false;
-      tx.update(doc.ref, { status: 'publishing', processingAt: nowIso() });
-      return true;
-    });
-    if (!claimed) continue;
-
-    try {
-      // 1. Revalidação de usuário
-      const userSnap = await db.collection(COLLECTIONS.users).doc(post.userId).get();
-      if (!userSnap.exists) {
-        throw new Error('Inconsistência de segurança: Usuário associado ao agendamento não encontrado.');
-      }
-      const userData = userSnap.data() as any;
-
-      // 2. Revalidação estrita do projeto oficial.
-      const projectId = String(post.projectId || post.companyId || '');
-      const scheduledProject = await getPortalProjectFromDb(projectId);
-      if (!scheduledProject || scheduledProject.active === false) {
-        throw new Error('Inconsistência de segurança: projeto do agendamento não reconhecido ou pausado.');
-      }
-
-      // 4. Revalidação de conteúdo e titularidade
-      const contentSnap = await db.collection(COLLECTIONS.contentItems).doc(post.contentItemId).get();
-      if (!contentSnap.exists) {
-        throw new Error('Inconsistência de segurança: Conteúdo associado não encontrado.');
-      }
-      const content = { id: contentSnap.id, ...contentSnap.data() } as any;
-      if (content.userId !== post.userId || content.companyId !== post.companyId) {
-        throw new Error('Violação de isolamento multi-tenant: Conteúdo não pertence ao usuário ou empresa do agendamento.');
-      }
-
-      const platforms = Array.isArray(post.platforms) ? post.platforms : [];
-      if (!platforms.length) throw new Error('Nenhuma rede social selecionada para publicação.');
-
-      const existingResults = Array.isArray(post.publicationResults) ? post.publicationResults : [];
-      const publicationResults: any[] = [];
-
-      for (const platform of platforms) {
-        const provider = normalizeProvider(String(platform));
-        if (!provider) {
-          publicationResults.push({
-            platform,
-            provider: null,
-            success: false,
-            externalState: 'confirmed_failed',
-            retrySafe: false,
-            error: `Rede social "${platform}" não reconhecida.`
-          });
-          continue;
-        }
-
-        // Bloqueio antes de chamar API se provider textual não for suportado
-        if (!isTextAutoPublishSupported(provider)) {
-          publicationResults.push({
-            platform,
-            provider,
-            success: false,
-            externalState: 'confirmed_failed',
-            retrySafe: false,
-            error: getProviderAutoPublishReason(provider) || `Publicação textual automática não suportada para ${provider}.`
-          });
-          continue;
-        }
-
-        // Idempotência: Se já foi publicado com sucesso nesta plataforma anteriormente (ex: retry parcial), reaproveita o resultado
-        const prevSuccess = existingResults.find(
-          (r: any) =>
-            (r?.platform === platform || normalizeProvider(r?.platform) === provider) &&
-            r?.success &&
-            r?.externalId &&
-            (r?.externalState === 'confirmed_success' || !r?.externalState)
-        );
-        if (prevSuccess) {
-          publicationResults.push({
-            ...prevSuccess,
-            externalState: 'confirmed_success',
-            retrySafe: false
-          });
-          continue;
-        }
-
-        // Se uma falha anterior não for retrySafe (ex: erro definitivo de auth/escopo já registrado), reaproveita a falha sem re-chamar a API
-        const prevUnsafeFail = existingResults.find(
-          (r: any) =>
-            (r?.platform === platform || normalizeProvider(r?.platform) === provider) &&
-            !r?.success &&
-            r?.retrySafe === false
-        );
-        if (prevUnsafeFail) {
-          publicationResults.push({
-            ...prevUnsafeFail,
-            externalState: prevUnsafeFail.externalState || 'confirmed_failed',
-            retrySafe: false
-          });
-          continue;
-        }
-
-        const text = [content.headline, content.body, content.cta, ...(content.hashtags || [])].filter(Boolean).join('\n\n');
-        const result = await publishText({ userId: post.userId, companyId: post.companyId, provider, text });
-
-        if (result.externalState === 'confirmed_success' && result.externalId) {
-          publicationResults.push({
-            platform,
-            provider,
-            success: true,
-            externalId: result.externalId,
-            externalState: 'confirmed_success',
-            retrySafe: false
-          });
-        } else if (result.externalState === 'unknown') {
-          publicationResults.push({
-            platform,
-            provider,
-            success: false,
-            externalId: null,
-            externalState: 'unknown',
-            retrySafe: false,
-            error: result.error || 'Resultado incerto da API externa.'
-          });
-        } else {
-          // confirmed_failed
-          publicationResults.push({
-            platform,
-            provider,
-            success: false,
-            externalId: null,
-            externalState: 'confirmed_failed',
-            retrySafe: result.retrySafe,
-            error: result.error || 'Falha de publicação.'
-          });
-        }
-      }
-
-      const hasUnknown = publicationResults.some((item) => item.externalState === 'unknown');
-      const allConfirmedSuccess =
-        publicationResults.length > 0 &&
-        publicationResults.every((item) => item.success && item.externalId && item.externalState === 'confirmed_success');
-
-      let finalStatus: 'published' | 'requires_review' | 'failed' = 'failed';
-      if (allConfirmedSuccess) {
-        finalStatus = 'published';
-      } else if (hasUnknown) {
-        finalStatus = 'requires_review';
-      } else {
-        finalStatus = 'failed';
-      }
-
-      const successful = publicationResults.filter((item) => item.success && item.externalId);
-      const lastExternalId = successful.map((s: any) => s.externalId).filter(Boolean).pop() || null;
-      let errorMessage: string | null = null;
-
-      if (finalStatus === 'published') {
-        errorMessage = null;
-      } else if (finalStatus === 'requires_review') {
-        errorMessage = 'Verificação manual necessária: houve timeout ou resposta indefinida da rede social e o post pode ter sido publicado externamente.';
-      } else {
-        errorMessage = publicationResults
-          .filter((item) => !item.success)
-          .map((item) => item.error)
-          .filter(Boolean)
-          .join(' | ')
-          .slice(0, 1000) || 'Falha na publicação social.';
-      }
-
-      await doc.ref.update({
-        status: finalStatus,
-        publishedAt: finalStatus === 'published' ? (post.publishedAt || nowIso()) : null,
-        lastExternalId,
-        publicationResults,
-        errorMessage,
-        processedAt: nowIso(),
-        updatedAt: nowIso()
-      });
-
-      if (finalStatus === 'published') {
-        await contentSnap.ref.update({ status: 'published', updatedAt: nowIso() });
-      }
-
-      await createNotification({
-        userId: post.userId,
-        title: finalStatus === 'published' ? 'Publicação concluída' : finalStatus === 'requires_review' ? 'Publicação requer verificação' : 'Publicação não concluída',
-        message:
-          finalStatus === 'published'
-            ? `"${content.title || content.headline}" foi publicado nas redes com sucesso.`
-            : finalStatus === 'requires_review'
-            ? `A publicação de "${content.title || content.headline}" teve resposta indefinida da rede e requer conferência manual para evitar duplicidade.`
-            : `A publicação de "${content.title || content.headline}" falhou. Consulte o calendário para detalhes.`,
-        type: finalStatus === 'published' ? 'publication_success' : 'publication_failed'
-      });
-      processed += 1;
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      await doc.ref.update({ status: 'failed', errorMessage: errorMsg, processedAt: nowIso(), updatedAt: nowIso() });
-      processed += 1;
-    }
-  }
-  return processed;
+  return processScheduledPostsR8();
 }
 
 export async function processAutopilot(): Promise<number> {
-  const db = firestore();
-  const snap = await db.collection(COLLECTIONS.autopilotConfigs).where('enabled', '==', true).limit(25).get();
-  let processed = 0;
-  const now = new Date();
-
-  for (const doc of snap.docs) {
-    const ap = { id: doc.id, ...doc.data() } as any;
-    if (!isAutopilotDue(ap, now)) continue;
-
-
-    const tz = ap.timezone || 'America/Sao_Paulo';
-    const { hour, dateStr } = getLocalDateAndHour(now, tz);
-    const currentSlot = `${dateStr}_h${hour}`;
-
-
-    const company = await schedulerProjectContext(ap.userId, ap.companyId);
-    if (!company) continue;
-
-    // Pre-flight check para modo automático: verificar se TODOS os canais suportam publicação direta e possuem conexão ativa e válida
-    if (ap.mode === 'automatic') {
-      const targetPlatforms = Array.isArray(ap.targetPlatforms) && ap.targetPlatforms.length > 0
-        ? ap.targetPlatforms
-        : ['facebook'];
-
-      // 1. Todos os canais devem normalizar e suportar publicação automática textual direta (facebook, linkedin, x)
-      let allTargetsSupported = true;
-      const normalizedTargets: SocialProvider[] = [];
-      for (const plat of targetPlatforms) {
-        const norm = normalizeProvider(plat);
-        if (!norm || !isTextAutoPublishSupported(norm)) {
-          allTargetsSupported = false;
-          break;
-        }
-        normalizedTargets.push(norm);
-      }
-
-      if (!allTargetsSupported || normalizedTargets.length === 0) {
-        console.warn(`[Portal Vip Automação] Canais incompatíveis com o modo automático em ${doc.id}. Apenas Facebook, LinkedIn e X são suportados.`);
-        continue;
-      }
-
-      // 2. Buscar conexões da empresa e validar se CADA UM dos alvos possui conexão própria ativa com token válido
-      const connsSnap = await db.collection(COLLECTIONS.socialConnections)
-        .where('userId', '==', ap.userId)
-        .where('companyId', '==', ap.companyId)
-        .get();
-
-      const connMap = new Map<string, any>();
-      for (const d of connsSnap.docs) {
-        const c = d.data() as any;
-        connMap.set(c.provider, { id: d.id, ...c });
-      }
-
-      let allConnectionsValid = true;
-      for (const target of normalizedTargets) {
-        const conn = connMap.get(target);
-        if (!conn) { allConnectionsValid = false; break; }
-        try {
-          await ensureValidSocialAccessToken(conn.id);
-        } catch {
-          allConnectionsValid = false;
-          break;
-        }
-      }
-
-      if (!allConnectionsValid) {
-        console.warn(`[Portal Vip Automação] Nem todos os canais selecionados possuem conexão ativa e válida para ${doc.id}`);
-        continue;
-      }
-    }
-
-    try {
-      const generated = await generateAutopilotPost({ userId: ap.userId, company, topic: `Conteúdo estratégico atual para ${company.name}`, platform: ap.targetPlatforms?.[0] || 'Instagram', goal: ap.primaryGoal || 'Atrair clientes e gerar autoridade' });
-      const contentId = newId('content');
-      const content = {
-        id: contentId,
-        userId: ap.userId,
-        companyId: ap.companyId,
-        type: 'post',
-        title: `[Autopilot] ${generated.result.headline}`,
-        headline: generated.result.headline,
-        body: generated.result.body,
-        cta: generated.result.cta,
-        hashtags: generated.result.hashtags || [],
-        keywords: generated.result.keywords || [],
-        visualPrompt: generated.result.visualPrompt || '',
-        targetPlatform: ap.targetPlatforms?.[0] || 'Instagram',
-        creditsUsed: generated.creditsUsed,
-        status: ap.mode === 'automatic' ? 'scheduled' : 'saved',
-        createdAt: nowIso(),
-        updatedAt: nowIso()
-      };
-      await db.collection(COLLECTIONS.contentItems).doc(contentId).set(content);
-      if (ap.mode === 'automatic') {
-        const scheduleId = newId('sched');
-        const scheduledFor = nowIso();
-        await db.collection(COLLECTIONS.scheduledPosts).doc(scheduleId).set({
-          id: scheduleId,
-          userId: ap.userId,
-          companyId: ap.companyId,
-          contentItemId: contentId,
-          platforms: ap.targetPlatforms || [],
-          scheduledFor,
-          status: 'scheduled',
-          autopilotGenerated: true,
-          createdAt: nowIso()
-        });
-      }
-      await doc.ref.set({
-        lastRunAt: nowIso(),
-        lastRunSlot: currentSlot,
-        updatedAt: nowIso()
-      }, { merge: true });
-      await createNotification({ userId: ap.userId, title: 'Automação do Portal Vip Brasil criou novo conteúdo', message: `Novo conteúdo criado para ${company.name}${ap.mode === 'automatic' ? ' e agendado para publicação.' : ' e salvo para sua aprovação.'}`, type: 'autopilot_ready' });
-      processed += 1;
-    } catch (error) {
-      console.warn('[Portal Vip Automação]', error instanceof Error ? error.message : String(error));
-    }
-  }
-  return processed;
+  return processAutopilotMultimediaR8();
 }
 
 async function processAutoBlog(): Promise<number> {
@@ -838,164 +443,12 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
   success: boolean;
   contentId?: string;
   scheduleId?: string;
+  videoJobId?: string;
   mode?: string;
   creditsUsed: number;
   message: string;
 }> {
-  const db = firestore();
-  const company = await schedulerProjectContext(userId, companyId);
-  if (!company) {
-    const error: any = new Error('Projeto oficial não encontrado.');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  // Obter ou criar configuração de Autopilot para o projeto usando ID padronizado ${userId}_${companyId}
-  const canonicalId = `${userId}_${companyId}`;
-  let apConfigSnap = await db.collection(COLLECTIONS.autopilotConfigs).doc(canonicalId).get();
-  if (!apConfigSnap.exists) {
-    // Tenta carregar fallback legado por companyId se existir
-    const legacySnap = await db.collection(COLLECTIONS.autopilotConfigs).doc(companyId).get();
-    if (legacySnap.exists && legacySnap.data()?.userId === userId) {
-      apConfigSnap = legacySnap;
-    }
-  }
-
-  const ap = apConfigSnap.exists ? ({ id: apConfigSnap.id, ...apConfigSnap.data() } as any) : {
-    id: canonicalId,
-    userId,
-    companyId,
-    enabled: true,
-    mode: 'manual_approval',
-    frequency: 'daily',
-    timezone: 'America/Sao_Paulo',
-    preferredDays: [1, 2, 3, 4, 5],
-    preferredHours: [10, 15, 19],
-    targetPlatforms: ['Instagram'],
-    primaryGoal: 'Atrair clientes e gerar autoridade'
-  };
-
-
-  // Pre-flight check para modo automático: verificar se TODOS os canais suportam publicação direta e possuem conexão ativa e válida
-  if (ap.mode === 'automatic') {
-    const targetPlatforms = Array.isArray(ap.targetPlatforms) && ap.targetPlatforms.length > 0
-      ? ap.targetPlatforms
-      : ['facebook'];
-
-    const normalizedTargets: SocialProvider[] = [];
-    for (const plat of targetPlatforms) {
-      const norm = normalizeProvider(plat);
-      if (!norm || !isTextAutoPublishSupported(norm)) {
-        throw new Error(`A rede social "${plat}" selecionada não suporta publicação automática direta no modo automático (suportadas apenas Facebook, LinkedIn e X).`);
-      }
-      normalizedTargets.push(norm);
-    }
-
-    if (normalizedTargets.length === 0) {
-      throw new Error('Para utilizar o modo automático do Autopilot, selecione ao menos uma rede social que suporte publicação direta (Facebook, LinkedIn ou X).');
-    }
-
-    const connsSnap = await db.collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', userId)
-      .where('companyId', '==', companyId)
-      .get();
-
-    const connMap = new Map<string, any>();
-    for (const d of connsSnap.docs) {
-      const c = d.data() as any;
-      connMap.set(c.provider, { id: d.id, ...c });
-    }
-
-    for (const target of normalizedTargets) {
-      const conn = connMap.get(target);
-      if (!conn) throw new Error(`A rede social "${target}" selecionada para o Autopilot automático não possui conexão neste projeto.`);
-      try {
-        await ensureValidSocialAccessToken(conn.id);
-      } catch {
-        throw new Error(`A rede social "${target}" selecionada para o Autopilot automático expirou e não pôde ser renovada automaticamente.`);
-      }
-    }
-  }
-
-
-  const generated = await generateAutopilotPost({
-    userId,
-    company,
-    topic: `Conteúdo estratégico prioritário para ${company.name}`,
-    platform: ap.targetPlatforms?.[0] || 'Instagram',
-    goal: ap.primaryGoal || 'Atrair clientes e gerar autoridade'
-  });
-
-  const contentId = newId('content');
-  const content = {
-    id: contentId,
-    userId,
-    companyId,
-    type: 'post',
-    title: `[Autopilot] ${generated.result.headline}`,
-    headline: generated.result.headline,
-    body: generated.result.body,
-    cta: generated.result.cta,
-    hashtags: generated.result.hashtags || [],
-    keywords: generated.result.keywords || [],
-    visualPrompt: generated.result.visualPrompt || '',
-    targetPlatform: ap.targetPlatforms?.[0] || 'Instagram',
-    creditsUsed: generated.creditsUsed,
-    status: ap.mode === 'automatic' ? 'scheduled' : 'saved',
-    createdAt: nowIso(),
-    updatedAt: nowIso()
-  };
-
-  await db.collection(COLLECTIONS.contentItems).doc(contentId).set(content);
-
-  let scheduleId: string | undefined;
-  if (ap.mode === 'automatic') {
-    scheduleId = newId('sched');
-    const scheduledFor = nowIso();
-    await db.collection(COLLECTIONS.scheduledPosts).doc(scheduleId).set({
-      id: scheduleId,
-      userId,
-      companyId,
-      contentItemId: contentId,
-      platforms: ap.targetPlatforms || ['Instagram'],
-      scheduledFor,
-      status: 'scheduled',
-      autopilotGenerated: true,
-      createdAt: nowIso()
-    });
-  }
-
-  const tz = ap.timezone || 'America/Sao_Paulo';
-  const { hour, dateStr } = getLocalDateAndHour(new Date(), tz);
-  const currentSlot = `${dateStr}_h${hour}`;
-
-  await db.collection(COLLECTIONS.autopilotConfigs).doc(canonicalId).set({
-    ...ap,
-    id: canonicalId,
-    userId,
-    companyId,
-    lastRunAt: nowIso(),
-    lastRunSlot: currentSlot,
-    lastGeneratedContentId: contentId,
-    lastError: null,
-    updatedAt: nowIso()
-  }, { merge: true });
-
-  await createNotification({
-    userId,
-    title: 'Automação do Portal Vip Brasil executada',
-    message: `Conteúdo gerado com sucesso para ${company.name}${ap.mode === 'automatic' ? ' e agendado.' : ' e pronto para revisão.'}`,
-    type: 'autopilot_ready'
-  });
-
-  return {
-    success: true,
-    contentId,
-    scheduleId,
-    mode: ap.mode || 'review',
-    creditsUsed: generated.creditsUsed,
-    message: ap.mode === 'automatic' ? 'Conteúdo gerado e agendado automaticamente.' : 'Conteúdo gerado com sucesso e salvo para aprovação.'
-  };
+  return triggerUserAutopilotMultimediaR8(userId, companyId);
 }
 
 export async function processSchedulerTick(options: { trigger?: SchedulerTrigger } = {}) {
@@ -1026,6 +479,19 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     } catch (err: any) {
       errors.scheduledPosts = err?.message || String(err);
       console.error('[Scheduler] Erro em processScheduledPosts:', err);
+    }
+
+    // Step 3.5: SEO orgânico primeiro: cria os artigos antes das tarefas pesadas de vídeo/marketing.
+    let portalBlogCount = 0;
+    try {
+      const blogCycleRes = await runDailyBlogCycle();
+      portalBlogCount = blogCycleRes.publishedCount + blogCycleRes.pendingCount;
+      if (!blogCycleRes.success) {
+        errors.portalBlog = 'Ciclo do Blog teve ' + blogCycleRes.failedCount + ' falha(s), ' + blogCycleRes.skippedCount + ' item(ns) já processado(s), em ' + blogCycleRes.totalProjects + ' projeto(s).';
+      }
+    } catch (err: any) {
+      errors.portalBlog = err?.message || String(err);
+      console.error('[Scheduler] Erro em runDailyBlogCycle:', err);
     }
 
     // Step 4: Process pending video jobs (async AI/Veo processing)
@@ -1065,19 +531,6 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     } catch (err: any) {
       errors.scheduledPostsAfterGeneration = err?.message || String(err);
       console.error('[Scheduler] Erro em processScheduledPosts após geração:', err);
-    }
-
-    // Step 5.2: Process Daily Portal Vip Blog Engine (1 Artigo por dia para cada projeto ativo)
-    let portalBlogCount = 0;
-    try {
-      const blogCycleRes = await runDailyBlogCycle();
-      portalBlogCount = blogCycleRes.publishedCount + blogCycleRes.pendingCount;
-      if (!blogCycleRes.success) {
-        errors.portalBlog = `Ciclo do Blog teve ${blogCycleRes.failedCount} falha(s), ${blogCycleRes.skippedCount} item(ns) já processado(s), em ${blogCycleRes.totalProjects} projeto(s).`;
-      }
-    } catch (err: any) {
-      errors.portalBlog = err?.message || String(err);
-      console.error('[Scheduler] Erro em runDailyBlogCycle:', err);
     }
 
     // O pipeline legado processAutoBlog não é executado: runDailyBlogCycle é a única automação diária do Blog.

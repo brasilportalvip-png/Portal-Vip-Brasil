@@ -800,6 +800,8 @@ export interface VideoJobData {
   videoUrl?: string;
   storagePath?: string;
   contentItemId: string;
+  autoPublishPlatforms?: string[];
+  autoPublishProviderOptions?: { pinterestBoardId?: string; youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
   status: 'queued' | 'processing' | 'finalizing' | 'completed' | 'failed';
   pipelineState?: 'credits_reserved' | 'provider_starting' | 'provider_running' | 'result_received' | 'result_persisted' | 'credits_committed' | 'completed' | 'failed';
   errorMessage?: string;
@@ -1074,6 +1076,8 @@ export async function startVideoGenerationJob(data: {
   cameraMotion?: string;
   lighting?: string;
   mood?: string;
+  autoPublishPlatforms?: string[];
+  autoPublishProviderOptions?: { pinterestBoardId?: string; youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
 }): Promise<VideoJobData> {
   const preset: VideoPreset = data.preset === 'cinema_4k' ? 'cinema_4k' : data.preset === 'pro_1080p' ? 'pro_1080p' : 'demo_720p';
   const presetConfig = VIDEO_PRESETS[preset];
@@ -1104,6 +1108,10 @@ export async function startVideoGenerationJob(data: {
     modelUsed: presetConfig.model,
     ...(data.initialImageBase64 ? { initialImageUrl: 'provided' } : {}),
     contentItemId,
+    ...(Array.isArray(data.autoPublishPlatforms) && data.autoPublishPlatforms.length > 0
+      ? { autoPublishPlatforms: data.autoPublishPlatforms.map((item) => String(item)).filter(Boolean).slice(0, 10) }
+      : {}),
+    ...(data.autoPublishProviderOptions ? { autoPublishProviderOptions: data.autoPublishProviderOptions } : {}),
     status: 'queued',
     pipelineState: 'provider_starting',
     progressPct: 2,
@@ -1494,7 +1502,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
         body: workingJob.sourcePrompt || workingJob.prompt,
         videoUrl: publicVideoUrl,
         targetPlatform: workingJob.aspectRatio === '9:16' ? 'Reels / TikTok / Shorts' : 'YouTube / Banner',
-        status: 'saved',
+        status: Array.isArray(workingJob.autoPublishPlatforms) && workingJob.autoPublishPlatforms.length > 0 ? 'scheduled' : 'saved',
         createdAt: nowIso(),
         updatedAt: nowIso(),
         metadata: {
@@ -1528,6 +1536,27 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
           updatedAt: nowIso()
         };
         tx.set(contentRef, contentItem);
+        const autoPublishPlatforms = Array.isArray(current.autoPublishPlatforms)
+          ? current.autoPublishPlatforms.map((item) => String(item)).filter(Boolean).slice(0, 10)
+          : [];
+        if (autoPublishPlatforms.length > 0) {
+          const scheduleId = `sched-video-${current.id}`;
+          const scheduleRef = db.collection(COLLECTIONS.scheduledPosts).doc(scheduleId);
+          tx.set(scheduleRef, {
+            id: scheduleId,
+            userId: current.userId,
+            companyId: current.companyId,
+            contentItemId,
+            platforms: autoPublishPlatforms,
+            scheduledFor: nowIso(),
+            status: 'scheduled',
+            isPlanning: false,
+            autopilotGenerated: true,
+            providerOptions: current.autoPublishProviderOptions || { youtubePrivacyStatus: 'unlisted' },
+            createdAt: nowIso(),
+            updatedAt: nowIso()
+          }, { merge: true });
+        }
         tx.set(docRef, next);
         return { owned: true, job: next };
       });

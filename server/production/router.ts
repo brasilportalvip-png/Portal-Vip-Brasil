@@ -5,6 +5,7 @@ import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, e
 import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, listUserVideoJobs, textAiClient } from './ai.js';
 import { analyzeSeo } from './seo.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
+import { assertUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
 import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, createPortalProjectInDb, deletePortalProjectInDb, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
@@ -569,99 +570,75 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
   const isPlanning = Boolean(req.body?.isPlanning || req.body?.mode === 'planning');
   if (!contentItemId || !scheduledFor || !companyId) return res.status(400).json({ error: 'Projeto, conteúdo e data são obrigatórios.' });
 
-  // 1. Ownership da empresa
   await requireOwnedCompany(req.user!.id, companyId);
-
-  // 2. Validação do conteúdo
   const itemSnap = await firestore().collection(COLLECTIONS.contentItems).doc(contentItemId).get();
   if (!itemSnap.exists || itemSnap.data()?.userId !== req.user!.id) return res.status(404).json({ error: 'Conteúdo não encontrado.' });
   const itemData = itemSnap.data() as any;
   if (itemData.companyId !== companyId) {
     if (isPlanning && itemData.companyId === 'default') {
-      // Aceita default apenas para planejamento editorial
+      // Planejamento editorial pode usar conteúdo ainda não associado.
     } else if (!isPlanning && itemData.companyId === 'default') {
-      return res.status(400).json({ error: 'Associe este conteúdo a uma projeto antes de ativar a auto-publicação.' });
+      return res.status(400).json({ error: 'Associe este conteúdo a um projeto antes de ativar a auto-publicação.' });
     } else {
       return res.status(400).json({ error: 'O conteúdo selecionado pertence a outro projeto.' });
     }
   }
 
-  const contentText = [itemData.headline, itemData.body, itemData.cta].filter(Boolean).join(' ').trim();
-  if (!contentText) {
-    return res.status(400).json({ error: 'O conteúdo selecionado não possui texto para publicação.' });
-  }
-
-  // 3. Validação da data
+  const hasPayload = Boolean(
+    [itemData.headline, itemData.body, itemData.cta].some((value) => String(value || '').trim()) ||
+    String(itemData.imageUrl || '').trim() ||
+    String(itemData.videoUrl || '').trim()
+  );
+  if (!hasPayload) return res.status(400).json({ error: 'O conteúdo selecionado não possui texto, imagem ou vídeo para publicação.' });
   if (Number.isNaN(new Date(scheduledFor).getTime())) return res.status(400).json({ error: 'Data de agendamento inválida.' });
 
-  // 4. Validação das plataformas
   const rawPlatforms = stringArray(req.body?.platforms, 10);
   if (!rawPlatforms.length) return res.status(400).json({ error: 'Selecione ao menos uma rede social para o agendamento.' });
 
-  // 5. Diferenciação: Planejamento Editorial (Calendário) vs Auto-Publicação
   if (isPlanning) {
     const id = newId('sched');
     const scheduled = {
-      id,
-      userId: req.user!.id,
-      companyId,
-      contentItemId,
-      platforms: rawPlatforms,
-      scheduledFor: new Date(scheduledFor).toISOString(),
-      status: 'planned',
-      isPlanning: true,
-      autopilotGenerated: false,
-      createdAt: nowIso()
+      id, userId: req.user!.id, companyId, contentItemId, platforms: rawPlatforms,
+      scheduledFor: new Date(scheduledFor).toISOString(), status: 'planned', isPlanning: true,
+      autopilotGenerated: false, createdAt: nowIso(), updatedAt: nowIso()
     };
     await firestore().collection(COLLECTIONS.scheduledPosts).doc(id).set(scheduled);
     return res.status(201).json({ message: 'Planejamento editorial salvo no calendário com sucesso.', scheduled });
   }
 
-
-  // Validação estrita de suporte dos providers para texto direto
   for (const plat of rawPlatforms) {
     const provider = normalizeProvider(plat);
-    if (!provider) return res.status(400).json({ error: `Rede social "${plat}" não reconhecida.` });
-
-    if (!isTextAutoPublishSupported(provider)) {
-      const reason = getProviderAutoPublishReason(provider) || `A rede "${plat}" não suporta publicação automática puramente textual.`;
-      return res.status(400).json({ error: reason });
+    if (!provider || !isUniversalAutoPublishSupported(provider)) {
+      return res.status(400).json({ error: `Rede social "${plat}" não reconhecida ou não suportada.` });
     }
-
-    const connSnap = await firestore().collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', req.user!.id)
-      .where('companyId', '==', companyId)
-      .where('provider', '==', provider)
-      .limit(1)
-      .get();
-
-    if (connSnap.empty) {
-      return res.status(400).json({ error: `A conta de ${plat} não está conectada para este projeto. Conecte-a em Redes Sociais antes de agendar.` });
-    }
-
+    const compatibilityError = validateScheduledContentForProvider(provider, itemData);
+    if (compatibilityError) return res.status(400).json({ error: compatibilityError });
     try {
-      await ensureValidSocialAccessToken(connSnap.docs[0].id);
-    } catch {
-      return res.status(400).json({ error: `A autenticação com ${plat} expirou e não pôde ser renovada automaticamente. Reconecte a conta em Redes Sociais antes de agendar.` });
+      await assertUniversalConnectionReady(req.user!.id, companyId, provider);
+    } catch (error: any) {
+      return res.status(400).json({ error: error?.message || `A conta de ${plat} não está pronta para publicação neste projeto.` });
     }
   }
 
+  const rawOptions = req.body?.providerOptions && typeof req.body.providerOptions === 'object' ? req.body.providerOptions : {};
+  const providerOptions: Record<string, string> = {
+    youtubePrivacyStatus: ['private', 'unlisted', 'public'].includes(rawOptions.youtubePrivacyStatus)
+      ? rawOptions.youtubePrivacyStatus
+      : 'unlisted'
+  };
+  const pinterestBoardId = safeString(rawOptions.pinterestBoardId, 200);
+  if (pinterestBoardId) providerOptions.pinterestBoardId = pinterestBoardId;
+
   const id = newId('sched');
   const scheduled = {
-    id,
-    userId: req.user!.id,
-    companyId,
-    contentItemId,
-    platforms: rawPlatforms,
-    scheduledFor: new Date(scheduledFor).toISOString(),
-    status: 'scheduled',
-    isPlanning: false,
-    autopilotGenerated: Boolean(req.body?.autopilotGenerated),
-    createdAt: nowIso()
+    id, userId: req.user!.id, companyId, contentItemId, platforms: rawPlatforms,
+    scheduledFor: new Date(scheduledFor).toISOString(), status: 'scheduled', isPlanning: false,
+    autopilotGenerated: Boolean(req.body?.autopilotGenerated), providerOptions,
+    createdAt: nowIso(), updatedAt: nowIso()
   };
   await firestore().collection(COLLECTIONS.scheduledPosts).doc(id).set(scheduled);
   await itemSnap.ref.set({ status: 'scheduled', updatedAt: nowIso() }, { merge: true });
-  res.status(201).json({ message: 'Publicação agendada com sucesso.', scheduled });
+  res.status(201).json({ message: 'Publicação multimídia agendada com sucesso.', scheduled });
 }));
 
 async function scheduledForUser(userId: string, companyId?: string) {
@@ -837,8 +814,8 @@ router.get('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticate
         mode: 'manual_approval',
         frequency: 'daily',
         timezone: 'America/Sao_Paulo',
-        preferredDays: [1, 2, 3, 4, 5],
-        preferredHours: [10, 15, 19],
+        preferredDays: [0, 1, 2, 3, 4, 5, 6],
+        preferredHours: [10],
         targetPlatforms: ['Instagram', 'Facebook'],
         primaryGoal: 'Atrair clientes e gerar autoridade',
       },
@@ -855,7 +832,6 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
 
   const requestedEnabled = Boolean(req.body?.enabled);
   const requestedMode = req.body?.mode === 'automatic' ? 'automatic' : 'manual_approval';
-
   const id = `${req.user!.id}_${companyId}`;
   const ref = firestore().collection(COLLECTIONS.autopilotConfigs).doc(id);
   const current = await ref.get();
@@ -868,55 +844,34 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
   const targetPlatforms = stringArray(req.body?.targetPlatforms, 10);
 
   if (requestedEnabled && requestedMode === 'automatic') {
-    const targets = targetPlatforms.length > 0 ? targetPlatforms : ['facebook'];
+    const targets = targetPlatforms.length > 0 ? targetPlatforms : ['Facebook'];
     for (const plat of targets) {
       const provider = normalizeProvider(plat);
-      if (!provider || !isTextAutoPublishSupported(provider)) {
-        return res.status(400).json({
-          error: `O canal "${plat}" não suporta publicação automática direta no modo automático (suportados apenas Facebook, LinkedIn e X).`
-        });
-      }
-      const connSnap = await firestore().collection(COLLECTIONS.socialConnections)
-        .where('userId', '==', req.user!.id)
-        .where('companyId', '==', companyId)
-        .where('provider', '==', provider)
-        .limit(1)
-        .get();
-
-      if (connSnap.empty) {
-        return res.status(400).json({
-          error: `O canal "${plat}" não está conectado para este projeto. Conecte-o em Redes Sociais antes de ativar o modo automático.`
-        });
+      if (!provider || !isUniversalAutoPublishSupported(provider)) {
+        return res.status(400).json({ error: `O canal "${plat}" não suporta o pipeline multimídia automático.` });
       }
       try {
-        await ensureValidSocialAccessToken(connSnap.docs[0].id);
-      } catch {
-        return res.status(400).json({
-          error: `A conexão do canal "${plat}" expirou e não pôde ser renovada automaticamente. Reconecte-a em Redes Sociais antes de ativar o modo automático.`
-        });
+        await assertUniversalConnectionReady(req.user!.id, companyId, provider);
+      } catch (error: any) {
+        return res.status(400).json({ error: error?.message || `O canal "${plat}" não está pronto para o Autopilot.` });
       }
     }
   }
 
   const update = cleanObject({
-    id,
-    userId: req.user!.id,
-    companyId,
+    id, userId: req.user!.id, companyId,
     enabled: requestedEnabled,
     mode: requestedMode,
     frequency: ['daily', '3_times_week', 'weekly'].includes(req.body?.frequency) ? req.body.frequency : 'daily',
-    timezone,
-    preferredDays,
-    preferredHours,
-    targetPlatforms,
+    timezone, preferredDays, preferredHours, targetPlatforms,
     primaryGoal: safeString(req.body?.primaryGoal, 2000) || 'Engajamento e Vendas',
-    updatedAt: nowIso(),
-    createdAt: current.exists ? undefined : nowIso()
+    updatedAt: nowIso(), createdAt: current.exists ? undefined : nowIso()
   });
   await ref.set(update, { merge: true });
   const fresh = await ref.get();
-  res.json({ message: 'Configuração do Autopilot salva.', config: { id: fresh.id, ...fresh.data() } });
+  res.json({ message: 'Configuração multimídia do Autopilot salva.', config: { id: fresh.id, ...fresh.data() } });
 }));
+
 router.post('/autopilot/trigger-now', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const companyId = safeString(req.body?.companyId, 200) || safeString(req.query?.companyId, 200);
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório para acionar o Autopilot.' });
