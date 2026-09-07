@@ -14,12 +14,12 @@ export const NICHE_PHOTO_CATALOG: Record<string, CoverAsset[]> = {
       alt: 'Runas nórdicas gravadas em pedras místicas sobre madeira ancestral para tiragens'
     },
     {
-      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Tocha sagrada e fogo iluminando símbolos nórdicos e força viking'
+      url: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Fogo ancestral e símbolos nórdicos esculpidos em pedra rúnica'
     },
     {
-      url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Paisagem épica nórdica com névoa serena e pedras ancestrais'
+      url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Paisagem nórdica majestosa com névoa serena e pedras ancestrais'
     },
     {
       url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
@@ -90,7 +90,7 @@ export const NICHE_PHOTO_CATALOG: Record<string, CoverAsset[]> = {
       alt: 'Buquê de rosas aveludadas para rituais de atração, magnetismo e amor próprio'
     },
     {
-      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+      url: 'https://images.unsplash.com/photo-1548094878-84ced0f68b08?auto=format&fit=crop&w=1200&q=80',
       alt: 'Velas vermelhas sagradas ardendo em firmeza de intenção e sedução'
     },
     {
@@ -138,11 +138,11 @@ export const NICHE_PHOTO_CATALOG: Record<string, CoverAsset[]> = {
       alt: 'Fogueira ceremonial na natureza emanando poder e proteção de Exu'
     },
     {
-      url: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
+      url: 'https://images.unsplash.com/photo-1511497584788-87676104235f?auto=format&fit=crop&w=1200&q=80',
       alt: 'Altar tradicional de guardiões com elementos sagrados de proteção'
     },
     {
-      url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+      url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop&w=1200&q=80',
       alt: 'Estrada dourada no horizonte que simboliza vitória sobre obstáculos'
     }
   ],

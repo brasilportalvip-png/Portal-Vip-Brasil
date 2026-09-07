@@ -16,7 +16,12 @@ import {
   CheckCircle2,
   AlertTriangle,
   Loader2,
-  Share2
+  Share2,
+  Flame,
+  Send,
+  ExternalLink,
+  Smartphone,
+  MessageSquare
 } from 'lucide-react';
 import type { Company, VideoJob } from '../types';
 import { apiRequest } from '../lib/api';
@@ -58,6 +63,8 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
   const [objective, setObjective] = useState('Quebrar objeção e converter em vendas');
   const [loadingScript, setLoadingScript] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [platformPreview, setPlatformPreview] = useState<'tiktok' | 'instagram' | 'youtube'>('tiktok');
+  const [copiedCaption, setCopiedCaption] = useState(false);
   const [scriptError, setScriptError] = useState('');
   const [generatedScript, setGeneratedScript] = useState<{
     scriptTitle?: string;
@@ -216,10 +223,46 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleApplyToVeo = (template: NicheVideoTemplate) => {
+    setActiveTab('generate_video');
+    setVideoTitle(`Vídeo IA: ${template.nicheName} - ${template.headline.slice(0, 45)}`);
+    setVideoPrompt(template.videoPrompt);
+    setCameraMotion(template.cameraMotion);
+    setLighting(template.lighting);
+    setMood(template.mood);
+    setAspectRatio('9:16');
+    const el = document.getElementById('studio-header');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleApplyToScript = (template: NicheVideoTemplate) => {
+    setActiveTab('generate_script');
+    setTopic(template.headline);
+    setFormat('Reels / TikTok / Shorts (30-60 segundos)');
+    setObjective(`Direcionar audiência orgânica para instalar o app ${template.appName} na Play Store`);
+    setGeneratedScript({
+      scriptTitle: template.headline,
+      hook: template.viralScript.hook,
+      scenes: template.viralScript.scenes,
+      callToAction: template.viralScript.callToAction,
+      suggestedAudioTrack: template.viralScript.suggestedAudioTrack,
+      caption: template.viralScript.caption,
+      hashtags: template.viralScript.hashtags,
+      nicheId: template.id,
+      nicheName: template.nicheName
+    });
+    const el = document.getElementById('studio-header');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleNavigateToSocial = (_template: NicheVideoTemplate) => {
+    onNavigate('redes-sociais');
+  };
+
   return (
     <div className="space-y-6 animate-fadeIn max-w-6xl mx-auto">
       {/* Header */}
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <header id="studio-header" className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-black text-white flex items-center gap-2">
             <Video className="text-cyan-400" /> Estúdio de Vídeos do Portal Vip Brasil
@@ -621,54 +664,202 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
           <div className="lg:col-span-7 froc-panel flex flex-col justify-between min-h-[450px]">
             {generatedScript ? (
               <div className="space-y-4 animate-fadeIn">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
-                    Roteiro de Vídeo Estruturado
-                  </span>
-                  <button
-                    onClick={() => handleCopy(JSON.stringify(generatedScript, null, 2))}
-                    className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 flex items-center gap-1.5"
-                  >
-                    {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
-                    {copied ? 'Copiado!' : 'Copiar Roteiro'}
-                  </button>
+                {/* Header do Roteiro com Seletor de Plataforma */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setPlatformPreview('tiktok')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        platformPreview === 'tiktok'
+                          ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Smartphone size={12} /> TikTok
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlatformPreview('instagram')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        platformPreview === 'instagram'
+                          ? 'bg-gradient-to-r from-pink-500 to-amber-500 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Flame size={12} /> Instagram Reels
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPlatformPreview('youtube')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                        platformPreview === 'youtube'
+                          ? 'bg-rose-600 text-white shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <Film size={12} /> YouTube
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(JSON.stringify(generatedScript, null, 2))}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 flex items-center gap-1.5 transition-all"
+                      title="Copiar JSON estruturado completo"
+                    >
+                      {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                      {copied ? 'Copiado!' : 'Copiar Roteiro'}
+                    </button>
+                  </div>
                 </div>
 
-                {/* Gancho */}
-                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30">
-                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block mb-1">
-                    Gancho de Retenção (0-3s)
-                  </span>
-                  <p className="text-xs font-bold text-white">&ldquo;{generatedScript.hook}&rdquo;</p>
+                {/* Badge da Plataforma e Dica Técnica de Otimização */}
+                <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-2.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-cyan-400 font-bold">
+                      {platformPreview === 'tiktok' && '🎵 Otimização TikTok (9:16): Foco em áudio em alta, legendas dinâmicas e retenção agressiva.'}
+                      {platformPreview === 'instagram' && '📸 Otimização Instagram Reels (9:16): Foco em estética visual, engajamento nos comentários e link na bio.'}
+                      {platformPreview === 'youtube' && '▶️ Otimização YouTube Shorts / Widescreen: Título magnético com SEO, gancho nos primeiros 5s e links na descrição.'}
+                    </span>
+                  </div>
+                  {generatedScript.suggestedAudioTrack && (
+                    <span className="text-[11px] text-slate-400 hidden sm:inline-block">
+                      Áudio: <strong className="text-slate-200">{generatedScript.suggestedAudioTrack}</strong>
+                    </span>
+                  )}
                 </div>
 
-                {/* Cenas */}
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                  {generatedScript.scenes?.map((scene, idx) => (
-                    <div key={idx} className="p-3.5 rounded-2xl bg-[#1E293B] border border-slate-700 space-y-1.5 text-xs">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="font-bold text-cyan-300 uppercase">Cena {scene.sceneNumber}</span>
-                        <span className="text-slate-400 flex items-center gap-1">
-                          <Clock size={11} /> {scene.timeSeconds}
-                        </span>
+                {/* ESTRUTURA: COMEÇO (0-3s) */}
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                      1. COMEÇO: Gancho Magnético de Retenção (0-3s)
+                    </span>
+                    <span className="text-[10px] text-amber-300/80 font-mono">Parada imediata de scroll</span>
+                  </div>
+                  <p className="text-xs font-black text-white">&ldquo;{generatedScript.hook}&rdquo;</p>
+                  <p className="text-[10px] text-slate-400 italic">
+                    Dica: Fale este gancho olhando diretamente para a câmera ou com animação de texto em tela nos primeiros 2 segundos.
+                  </p>
+                </div>
+
+                {/* ESTRUTURA: MEIO (Cenas de Desenvolvimento) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] font-black text-cyan-400 uppercase tracking-wider">
+                      2. MEIO: Cenas & Desenvolvimento com Quebra de Padrão
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">{generatedScript.scenes?.length || 0} cenas sequenciais</span>
+                  </div>
+
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                    {generatedScript.scenes?.map((scene, idx) => (
+                      <div key={idx} className="p-3.5 rounded-2xl bg-[#1E293B] border border-slate-700/80 space-y-1.5 text-xs">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-black text-cyan-300 uppercase flex items-center gap-1.5">
+                            <Film size={12} /> Cena {scene.sceneNumber}
+                          </span>
+                          <span className="text-slate-400 flex items-center gap-1 font-mono">
+                            <Clock size={11} /> {scene.timeSeconds}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-300">
+                          <strong className="text-slate-400">Visual & Câmera:</strong> {scene.visualDescription}
+                        </div>
+                        {scene.onScreenText && (
+                          <div className="text-[11px] text-amber-300 bg-amber-950/20 px-2 py-1 rounded-lg border border-amber-500/20">
+                            <strong>Texto na Tela:</strong> &ldquo;{scene.onScreenText}&rdquo;
+                          </div>
+                        )}
+                        <div className="text-xs text-white bg-slate-900/70 p-2.5 rounded-xl border border-slate-800">
+                          <strong className="text-cyan-400 flex items-center gap-1 mb-0.5">
+                            <Mic size={11} /> Fala / Voz:
+                          </strong>
+                          {scene.audioVoiceover}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-slate-300">
-                        <strong className="text-slate-400">Visual:</strong> {scene.visualDescription}
-                      </div>
-                      <div className="text-xs text-white bg-slate-900/50 p-2 rounded-xl border border-slate-800">
-                        <strong className="text-cyan-400 flex items-center gap-1 mb-0.5">
-                          <Mic size={11} /> Fala / Voz:
-                        </strong>
-                        {scene.audioVoiceover}
-                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ESTRUTURA: FIM (Clímax & CTA para Play Store / Conversão) */}
+                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1">
+                      <CheckCircle2 size={12} /> 3. FIM: Clímax & Chamada para Ação (CTA)
+                    </span>
+                    <span className="text-[10px] text-emerald-300 font-mono">Conversão e Download</span>
+                  </div>
+                  <p className="text-xs font-bold text-white">{generatedScript.callToAction}</p>
+                  <p className="text-[10px] text-slate-400">
+                    O final orienta explicitamente a instalação do aplicativo na Google Play Store e a visita ao site oficial.
+                  </p>
+                </div>
+
+                {/* Legenda Pronta e Hashtags */}
+                {generatedScript.caption && (
+                  <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3.5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Legenda Formatada para {platformPreview.toUpperCase()}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const fullCaption = `${generatedScript.caption}\n\n${(generatedScript.hashtags || []).join(' ')}`;
+                          navigator.clipboard.writeText(fullCaption);
+                          setCopiedCaption(true);
+                          setTimeout(() => setCopiedCaption(false), 2000);
+                        }}
+                        className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-bold text-slate-200 flex items-center gap-1 transition-all"
+                      >
+                        {copiedCaption ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                        {copiedCaption ? 'Legenda Copiada!' : 'Copiar Legenda'}
+                      </button>
                     </div>
-                  ))}
-                </div>
+                    <p className="text-xs text-slate-300 whitespace-pre-line line-clamp-3">
+                      {generatedScript.caption}
+                    </p>
+                    {generatedScript.hashtags && generatedScript.hashtags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-1">
+                        {generatedScript.hashtags.map((tag, idx) => (
+                          <span key={idx} className="text-[10px] text-cyan-400 bg-cyan-950/40 px-2 py-0.5 rounded-md border border-cyan-800/40">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
-                {/* CTA */}
-                <div className="p-3 rounded-2xl bg-[#1E293B] border border-slate-700 text-xs space-y-1">
-                  <span className="text-[10px] font-bold text-cyan-400 uppercase">Chamada Final (CTA)</span>
-                  <p className="text-white font-semibold">{generatedScript.callToAction}</p>
+                {/* Ações Rápidas */}
+                <div className="pt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('generate_video');
+                      const firstScene = generatedScript.scenes?.[0]?.visualDescription || generatedScript.hook;
+                      setVideoTitle(`Vídeo IA: ${generatedScript.scriptTitle || topic}`);
+                      setVideoPrompt(`Cinematic vertical video (9:16). ${firstScene}. Photorealistic lighting, dynamic camera motion.`);
+                      setAspectRatio('9:16');
+                      const el = document.getElementById('studio-header');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 px-4 text-xs font-black text-slate-950 transition-all shadow-md"
+                  >
+                    <Sparkles size={14} /> Renderizar Vídeo no Veo 3.1
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => onNavigate('redes-sociais')}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 hover:bg-slate-800 px-4 text-xs font-bold text-white transition-all"
+                  >
+                    <Send size={13} /> Agendar Publicação Social
+                  </button>
                 </div>
               </div>
             ) : (
@@ -676,13 +867,21 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                 <Film size={40} className="mb-3 text-slate-700" />
                 <h4 className="text-sm font-semibold text-slate-400">Nenhum roteiro gerado ainda</h4>
                 <p className="text-xs text-slate-500 max-w-sm mt-1">
-                  Preencha o tema ao lado e gere um roteiro detalhado segundo as melhores práticas de retenção e viralidade.
+                  Preencha o tema ao lado ou escolha um modelo pronto no Catálogo Estratégico abaixo para gerar um roteiro de alta conversão.
                 </p>
               </div>
             )}
           </div>
         </div>
       )}
+
+      {/* CATÁLOGO ESTRATÉGICO DE VÍDEOS VERTICAIS (TIKTOK, INSTAGRAM, YOUTUBE SHORTS) */}
+      <NicheVideoCatalogSection
+        selectedCompany={selectedCompany}
+        onApplyToVeo={handleApplyToVeo}
+        onApplyToScript={handleApplyToScript}
+        onNavigateToTikTok={handleNavigateToSocial}
+      />
     </div>
   );
 };

@@ -162,7 +162,7 @@ export const NICHE_VIDEO_TEMPLATES: Record<string, NicheVideoTemplate> = {
     lighting: 'Deep ruby red ambient wash with warm golden flame rim-lighting',
     mood: 'Passionate, magnetic, regal, deeply respectful and spiritually authoritative',
     sampleVideoUrl: '/videos/love_maria_padilha.mp4',
-    posterImageUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1080&q=80',
+    posterImageUrl: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?auto=format&fit=crop&w=1080&q=80',
     viralScript: {
       hook: 'Se você ama alguém e sente que a distância está aumentando, escute essa oração de Maria Padilha até o fim.',
       scenes: [

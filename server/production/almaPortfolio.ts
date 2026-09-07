@@ -116,7 +116,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     appTitle: 'Maria Padilha 7 Encruzilhadas App (Play Store)',
     hasApp: true,
     logoUrl: '/icons/logo.png',
-    bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?auto=format&fit=crop&w=1200&q=80',
     tagline: 'O poder do amor, da autoestima magnética e da vitória sentimental.',
     description: 'Plataforma oficial e aplicativo para aconselhamento afetivo, orações de poder para amar e ser amada, feitiços de proteção e conexão com a Rainha das 7 Encruzilhadas.',
     highlights: [
@@ -145,7 +145,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     appTitle: 'Manual Católico App (Play Store)',
     hasApp: true,
     logoUrl: '/icons/logo.png',
-    bannerUrl: 'https://images.unsplash.com/photo-1548625361-16eb4318c4fc?auto=format&fit=crop&w=1200&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1504052434569-70ad5836ab65?auto=format&fit=crop&w=1200&q=80',
     tagline: 'Seu companheiro diário de oração, liturgia e doutrina católica.',
     description: 'Compêndio de orações tradicionais da Santa Igreja, santo do dia, novenas milagrosas, terço rezado, catecismo e aplicativo para vivência cristã diária.',
     highlights: [

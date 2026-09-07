@@ -280,12 +280,12 @@ export const THEMATIC_NICHE_IMAGES: Record<string, Array<{ url: string; alt: str
       alt: 'Runas nórdicas gravadas em pedras místicas sobre madeira ancestral para tiragens'
     },
     {
-      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Tocha sagrada e fogo iluminando símbolos nórdicos e força viking'
+      url: 'https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Fogo ancestral e símbolos nórdicos esculpidos em pedra rúnica'
     },
     {
-      url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Paisagem épica nórdica com névoa serena e pedras ancestrais'
+      url: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Paisagem nórdica majestosa com névoa serena e pedras ancestrais'
     },
     {
       url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
@@ -352,7 +352,7 @@ export const THEMATIC_NICHE_IMAGES: Record<string, Array<{ url: string; alt: str
       alt: 'Buquê de rosas aveludadas para rituais de atração, magnetismo e amor próprio'
     },
     {
-      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+      url: 'https://images.unsplash.com/photo-1548094878-84ced0f68b08?auto=format&fit=crop&w=1200&q=80',
       alt: 'Velas vermelhas sagradas ardendo em firmeza de intenção e sedução'
     },
     {
@@ -398,11 +398,11 @@ export const THEMATIC_NICHE_IMAGES: Record<string, Array<{ url: string; alt: str
       alt: 'Fogueira ceremonial na natureza emanando poder e proteção de Exu'
     },
     {
-      url: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
+      url: 'https://images.unsplash.com/photo-1511497584788-87676104235f?auto=format&fit=crop&w=1200&q=80',
       alt: 'Altar tradicional de guardiões com elementos sagrados de proteção'
     },
     {
-      url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+      url: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop&w=1200&q=80',
       alt: 'Estrada dourada no horizonte que simboliza vitória sobre obstáculos'
     }
   ],
@@ -788,8 +788,8 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     updatedAt: '2026-09-01T08:00:00.000Z',
     readTime: '5 min de leitura',
     featured: true,
-    coverImage: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80',
-    coverAlt: 'Luz dourada simbolizando a força das crenças e fé inabalável',
+    coverImage: 'https://images.unsplash.com/photo-1470246973918-29a93221c455?auto=format&fit=crop&w=1200&q=80',
+    coverAlt: 'Luz dourada matinal simbolizando a força das crenças e fé inabalável',
     relatedProjectId: 'proj_magia_crencas',
     relatedProjectName: 'Magia das Crenças',
     relatedProjectUrl: 'https://www.magiadascrencas.com.br/',
@@ -880,7 +880,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     updatedAt: '2026-08-30T09:00:00.000Z',
     readTime: '6 min de leitura',
     featured: false,
-    coverImage: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1516214104703-d870798883c5?auto=format&fit=crop&w=1200&q=80',
     coverAlt: 'Chama acesa simbolizando a iluminação dos caminhos e sabedoria oracular',
     relatedProjectId: 'proj_exu_responde',
     relatedProjectName: 'Exu Responde',
@@ -949,7 +949,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     updatedAt: '2026-08-28T09:00:00.000Z',
     readTime: '4 min de leitura',
     featured: false,
-    coverImage: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1550525811-e5869dd03032?auto=format&fit=crop&w=1200&q=80',
     coverAlt: 'Rosas vermelhas aveludadas expressando o magnetismo, autoestima e poder amoroso de Maria Padilha',
     relatedProjectId: 'proj_maria_padilha',
     relatedProjectName: 'Maria Padilha Rainha das 7 Encruzilhadas',
@@ -1125,7 +1125,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     updatedAt: '2026-08-25T09:00:00.000Z',
     readTime: '7 min de leitura',
     featured: true,
-    coverImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=1200&q=80',
     coverAlt: 'Ondas abstratas digitais de inteligência artificial generativa e inovação tecnológica',
     relatedProjectId: 'proj_frocia2',
     relatedProjectName: 'Froc IA',
@@ -1212,7 +1212,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     updatedAt: '2026-08-22T09:00:00.000Z',
     readTime: '5 min de leitura',
     featured: false,
-    coverImage: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1601049541289-9b1b7bbbfe19?auto=format&fit=crop&w=1200&q=80',
     coverAlt: 'Cartas clássicas de tarot e baralho cigano sobre madeira rústica e velas',
     relatedProjectId: 'proj_oraculos_ts',
     relatedProjectName: 'Oráculos',
@@ -1299,7 +1299,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     updatedAt: '2026-08-20T09:00:00.000Z',
     readTime: '6 min de leitura',
     featured: false,
-    coverImage: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
+    coverImage: 'https://images.unsplash.com/photo-1432888498266-38ffec3eaf0a?auto=format&fit=crop&w=1200&q=80',
     coverAlt: 'Dashboard analítico de tráfego orgânico, SEO e métricas de conversão',
     relatedProjectId: 'proj_froc_marketing_engine',
     relatedProjectName: 'Froc IA Marketing Engine',
