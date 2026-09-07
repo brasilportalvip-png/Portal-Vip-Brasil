@@ -272,107 +272,298 @@ const PROJECT_TOPIC_POOLS: Record<string, Array<{
   ]
 };
 
-// Catálogo curado de fotografias temáticas em alta definição por nicho (sem logotipos)
+// Catálogo curado de fotografias temáticas em altíssima definição por nicho e micronicho para tráfego orgânico
 export const THEMATIC_NICHE_IMAGES: Record<string, Array<{ url: string; alt: string }>> = {
-  proj_magia_crencas: [
+  runes_viking: [
     {
-      url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Luz dourada sobre montanhas simbolizando fé inabalável, prosperidade e conexão espiritual'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1507692049790-de58290a4334?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Raios solares no horizonte representando bênçãos, orações atendidas e paz'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Momento de oração e gratidão no amanhecer'
-    }
-  ],
-  proj_exu_responde: [
-    {
-      url: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Chama dourada na noite simbolizando a iluminação dos caminhos e sabedoria oracular'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1517816743773-6e0fd518b4a6?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Estrada iluminada à noite representando encruzilhadas e decisões com discernimento'
+      url: 'https://images.unsplash.com/photo-1532767153582-b1a0e5145009?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Runas nórdicas gravadas em pedras místicas sobre madeira ancestral para tiragens'
     },
     {
       url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Fogo sagrado de firmeza e clareza para proteção e abertura de caminhos'
+      alt: 'Tocha sagrada e fogo iluminando símbolos nórdicos e força viking'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Paisagem épica nórdica com névoa serena e pedras ancestrais'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Montanhas imponentes e céus nórdicos invocando a coragem e sabedoria viking'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Floresta ancestral mística envolta em neblina para rituais rúnicos'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Caminho ancestral entre carvalhos sagrados e energia da mitologia nórdica'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Grimório antigo e manuscrito de símbolos rúnicos e ensinamentos arcanos'
     }
   ],
-  proj_maria_padilha: [
+  tarot_oraculos: [
     {
-      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Rosas vermelhas aveludadas expressando o magnetismo, autoestima e poder amoroso de Maria Padilha'
+      url: 'https://images.unsplash.com/photo-1596704017254-9b121068fb31?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Cartas clássicas de tarot e baralho cigano distribuídas com riqueza de detalhes'
     },
-    {
-      url: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Pétalas de rosas vermelhas iluminadas simbolizando o poder do amor e atração'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Buquê de rosas vermelhas vibrantes para rituais de autoestima e magnetismo afetivo'
-    }
-  ],
-  proj_manual_catolico: [
-    {
-      url: 'https://images.unsplash.com/photo-1548625361-16eb4318c4fc?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Catedral histórica com vitrais e raios de sol iluminando a devoção católica'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1504052434569-70ad5836ab65?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Bíblia Sagrada e terço com velas devocionais'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1543783207-ec64e4d95325?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Vela acesa no altar e momento sagrado de oração e liturgia'
-    }
-  ],
-  proj_frocia2: [
-    {
-      url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Ondas abstratas digitais de inteligência artificial generativa e inovação tecnológica'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1677442136019-21780efad99a?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Rede neural artificial e processamento cognitivo de marketing'
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Planeta digital conectado por dados em alta velocidade e tecnologia global'
-    }
-  ],
-  proj_oraculos_ts: [
     {
       url: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Cartas clássicas de tarot e baralho cigano sobre madeira rústica e velas'
+      alt: 'Mesa de cartomancia com cartas clássicas de tarot e velas de firmeza'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1572947650440-e8a97ef053b2?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Cartas de baralho oracular iluminadas com estética mística e revelações'
     },
     {
       url: 'https://images.unsplash.com/photo-1638803040283-7a5ffd48dad5?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Mandala cósmica e mapa astrológico com cartas oraculares'
+      alt: 'Mandala astrológica com cartas arcanas e alinhamento oracular'
     },
     {
-      url: 'https://images.unsplash.com/photo-1532767153582-b1a0e5145009?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Runas nórdicas antigas esculpidas em pedra para autoconhecimento e tiragens'
+      url: 'https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Cristais de ametista e quartzo ao lado de cartas oraculares iluminadas'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Velas cintilantes e atmosfera de vidência e revelação espiritual'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Meditação profunda e intuição conectada às leituras oraculares'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Estudo aprofundado dos mistérios e arcanos maiores da cartomancia'
     }
   ],
-  proj_froc_marketing_engine: [
+  love_maria_padilha: [
+    {
+      url: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Rosas vermelhas rubras intensas simbolizando paixão irresistível e poder afetivo'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1559563458-527698bf5295?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Pétalas escarlates aveludadas para atração amorosa, magnetismo e Maria Padilha'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Buquê de rosas aveludadas para rituais de atração, magnetismo e amor próprio'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Velas vermelhas sagradas ardendo em firmeza de intenção e sedução'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Conexão amorosa e sentimento verdadeiro sob iluminação romântica'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1582794543139-8ac9cb0f7b11?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Pétalas de rosas escarlates e atmosfera encantadora de conquista'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Luzes douradas e ambiente misterioso da Rainha das Encruzilhadas'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Símbolo do coração dourado e atração de alma gêmea'
+    }
+  ],
+  exu_guardioes: [
+    {
+      url: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Fogueira sagrada na noite e firmeza de guardiões para destravamento de caminhos'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1498855926480-d98e83099315?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Chama ancestral radiante e quebra de demandas espirituais com proteção de Exu'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1475724017904-b712052c192a?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Chamas ardentes e labaredas de purificação e força ancestral'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1508739773434-c26b3d09e071?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Energia crepuscular e força espiritual protetora na encruzilhada'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1517411032315-54ef2cb783bb?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Encruzilhada iluminada com caminhos amplos e abertos para novas oportunidades'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1498429089284-41f8cf3ffd39?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Fogueira ceremonial na natureza emanando poder e proteção de Exu'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Altar tradicional de guardiões com elementos sagrados de proteção'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Estrada dourada no horizonte que simboliza vitória sobre obstáculos'
+    }
+  ],
+  catolico_devocao: [
+    {
+      url: 'https://images.unsplash.com/photo-1504052434569-70ad5836ab65?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Bíblia Sagrada e terço com velas acesas no momento de oração'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1543783207-ec64e4d95325?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Vela sagrada no altar da igreja e recolhimento litúrgico'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1519817650390-64a93db51149?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Interior majestoso de templo católico com iluminação suave de devoção'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1544427920-c49ccfb85579?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Cúpula e vitrais sacros inspirando serenidade, oração e bênçãos'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1515549832467-8783363e19b6?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Atmosfera de santuário católico, paz interior e novenas milagrosas'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1507692049790-de58290a4334?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Mãos em oração com fé inabalável e bênção divina'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Raios celestiais descendo como graça e conforto espiritual'
+    }
+  ],
+  prosperidade_crencas: [
+    {
+      url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Céu estrelado e montanhas iluminadas pelo poder das crenças positivas'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Conquista, elegância e realização dos objetivos de prosperidade'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1553729459-efe14ef6055d?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Crescimento financeiro, riqueza e manifestação da prosperidade'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Nascer do sol dourado no mar refletindo gratidão e abundância financeira'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Luz solar incidindo sobre sementes de prosperidade e conquista material'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Raios dourados entre árvores trazendo renovação de energias e fé'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1528459801416-a9e53bbf4e17?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Brilho dourado cintilante e atração de boa sorte e harmonia'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1502444330042-d1a1ddf9bb5b?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Pôr do sol inspirador com serenidade e afirmações positivas'
+    }
+  ],
+  ia_inteligencia_artificial: [
+    {
+      url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Ondas sinápticas de inteligência artificial generativa em tons vibrantes'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Cérebro digital com conexões neurais avançadas de IA e inovação'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Planeta digital e conexões globais de dados em alta velocidade'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Matriz de código e algoritmos inteligentes de automação'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1507146426996-ef05306b995a?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Robótica avançada e integração com modelos generativos autônomos'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1531297484001-80022131f5a1?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Laptop de alta tecnologia e arquitetura de sistemas autônomos'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1535378917042-10a22c95931a?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Tecnologia de inteligência artificial com visual limpo e moderno'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1504639725590-34d0984388bd?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Linhas de código de alto desempenho impulsionando automações digitais'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Processador neural de última geração com luzes azuis e douradas'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Interações digitais e fluxo contínuo de inovação com IA'
+    }
+  ],
+  trafego_organico_growth: [
     {
       url: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Dashboard analítico de tráfego orgânico, SEO e métricas de conversão'
+      alt: 'Dashboard de tráfego orgânico com curvas de crescimento exponencial e métricas de SEO'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Trabalho estratégico de crescimento de audiência e atração de tráfego orgânico'
     },
     {
       url: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Estratégia de marketing digital em equipe e crescimento de aplicativos'
+      alt: 'Estratégia de crescimento acelerado e posicionamento no topo das pesquisas'
     },
     {
       url: 'https://images.unsplash.com/photo-1533750516457-a7f992034fec?auto=format&fit=crop&w=1200&q=80',
-      alt: 'Gráficos de escalada para primeiro lugar em pesquisas de tráfego e downloads'
+      alt: 'Escalada para a posição número 1 no Google e Play Store'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Planejamento digital com foco em métricas de conversão e visitas recorrentes'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1504868584819-f8e8b4b6d7e3?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Gráficos de conversão e explosão de visualizações orgânicas'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Aplicativo mobile moderno no smartphone com milhares de downloads'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Métricas de engajamento, SEO técnico e audiência orgânica qualificada'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1531403009284-440f080d1e12?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Planejamento tático de conversão e marketing de autoridade'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Resultados financeiros gerados por tráfego orgânico consistente'
     }
   ]
 };
+
+// Aliases para manter compatibilidade com chaves de projetos legados
+THEMATIC_NICHE_IMAGES.proj_magia_crencas = THEMATIC_NICHE_IMAGES.prosperidade_crencas;
+THEMATIC_NICHE_IMAGES.proj_exu_responde = THEMATIC_NICHE_IMAGES.exu_guardioes;
+THEMATIC_NICHE_IMAGES.proj_maria_padilha = THEMATIC_NICHE_IMAGES.love_maria_padilha;
+THEMATIC_NICHE_IMAGES.proj_manual_catolico = THEMATIC_NICHE_IMAGES.catolico_devocao;
+THEMATIC_NICHE_IMAGES.proj_frocia2 = THEMATIC_NICHE_IMAGES.ia_inteligencia_artificial;
+THEMATIC_NICHE_IMAGES.proj_oraculos_ts = THEMATIC_NICHE_IMAGES.tarot_oraculos;
+THEMATIC_NICHE_IMAGES.proj_froc_marketing_engine = THEMATIC_NICHE_IMAGES.trafego_organico_growth;
 
 export const PROJECT_NICHE_HASHTAGS: Record<string, string[]> = {
   proj_magia_crencas: ['#MagiaDasCrencas', '#OracoesPoderosas', '#Prosperidade', '#FeInabalavel', '#DecretosPositivos', '#LeiDaAtracao', '#Espiritualidade', '#PortalVipBrasil'],
@@ -384,11 +575,173 @@ export const PROJECT_NICHE_HASHTAGS: Record<string, string[]> = {
   proj_froc_marketing_engine: ['#FrocIAMarketingEngine', '#TrafegoOrganico', '#MarketingPlayStore', '#ASO2026', '#Rank1Google', '#CrescimentoDigital', '#MarketingDeConteudo', '#PortalVipBrasil']
 };
 
-export function resolveThematicCoverForProject(projectId: string, topic?: string): { url: string; alt: string } {
-  const list = THEMATIC_NICHE_IMAGES[projectId] || THEMATIC_NICHE_IMAGES.proj_magia_crencas;
-  if (!topic) return list[0];
-  let hash = 0;
-  for (let i = 0; i < topic.length; i++) hash = (hash * 31 + topic.charCodeAt(i)) >>> 0;
+/**
+ * Normaliza uma string removendo acentos e pontuação para busca léxica precisa
+ */
+function normalizeTextForNiche(text: string): string {
+  return (text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .trim();
+}
+
+/**
+ * Seleciona a melhor chave de fotos temáticas a partir do título, tags, categoria ou projeto
+ */
+export function detectServerArticleNiche(meta: {
+  title?: string;
+  topic?: string;
+  slug?: string;
+  category?: string;
+  projectId?: string;
+}): string {
+  const titleAndSlug = normalizeTextForNiche(`${meta.title || ''} ${meta.topic || ''} ${meta.slug || ''}`);
+  const fullCorpus = normalizeTextForNiche(`${meta.title || ''} ${meta.topic || ''} ${meta.slug || ''} ${meta.category || ''}`);
+  const proj = meta.projectId || '';
+
+  // === FASE 1: Detecção de Alta Precisão pelo TÍTULO e SLUG do artigo ===
+  if (
+    titleAndSlug.includes('tarot') ||
+    titleAndSlug.includes('cigano') ||
+    titleAndSlug.includes('baralho') ||
+    titleAndSlug.includes('marselha') ||
+    titleAndSlug.includes('arcanos') ||
+    titleAndSlug.includes('tiragem')
+  ) {
+    return 'tarot_oraculos';
+  }
+
+  if (
+    titleAndSlug.includes('runa') ||
+    titleAndSlug.includes('viking') ||
+    titleAndSlug.includes('futhark') ||
+    titleAndSlug.includes('odin') ||
+    titleAndSlug.includes('nordic')
+  ) {
+    return 'runes_viking';
+  }
+
+  if (
+    titleAndSlug.includes('padilha') ||
+    titleAndSlug.includes('simpatia amor') ||
+    titleAndSlug.includes('amorosa') ||
+    titleAndSlug.includes('seducao') ||
+    titleAndSlug.includes('paixao') ||
+    titleAndSlug.includes('amarra') ||
+    titleAndSlug.includes('relacionamento') ||
+    titleAndSlug.includes('afetiv')
+  ) {
+    return 'love_maria_padilha';
+  }
+
+  if (
+    titleAndSlug.includes('exu') ||
+    titleAndSlug.includes('quimbanda') ||
+    titleAndSlug.includes('umbanda') ||
+    titleAndSlug.includes('guardiao') ||
+    titleAndSlug.includes('guardioes') ||
+    titleAndSlug.includes('encruzilhada') ||
+    titleAndSlug.includes('tranca rua') ||
+    titleAndSlug.includes('abertura de caminho') ||
+    titleAndSlug.includes('abrir caminho')
+  ) {
+    return 'exu_guardioes';
+  }
+
+  if (
+    titleAndSlug.includes('catolico') ||
+    titleAndSlug.includes('novena') ||
+    titleAndSlug.includes('terco') ||
+    titleAndSlug.includes('salmo') ||
+    titleAndSlug.includes('biblia') ||
+    titleAndSlug.includes('oracao') ||
+    titleAndSlug.includes('santo') ||
+    titleAndSlug.includes('santa') ||
+    titleAndSlug.includes('devocionario') ||
+    titleAndSlug.includes('missa')
+  ) {
+    return 'catolico_devocao';
+  }
+
+  if (
+    titleAndSlug.includes('prosperidade') ||
+    titleAndSlug.includes('gratidao') ||
+    titleAndSlug.includes('abundancia') ||
+    titleAndSlug.includes('riqueza') ||
+    titleAndSlug.includes('crenca') ||
+    titleAndSlug.includes('crencas') ||
+    titleAndSlug.includes('manifestacao') ||
+    titleAndSlug.includes('atrair dinheiro') ||
+    titleAndSlug.includes('leis da atracao')
+  ) {
+    return 'prosperidade_crencas';
+  }
+
+  if (
+    titleAndSlug.includes('froc ia') ||
+    titleAndSlug.includes('inteligencia artificial') ||
+    titleAndSlug.includes('ia generativa') ||
+    titleAndSlug.includes('chatgpt') ||
+    titleAndSlug.includes('automacao de conteudo') ||
+    titleAndSlug.includes('geradores de texto') ||
+    titleAndSlug.includes('deep research')
+  ) {
+    return 'ia_inteligencia_artificial';
+  }
+
+  if (
+    titleAndSlug.includes('trafego organico') ||
+    titleAndSlug.includes('seo') ||
+    titleAndSlug.includes('google play') ||
+    titleAndSlug.includes('play store') ||
+    titleAndSlug.includes('downloads') ||
+    titleAndSlug.includes('ranking') ||
+    titleAndSlug.includes('indexar') ||
+    titleAndSlug.includes('growth') ||
+    titleAndSlug.includes('marketing')
+  ) {
+    return 'trafego_organico_growth';
+  }
+
+  // === FASE 2: Detecção pelo Corpus Inteiro (Categorias, Tags) ===
+  if (fullCorpus.includes('runa') || fullCorpus.includes('viking') || fullCorpus.includes('nordic')) return 'runes_viking';
+  if (fullCorpus.includes('tarot') || fullCorpus.includes('cartomanc') || fullCorpus.includes('cigano')) return 'tarot_oraculos';
+  if (fullCorpus.includes('padilha') || fullCorpus.includes('amorosa') || fullCorpus.includes('seducao')) return 'love_maria_padilha';
+  if (fullCorpus.includes('exu') || fullCorpus.includes('umbanda') || fullCorpus.includes('quimbanda')) return 'exu_guardioes';
+  if (fullCorpus.includes('catolico') || fullCorpus.includes('novena') || fullCorpus.includes('terco')) return 'catolico_devocao';
+  if (fullCorpus.includes('prosperidade') || fullCorpus.includes('gratidao') || proj === 'proj_magia_crencas') return 'prosperidade_crencas';
+  if (fullCorpus.includes('inteligencia artificial') || fullCorpus.includes('froc ia') || proj === 'proj_froc_ia') return 'ia_inteligencia_artificial';
+  if (fullCorpus.includes('trafego') || fullCorpus.includes('marketing') || fullCorpus.includes('seo') || proj === 'proj_marketing_seo' || proj === 'proj_froc_marketing') return 'trafego_organico_growth';
+
+  // === FASE 3: Fallback por Projeto ===
+  if (proj && THEMATIC_NICHE_IMAGES[proj]) {
+    return proj;
+  }
+  return 'prosperidade_crencas';
+}
+
+function computeServerHash(seedString: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seedString.length; i++) {
+    h ^= seedString.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0);
+}
+
+export function resolveThematicCoverForProject(
+  projectId: string,
+  topic?: string,
+  slug?: string,
+  id?: string,
+  category?: string
+): { url: string; alt: string } {
+  const nicheKey = detectServerArticleNiche({ title: topic, topic, slug, category, projectId });
+  const list = THEMATIC_NICHE_IMAGES[nicheKey] || THEMATIC_NICHE_IMAGES.prosperidade_crencas;
+  const seed = `${id || ''}::${slug || ''}::${topic || ''}`;
+  const hash = computeServerHash(seed);
   return list[hash % list.length];
 }
 
@@ -1094,9 +1447,9 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
     targetAudience: knownProject?.targetAudience || '',
     searchIntent,
     coverImage: isInvalidOrLogoImage(article.coverImage)
-      ? resolveThematicCoverForProject(article.relatedProjectId, article.title).url
+      ? resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category).url
       : article.coverImage,
-    coverImageAlt: article.coverAlt || resolveThematicCoverForProject(article.relatedProjectId, article.title).alt,
+    coverImageAlt: article.coverAlt || resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category).alt,
     readingTimeMinutes: Number.parseInt(article.readTime || '', 10) || 5,
     readTime: article.readTime,
     contentMarkdown: words.join('\n\n'),
@@ -1183,7 +1536,7 @@ export async function listBlogArticles(filters: {
       const data = d.data() as any;
       const article: StoredBlogArticle = { id: d.id, ...data };
       if (isInvalidOrLogoImage(article.coverImage)) {
-        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title);
+        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category);
         article.coverImage = thematic.url;
         article.coverAlt = article.coverAlt || thematic.alt;
         try {
@@ -1258,7 +1611,7 @@ export async function getBlogArticleBySlug(slug: string): Promise<StoredBlogArti
     if (publishedDoc) {
       const article: StoredBlogArticle = { id: publishedDoc.id, ...(publishedDoc.data() as any) };
       if (isInvalidOrLogoImage(article.coverImage)) {
-        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title);
+        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category);
         article.coverImage = thematic.url;
         article.coverAlt = article.coverAlt || thematic.alt;
         try {
@@ -1632,10 +1985,8 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     }
   };
 
-  const thematicCover = resolveThematicCoverForProject(project.id, parsed?.title || topic);
-  let coverImage = project.bannerUrl && !isInvalidOrLogoImage(project.bannerUrl)
-    ? project.bannerUrl
-    : thematicCover.url;
+  const thematicCover = resolveThematicCoverForProject(project.id, parsed?.title || topic, finalSlug, articleId, parsed?.category);
+  let coverImage = thematicCover.url;
   let coverAlt = parsed.coverAlt || thematicCover.alt;
   let coverImageStoragePath: string | undefined;
   let coverImageGenerated = false;
@@ -1921,7 +2272,7 @@ export async function healAllStoredBlogCovers(): Promise<{ healedCount: number; 
     for (const doc of snap.docs) {
       const data = doc.data() as any;
       if (isInvalidOrLogoImage(data?.coverImage)) {
-        const thematic = resolveThematicCoverForProject(data?.relatedProjectId, data?.title);
+        const thematic = resolveThematicCoverForProject(data?.relatedProjectId, data?.title, data?.slug, doc.id, data?.category);
         await db.collection(COLLECTIONS.blogArticles).doc(doc.id).set({
           coverImage: thematic.url,
           coverAlt: data?.coverAlt || thematic.alt,

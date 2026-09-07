@@ -42,7 +42,7 @@ import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProj
 import { apiRequest } from '../lib/api';
 import { trackAnalyticsEvent } from '../lib/firebase';
 import type { PortalBlogArticle, BlogArticleSection, BlogFaqItem } from '../types/blog';
-import { resolveArticleCover, resolveArticleCoverAlt, getThematicCover } from '../utils/thematicCovers';
+import { resolveArticleCover, resolveArticleCoverAlt, getThematicCover, getSmartThematicCover } from '../utils/thematicCovers';
 
 interface BlogPortalPageProps {
   onNavigate: (tab: string) => void;
@@ -793,12 +793,35 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                     {/* Cover Image */}
                     <div className="relative w-full h-48 bg-slate-950 overflow-hidden">
                       <img
-                        src={resolveArticleCover(article.coverImage, article.relatedProjectId, article.title)}
-                        alt={resolveArticleCoverAlt(article.coverImageAlt || article.title, article.relatedProjectId, article.title)}
+                        src={resolveArticleCover(
+                          article.coverImage,
+                          article.relatedProjectId,
+                          article.title,
+                          article.slug,
+                          article.id,
+                          article.category,
+                          article.keywords
+                        )}
+                        alt={resolveArticleCoverAlt(
+                          article.coverImageAlt || article.title,
+                          article.relatedProjectId,
+                          article.title,
+                          article.slug,
+                          article.id,
+                          article.category,
+                          article.keywords
+                        )}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
                         onError={(e) => {
-                          e.currentTarget.src = getThematicCover(article.relatedProjectId, article.title).url;
+                          e.currentTarget.src = getSmartThematicCover({
+                            relatedProjectId: article.relatedProjectId,
+                            title: article.title,
+                            slug: article.slug,
+                            id: article.id,
+                            category: article.category,
+                            tags: article.keywords
+                          }).url;
                         }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
@@ -1037,11 +1060,34 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
             {/* Cover Image in Modal */}
             <div className="w-full h-64 sm:h-88 rounded-2xl overflow-hidden mb-8 bg-slate-950 shadow-xl">
               <img
-                src={resolveArticleCover(readingArticle.coverImage, readingArticle.relatedProjectId, readingArticle.title)}
-                alt={resolveArticleCoverAlt(readingArticle.coverImageAlt || readingArticle.title, readingArticle.relatedProjectId, readingArticle.title)}
+                src={resolveArticleCover(
+                  readingArticle.coverImage,
+                  readingArticle.relatedProjectId,
+                  readingArticle.title,
+                  readingArticle.slug,
+                  readingArticle.id,
+                  readingArticle.category,
+                  readingArticle.keywords
+                )}
+                alt={resolveArticleCoverAlt(
+                  readingArticle.coverImageAlt || readingArticle.title,
+                  readingArticle.relatedProjectId,
+                  readingArticle.title,
+                  readingArticle.slug,
+                  readingArticle.id,
+                  readingArticle.category,
+                  readingArticle.keywords
+                )}
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  e.currentTarget.src = getThematicCover(readingArticle.relatedProjectId, readingArticle.title).url;
+                  e.currentTarget.src = getSmartThematicCover({
+                    relatedProjectId: readingArticle.relatedProjectId,
+                    title: readingArticle.title,
+                    slug: readingArticle.slug,
+                    id: readingArticle.id,
+                    category: readingArticle.category,
+                    tags: readingArticle.keywords
+                  }).url;
                 }}
               />
             </div>
