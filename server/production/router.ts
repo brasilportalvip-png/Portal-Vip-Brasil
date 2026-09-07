@@ -19,7 +19,8 @@ import {
   updateBlogSettings,
   INITIAL_SEEDED_ARTICLES,
   notifyIndexNow,
-  serializeBlogArticleForPublic
+  serializeBlogArticleForPublic,
+  healAllStoredBlogCovers
 } from './blogEngine.js';
 import multer from 'multer';
 
@@ -1866,6 +1867,11 @@ router.patch('/portal/blog/articles/:id/status', requireAuth, requireAdmin, asyn
   }, { merge: true });
 
   res.json({ success: true, id, status });
+}));
+
+router.post('/portal/blog/heal-covers', requireAuth, requireAdmin, asyncRoute(async (_req: Request, res: Response) => {
+  const result = await healAllStoredBlogCovers();
+  res.json({ success: true, ...result });
 }));
 
 router.post('/portal/blog/track', asyncRoute(async (req: Request, res: Response) => {

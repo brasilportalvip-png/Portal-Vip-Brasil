@@ -1,6 +1,6 @@
 import { config } from '../config/index.js';
 import { PORTAL_VIP_OFFICIAL_ASSETS, getPortalProjectFromDb } from './almaPortfolio.js';
-import { INITIAL_SEEDED_ARTICLES, listBlogArticles } from './blogEngine.js';
+import { INITIAL_SEEDED_ARTICLES, listBlogArticles, isInvalidOrLogoImage, resolveThematicCoverForProject } from './blogEngine.js';
 import { COLLECTIONS, firestore } from './store.js';
 
 function esc(value: any): string {
@@ -171,7 +171,10 @@ async function metaFor(pathname: string): Promise<PublicMeta> {
       const post = doc ? ({ id: doc.id, ...doc.data() } as any) : seeded as any;
       const canonical = `${base}/blog/${encodeURIComponent(post.slug)}`;
       const authorName = typeof post.author === 'object' ? post.author?.name : post.author;
-      const image = post.coverImage || post.featuredImageUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl;
+      const rawImage = post.coverImage || post.featuredImageUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl;
+      const image = isInvalidOrLogoImage(rawImage)
+        ? resolveThematicCoverForProject(post.relatedProjectId, post.title).url
+        : rawImage;
       const summary = post.metaDescription || post.seoDescription || post.excerpt || post.summary;
       return {
         title: post.seoTitle || `${post.title} — Portal Vip Brasil`,

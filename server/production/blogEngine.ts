@@ -272,6 +272,150 @@ const PROJECT_TOPIC_POOLS: Record<string, Array<{
   ]
 };
 
+// Catálogo curado de fotografias temáticas em alta definição por nicho (sem logotipos)
+export const THEMATIC_NICHE_IMAGES: Record<string, Array<{ url: string; alt: string }>> = {
+  proj_magia_crencas: [
+    {
+      url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Luz dourada sobre montanhas simbolizando fé inabalável, prosperidade e conexão espiritual'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1507692049790-de58290a4334?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Raios solares no horizonte representando bênçãos, orações atendidas e paz'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1499209974431-9dddcece7f88?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Momento de oração e gratidão no amanhecer'
+    }
+  ],
+  proj_exu_responde: [
+    {
+      url: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Chama dourada na noite simbolizando a iluminação dos caminhos e sabedoria oracular'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1517816743773-6e0fd518b4a6?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Estrada iluminada à noite representando encruzilhadas e decisões com discernimento'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Fogo sagrado de firmeza e clareza para proteção e abertura de caminhos'
+    }
+  ],
+  proj_maria_padilha: [
+    {
+      url: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Rosas vermelhas aveludadas expressando o magnetismo, autoestima e poder amoroso de Maria Padilha'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Pétalas de rosas vermelhas iluminadas simbolizando o poder do amor e atração'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1526047932273-341f2a7631f9?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Buquê de rosas vermelhas vibrantes para rituais de autoestima e magnetismo afetivo'
+    }
+  ],
+  proj_manual_catolico: [
+    {
+      url: 'https://images.unsplash.com/photo-1548625361-16eb4318c4fc?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Catedral histórica com vitrais e raios de sol iluminando a devoção católica'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1504052434569-70ad5836ab65?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Bíblia Sagrada e terço com velas devocionais'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1543783207-ec64e4d95325?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Vela acesa no altar e momento sagrado de oração e liturgia'
+    }
+  ],
+  proj_frocia2: [
+    {
+      url: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Ondas abstratas digitais de inteligência artificial generativa e inovação tecnológica'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1677442136019-21780efad99a?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Rede neural artificial e processamento cognitivo de marketing'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Planeta digital conectado por dados em alta velocidade e tecnologia global'
+    }
+  ],
+  proj_oraculos_ts: [
+    {
+      url: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Cartas clássicas de tarot e baralho cigano sobre madeira rústica e velas'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1638803040283-7a5ffd48dad5?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Mandala cósmica e mapa astrológico com cartas oraculares'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1532767153582-b1a0e5145009?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Runas nórdicas antigas esculpidas em pedra para autoconhecimento e tiragens'
+    }
+  ],
+  proj_froc_marketing_engine: [
+    {
+      url: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Dashboard analítico de tráfego orgânico, SEO e métricas de conversão'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Estratégia de marketing digital em equipe e crescimento de aplicativos'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1533750516457-a7f992034fec?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Gráficos de escalada para primeiro lugar em pesquisas de tráfego e downloads'
+    }
+  ]
+};
+
+export const PROJECT_NICHE_HASHTAGS: Record<string, string[]> = {
+  proj_magia_crencas: ['#MagiaDasCrencas', '#OracoesPoderosas', '#Prosperidade', '#FeInabalavel', '#DecretosPositivos', '#LeiDaAtracao', '#Espiritualidade', '#PortalVipBrasil'],
+  proj_exu_responde: ['#ExuResponde', '#OraculoDosCaminhos', '#SabedoriaAncestral', '#Guardioes', '#FirmezaEspiritual', '#AberturaDeCaminhos', '#PortalVipBrasil'],
+  proj_maria_padilha: ['#MariaPadilha', '#RainhaDas7Encruzilhadas', '#AmorProprio', '#AutoestimaFeminina', '#MagnetismoPessoal', '#SimpatiaAmorosa', '#PoderFeminino', '#PortalVipBrasil'],
+  proj_manual_catolico: ['#ManualCatolico', '#SantoDoDia', '#SantoTerco', '#Novenas', '#FeCrista', '#LiturgiaDiaria', '#IgrejaCatolica', '#PortalVipBrasil'],
+  proj_frocia2: ['#FrocIA', '#InteligenciaArtificial', '#MarketingDigital', '#AutomacaoDeConteudo', '#SEOAvancado', '#CriacaoDeConteudo', '#Inovacao', '#PortalVipBrasil'],
+  proj_oraculos_ts: ['#OraculosTS', '#TarotOnline', '#BaralhoCigano', '#RunasNordicas', '#Autoconhecimento', '#TiragemDeCartas', '#Espiritualidade', '#PortalVipBrasil'],
+  proj_froc_marketing_engine: ['#FrocIAMarketingEngine', '#TrafegoOrganico', '#MarketingPlayStore', '#ASO2026', '#Rank1Google', '#CrescimentoDigital', '#MarketingDeConteudo', '#PortalVipBrasil']
+};
+
+export function resolveThematicCoverForProject(projectId: string, topic?: string): { url: string; alt: string } {
+  const list = THEMATIC_NICHE_IMAGES[projectId] || THEMATIC_NICHE_IMAGES.proj_magia_crencas;
+  if (!topic) return list[0];
+  let hash = 0;
+  for (let i = 0; i < topic.length; i++) hash = (hash * 31 + topic.charCodeAt(i)) >>> 0;
+  return list[hash % list.length];
+}
+
+export function isInvalidOrLogoImage(url: string | undefined | null): boolean {
+  if (!url || typeof url !== 'string') return true;
+  const trimmed = url.trim().toLowerCase();
+  if (trimmed === '' || trimmed === 'about:blank' || trimmed.length < 10) return true;
+  if (
+    trimmed.includes('logo.png') ||
+    trimmed.includes('/logo') ||
+    trimmed.includes('icon-512') ||
+    trimmed.includes('icon-192') ||
+    trimmed.includes('/icons/') ||
+    trimmed.includes('apple-touch-icon') ||
+    trimmed.includes('favicon') ||
+    trimmed.includes('cropped-507d5ca1') ||
+    trimmed.includes('chatgpt-image-19-de-mai') ||
+    trimmed.includes('wp-content/uploads') ||
+    trimmed.includes('portalvipbrasil.com.br') ||
+    trimmed.includes('placeholder')
+  ) {
+    return true;
+  }
+  if (trimmed.startsWith('data:image/png;base64,ivborw0kggoaaaansuheugaaaaeeaaab')) return true;
+  return false;
+}
+
 // Seed de artigos iniciais de alta autoridade
 export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
   {
@@ -434,6 +578,443 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
     clicksPlayStore: 0,
     createdAt: '2026-08-30T09:00:00.000Z',
     generationModel: 'gemini-3.7-flash'
+  },
+  {
+    id: 'art-maria-padilha-amor-magnetico',
+    slug: 'maria-padilha-rainha-das-7-encruzilhadas-autoestima-e-amor',
+    title: 'Maria Padilha Rainha das 7 Encruzilhadas: Autoestima Magnética e Poder no Amor',
+    seoTitle: 'Maria Padilha Rainha das 7 Encruzilhadas: Autoestima e Amor | Portal Vip Brasil',
+    metaDescription: 'Aprenda a oração da atração e como elevar sua frequência pessoal para se tornar irresistível, segura de si e conquistar a harmonia no amor.',
+    excerpt: 'Aprenda a oração da atração e como elevar sua frequência pessoal para se tornar irresistível, segura de si e conquistar a harmonia no relacionamento.',
+    category: 'Amor & Relacionamentos',
+    tags: ['Maria Padilha', 'Amor', 'Autoestima', 'Pombagira', 'Sedução', 'Magnetismo Pessoal', 'PortalVipBrasil'],
+    primaryKeyword: 'maria padilha rainha das 7 encruzilhadas',
+    secondaryKeywords: ['oração maria padilha', 'oráculo do amor', 'autoestima feminina', 'simpatia amorosa'],
+    searchIntent: 'guide',
+    author: { name: 'Equipe Editorial Portal Vip Brasil', avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl, role: 'Conteúdo Editorial' },
+    publishedAt: '2026-08-28T09:00:00.000Z',
+    updatedAt: '2026-08-28T09:00:00.000Z',
+    readTime: '4 min de leitura',
+    featured: false,
+    coverImage: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
+    coverAlt: 'Rosas vermelhas aveludadas expressando o magnetismo, autoestima e poder amoroso de Maria Padilha',
+    relatedProjectId: 'proj_maria_padilha',
+    relatedProjectName: 'Maria Padilha Rainha das 7 Encruzilhadas',
+    relatedProjectUrl: 'https://maria-padilha-rainha-das-7-encruzil.vercel.app/',
+    relatedPlayStoreUrl: 'https://play.google.com/store/apps/details?id=com.portalvipbrasil.mariapadilharainha',
+    hasApp: true,
+    sections: [
+      {
+        h2: 'O Segredo do Magnetismo Feminino e Pessoal',
+        content: 'Ninguém consegue amar verdadeiramente quem não se valoriza em primeiro lugar. A energia de **Maria Padilha Rainha das 7 Encruzilhadas** ensina a soberania da alma: quem conhece o próprio valor não aceita migalhas emocionais nem vive na incerteza.',
+        h3s: [
+          {
+            h3: 'Ritual Simples de Empoderamento Diante do Espelho',
+            content: 'Olhe nos seus próprios olhos e declare com autoridade: "Eu sou digna de ser amada, respeitada e cortejada. Minha energia atrai o amor mais nobre e verdadeiro."'
+          },
+          {
+            h3: 'Banhos Aromáticos de Atração',
+            content: 'A combinação de pétalas de rosas vermelhas com anis-estrelado limpa o campo emocional e desperta o brilho pessoal.'
+          }
+        ]
+      },
+      {
+        h2: 'Oração de Firmeza e Atração Sentimental',
+        content: 'Reze pedindo proteção para o seu coração e abertura para relacionamentos recíprocos, leais e apaixonados.'
+      }
+    ],
+    faqSection: [
+      {
+        question: 'Onde encontro o app oficial de Maria Padilha?',
+        answer: 'O aplicativo está disponível na Google Play Store com orações, simpatias e conselhos diários.'
+      },
+      {
+        question: 'Qual o melhor dia para realizar as orações de amor?',
+        answer: 'Sextas-feiras e noites de lua crescente são tradicionalmente muito favoráveis para firmezas de atração e harmonia amorosa.'
+      }
+    ],
+    conclusion: 'A verdadeira conquista começa quando você passa a se admirar em primeiro lugar. Eleve seu magnetismo hoje.',
+    callToAction: 'Consulte o oráculo no site oficial ou instale o aplicativo Maria Padilha na Google Play Store.',
+    internalLinks: [
+      { label: 'Vitrine Portal Vip Brasil', url: '/vitrine' },
+      { label: 'Artigo: Oráculos TS e Tarot Online', url: '/blog/oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online' }
+    ],
+    socialCampaign: {
+      instagram: {
+        caption: 'Desperte seu magnetismo pessoal e o poder do amor próprio com os ensinamentos da Rainha das 7 Encruzilhadas. Leia no Blog Portal Vip Brasil!',
+        hashtags: ['#MariaPadilha', '#RainhaDas7Encruzilhadas', '#AmorProprio', '#AutoestimaFeminina', '#MagnetismoPessoal', '#PortalVipBrasil'],
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/maria-padilha-rainha-das-7-encruzilhadas-autoestima-e-amor?utm_source=instagram&utm_medium=social&utm_campaign=blog_maria_padilha'
+      },
+      facebook: {
+        postText: 'Aprenda a elevar sua frequência amorosa e atrair relacionamentos prósperos e recíprocos. Acesse o artigo completo no Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/maria-padilha-rainha-das-7-encruzilhadas-autoestima-e-amor?utm_source=facebook&utm_medium=social&utm_campaign=blog_maria_padilha'
+      },
+      linkedin: {
+        postText: 'Artigo sobre inteligência emocional, autoestima e desenvolvimento pessoal no Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/maria-padilha-rainha-das-7-encruzilhadas-autoestima-e-amor?utm_source=linkedin&utm_medium=social&utm_campaign=blog_maria_padilha'
+      },
+      x: {
+        tweetText: 'Eleve seu magnetismo pessoal e harmonia amorosa com o guia no Blog Portal Vip Brasil:',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/maria-padilha-rainha-das-7-encruzilhadas-autoestima-e-amor?utm_source=x&utm_medium=social&utm_campaign=blog_maria_padilha'
+      }
+    },
+    status: 'published',
+    views: 0,
+    likes: 0,
+    shares: 0,
+    clicksWebsite: 0,
+    clicksPlayStore: 0,
+    createdAt: '2026-08-28T09:00:00.000Z',
+    generationModel: 'gemini-3.7-flash'
+  },
+  {
+    id: 'art-manual-catolico-santo-do-dia',
+    slug: 'manual-catolico-o-guia-diario-de-oracoes-e-fortalecimento-na-fe',
+    title: 'Manual Católico: O Valor das Novenas, do Santo Terço e da Liturgia Diária',
+    seoTitle: 'Manual Católico: Santo Terço, Novenas e Liturgia Diária | Portal Vip Brasil',
+    metaDescription: 'Como estruturar uma rotina devocional cristã com a liturgia diária, exame de consciência e a proteção dos santos padroeiros para sua família.',
+    excerpt: 'Como estruturar uma rotina devocional cristã com a liturgia do dia, exame de consciência e a proteção dos santos padroeiros para a sua família.',
+    category: 'Tradição Católica',
+    tags: ['Manual Católico', 'Santo Terço', 'Novenas', 'Liturgia Diária', 'Fé Cristã', 'Igreja Católica', 'PortalVipBrasil'],
+    primaryKeyword: 'manual católico',
+    secondaryKeywords: ['liturgia diária', 'santo terço', 'novenas milagrosas', 'santo do dia'],
+    searchIntent: 'educational',
+    author: { name: 'Equipe Editorial Portal Vip Brasil', avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl, role: 'Conteúdo Editorial' },
+    publishedAt: '2026-08-27T09:00:00.000Z',
+    updatedAt: '2026-08-27T09:00:00.000Z',
+    readTime: '5 min de leitura',
+    featured: false,
+    coverImage: 'https://images.unsplash.com/photo-1548625361-16eb4318c4fc?auto=format&fit=crop&w=1200&q=80',
+    coverAlt: 'Catedral histórica com vitrais e raios de sol iluminando a devoção católica',
+    relatedProjectId: 'proj_manual_catolico',
+    relatedProjectName: 'Manual Católico',
+    relatedProjectUrl: 'https://manual-cat-lico.vercel.app/',
+    relatedPlayStoreUrl: 'https://play.google.com/store/apps/details?id=br.com.manualcatolico.app',
+    hasApp: true,
+    sections: [
+      {
+        h2: 'A Força da Oração Constante',
+        content: 'A tradição da Santa Igreja nos ensina que a oração diária é o escudo mais eficaz contra as tribulações modernas. Rezar o Santo Terço em família traz paz inexplicável ao lar e serenidade para os pensamentos.',
+        h3s: [
+          {
+            h3: 'O Santo do Dia e Suas Lições',
+            content: 'Conhecer as vidas dos santos nos oferece modelos concretos de perseverança, caridade e fé diante das adversidades.'
+          },
+          {
+            h3: 'O Exame de Consciência Noturno',
+            content: 'Uma revisão sincera das ações do dia renova o espírito e prepara o cristão para o sacramento da reconciliação.'
+          }
+        ]
+      },
+      {
+        h2: 'Novenas Tradicionais de Intercessão',
+        content: 'A novena a Nossa Senhora Desatadora dos Nós e a oração a São Bento continuam transformando corações e restaurando a esperança em milhares de lares brasileiros.'
+      }
+    ],
+    faqSection: [
+      {
+        question: 'O aplicativo Manual Católico funciona offline?',
+        answer: 'Sim, o app oficial na Play Store mantém as orações essenciais disponíveis mesmo sem conexão à internet.'
+      },
+      {
+        question: 'Onde posso acompanhar a liturgia diária?',
+        answer: 'Tanto no portal web oficial quanto no aplicativo Manual Católico, com as leituras completas da Santa Missa.'
+      }
+    ],
+    conclusion: 'A fé cultivada dia a dia é o maior legado de paz para a sua família. Reze com o coração aberto.',
+    callToAction: 'Baixe o aplicativo Manual Católico na Google Play Store e leve um devocionário completo no bolso.',
+    internalLinks: [
+      { label: 'Vitrine de Aplicativos Portal Vip Brasil', url: '/vitrine' },
+      { label: 'Artigo: Como Despertar o Poder das Crenças', url: '/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos' }
+    ],
+    socialCampaign: {
+      instagram: {
+        caption: 'Fortaleça sua rotina devocional cristã com a liturgia diária, Santo Terço e novenas milagrosas no Manual Católico. Leia no Blog Portal Vip Brasil!',
+        hashtags: ['#ManualCatolico', '#SantoDoDia', '#SantoTerco', '#Novenas', '#FeCrista', '#LiturgiaDiaria', '#PortalVipBrasil'],
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/manual-catolico-o-guia-diario-de-oracoes-e-fortalecimento-na-fe?utm_source=instagram&utm_medium=social&utm_campaign=blog_manual_catolico'
+      },
+      facebook: {
+        postText: 'Como estruturar uma vida de oração com o Santo Terço e a liturgia diária. Leia o guia devocional no Blog Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/manual-catolico-o-guia-diario-de-oracoes-e-fortalecimento-na-fe?utm_source=facebook&utm_medium=social&utm_campaign=blog_manual_catolico'
+      },
+      linkedin: {
+        postText: 'Tradição, fé e perseverança na rotina diária: conheça o devocionário Manual Católico no Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/manual-catolico-o-guia-diario-de-oracoes-e-fortalecimento-na-fe?utm_source=linkedin&utm_medium=social&utm_campaign=blog_manual_catolico'
+      },
+      x: {
+        tweetText: 'Acompanhe a liturgia diária e o Santo Terço no aplicativo Manual Católico. Saiba mais no Portal Vip Brasil:',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/manual-catolico-o-guia-diario-de-oracoes-e-fortalecimento-na-fe?utm_source=x&utm_medium=social&utm_campaign=blog_manual_catolico'
+      }
+    },
+    status: 'published',
+    views: 0,
+    likes: 0,
+    shares: 0,
+    clicksWebsite: 0,
+    clicksPlayStore: 0,
+    createdAt: '2026-08-27T09:00:00.000Z',
+    generationModel: 'gemini-3.7-flash'
+  },
+  {
+    id: 'art-ia-marketing-froc-2026',
+    slug: 'como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo',
+    title: 'Como a IA Generativa e o Froc IA Estão Revolucionando o Marketing Digital',
+    seoTitle: 'IA Generativa e Marketing Digital com Froc IA | Portal Vip Brasil',
+    metaDescription: 'Estratégias avançadas de automação para produzir artigos de alta autoridade, posts virais e copys persuasivas que dominam o Google e o Bing.',
+    excerpt: 'Estratégias avançadas de automação para produzir artigos de alta autoridade, posts virais e copys persuasivas que dominam o Google e o Bing.',
+    category: 'Inteligência Artificial',
+    tags: ['Froc IA', 'Inteligência Artificial', 'SEO', 'Marketing Digital', 'Automação', 'Criação de Conteúdo', 'PortalVipBrasil'],
+    primaryKeyword: 'froc ia',
+    secondaryKeywords: ['ia marketing digital', 'gerador de artigos seo', 'automação de conteúdo'],
+    searchIntent: 'guide',
+    author: { name: 'Equipe Editorial Portal Vip Brasil', avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl, role: 'Conteúdo Editorial' },
+    publishedAt: '2026-08-25T09:00:00.000Z',
+    updatedAt: '2026-08-25T09:00:00.000Z',
+    readTime: '7 min de leitura',
+    featured: true,
+    coverImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+    coverAlt: 'Ondas abstratas digitais de inteligência artificial generativa e inovação tecnológica',
+    relatedProjectId: 'proj_frocia2',
+    relatedProjectName: 'Froc IA',
+    relatedProjectUrl: 'https://frocia2.vercel.app/',
+    hasApp: false,
+    sections: [
+      {
+        h2: 'A Nova Fronteira do Tráfego Orgânico com IA',
+        content: 'Em 2026, os mecanismos de pesquisa premiam a profundidade, a clareza e a originalidade técnica do conteúdo. Ferramentas genéricas já não bastam; é fundamental utilizar modelos avançados de IA para estruturar argumentos sólidos e dados confiáveis.',
+        h3s: [
+          {
+            h3: 'Pesquisa Semântica de Cauda Longa',
+            content: 'Como mapear termos de busca com alto volume de intenção e baixa concorrência usando o motor do Froc IA.'
+          },
+          {
+            h3: 'Storytelling Persuasivo e Retenção de Audiência',
+            content: 'Técnicas de redação que aumentam o tempo de permanência na página, sinalizando relevância máxima para os algoritmos de busca.'
+          }
+        ]
+      },
+      {
+        h2: 'Automação Multicanal Integrada',
+        content: 'A partir de um único artigo mestre, o Froc IA desdobra publicações prontas para Instagram, Facebook, LinkedIn e X, acompanhadas de hashtags nichadas de alto alcance orgânico.'
+      }
+    ],
+    faqSection: [
+      {
+        question: 'O que diferencia o Froc IA de outros geradores de texto?',
+        answer: 'Ele foi treinado especificamente para métricas de conversão de marketing e conformidade estrita com as diretrizes de conteúdo útil dos motores de busca.'
+      },
+      {
+        question: 'Como acessar a plataforma Froc IA?',
+        answer: 'A plataforma está acessível online através do endereço oficial frocia2.vercel.app.'
+      }
+    ],
+    conclusion: 'A inteligência artificial não substitui a estratégia humana; ela multiplica por dez a sua capacidade de execução.',
+    callToAction: 'Acesse o Froc IA e experimente a nova era da automação de marketing digital.',
+    internalLinks: [
+      { label: 'Vitrine Oficial Portal Vip Brasil', url: '/vitrine' },
+      { label: 'Artigo: Estratégia de Divulgação Diária na Play Store', url: '/blog/estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store' }
+    ],
+    socialCampaign: {
+      instagram: {
+        caption: 'Multiplique sua produção de marketing em 10x com copys persuasivas e SEO avançado gerados pelo Froc IA. Leia no Blog Portal Vip Brasil!',
+        hashtags: ['#FrocIA', '#InteligenciaArtificial', '#MarketingDigital', '#AutomacaoDeConteudo', '#SEOAvancado', '#Inovacao', '#PortalVipBrasil'],
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo?utm_source=instagram&utm_medium=social&utm_campaign=blog_froc_ia'
+      },
+      facebook: {
+        postText: 'Descubra como a IA generativa está revolucionando a geração de tráfego orgânico e a conversão de vendas. Leia no Blog Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo?utm_source=facebook&utm_medium=social&utm_campaign=blog_froc_ia'
+      },
+      linkedin: {
+        postText: 'Inovação e inteligência artificial aplicada ao marketing digital e SEO em 2026: análise completa no Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo?utm_source=linkedin&utm_medium=social&utm_campaign=blog_froc_ia'
+      },
+      x: {
+        tweetText: 'Como o Froc IA automatiza artigos de blog e posts para redes com SEO de ponta. Confira no Portal Vip Brasil:',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo?utm_source=x&utm_medium=social&utm_campaign=blog_froc_ia'
+      }
+    },
+    status: 'published',
+    views: 0,
+    likes: 0,
+    shares: 0,
+    clicksWebsite: 0,
+    clicksPlayStore: 0,
+    createdAt: '2026-08-25T09:00:00.000Z',
+    generationModel: 'gemini-3.7-flash'
+  },
+  {
+    id: 'art-oraculos-ts-tarot-lenormand',
+    slug: 'oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online',
+    title: 'Oráculos TS: O Guia Completo de Tarot, Baralho Cigano e Runas Nórdicas',
+    seoTitle: 'Oráculos TS: Tarot, Baralho Cigano e Runas Online | Portal Vip Brasil',
+    metaDescription: 'Conheça o motor oracular desenvolvido em TypeScript com interpretações precisas e arquetípicas para iluminar suas escolhas do dia a dia.',
+    excerpt: 'Conheça o motor oracular desenvolvido em TypeScript com interpretações precisas e arquetípicas para iluminar suas escolhas do dia a dia.',
+    category: 'Oráculos & Guardiões',
+    tags: ['Oráculos TS', 'Tarot Online', 'Baralho Cigano', 'Runas', 'Autoconhecimento', 'PortalVipBrasil'],
+    primaryKeyword: 'oráculos ts',
+    secondaryKeywords: ['tarot online grátis', 'baralho cigano tiragem', 'runas nórdicas online'],
+    searchIntent: 'informational',
+    author: { name: 'Equipe Editorial Portal Vip Brasil', avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl, role: 'Conteúdo Editorial' },
+    publishedAt: '2026-08-22T09:00:00.000Z',
+    updatedAt: '2026-08-22T09:00:00.000Z',
+    readTime: '5 min de leitura',
+    featured: false,
+    coverImage: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
+    coverAlt: 'Cartas clássicas de tarot e baralho cigano sobre madeira rústica e velas',
+    relatedProjectId: 'proj_oraculos_ts',
+    relatedProjectName: 'Oráculos',
+    relatedProjectUrl: 'https://oraculos-ts.vercel.app/',
+    hasApp: false,
+    sections: [
+      {
+        h2: 'A Simbologia Viva dos Oráculos Tradicionais',
+        content: 'O Tarot de Marselha, o Baralho Cigano (Petit Lenormand) e as Runas Nórdicas são sistemas arquetípicos milenares que espelham com perfeição as dinâmicas da psique e as probabilidades de destino.',
+        h3s: [
+          {
+            h3: 'Tarot de Marselha para Decisões Profissionais',
+            content: 'Como as lâminas dos Arcanos Maiores revelam o momento exato de arriscar ou recuar em novos empreendimentos.'
+          },
+          {
+            h3: 'O Baralho Cigano e os Laços do Coração',
+            content: 'Cartas diretas que decodificam sentimentos, intenções sinceras e reconciliações afetivas.'
+          }
+        ]
+      },
+      {
+        h2: 'Alta Performance com Motor em TypeScript',
+        content: 'O sistema **Oráculos TS** foi construído com arquitetura modular, garantindo carregamento instantâneo, tiragens aleatórias criptograficamente seguras e interpretações ricas sem anúncios intrusivos.'
+      }
+    ],
+    faqSection: [
+      {
+        question: 'As consultas no Oráculos TS são gratuitas?',
+        answer: 'Sim, a plataforma permite tiragens diárias gratuitas de cartas e runas.'
+      },
+      {
+        question: 'Qual é a diferença entre o Tarot e o Baralho Cigano?',
+        answer: 'O Tarot trabalha arquétipos profundos e jornadas de evolução pessoal, enquanto o Baralho Cigano é focado em questões práticas, cotidianas e relacionamentos.'
+      }
+    ],
+    conclusion: 'Consultar os oráculos é um ato de autoconhecimento e conexão com a sabedoria universal.',
+    callToAction: 'Acesse o Oráculos TS e faça sua tiragem agora mesmo.',
+    internalLinks: [
+      { label: 'Vitrine Portal Vip Brasil', url: '/vitrine' },
+      { label: 'Artigo: Exu Responde e Guardiões', url: '/blog/exu-responde-como-consultar-os-guardioes-com-respeito-e-clareza' }
+    ],
+    socialCampaign: {
+      instagram: {
+        caption: 'Tire sua carta do dia no Oráculos TS e receba conselhos precisos do Tarot, Baralho Cigano e Runas Nórdicas. Leia no Blog Portal Vip Brasil!',
+        hashtags: ['#OraculosTS', '#TarotOnline', '#BaralhoCigano', '#RunasNordicas', '#Autoconhecimento', '#PortalVipBrasil'],
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online?utm_source=instagram&utm_medium=social&utm_campaign=blog_oraculos_ts'
+      },
+      facebook: {
+        postText: 'Descubra a mensagem dos arcanos para o seu dia com o motor oracular Oráculos TS. Acesse o artigo completo no Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online?utm_source=facebook&utm_medium=social&utm_campaign=blog_oraculos_ts'
+      },
+      linkedin: {
+        postText: 'Tecnologia moderna e arquétipos clássicos: conheça o projeto Oráculos TS no ecossistema Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online?utm_source=linkedin&utm_medium=social&utm_campaign=blog_oraculos_ts'
+      },
+      x: {
+        tweetText: 'Consulte o Tarot online e o Baralho Cigano gratuitamente no Oráculos TS:',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online?utm_source=x&utm_medium=social&utm_campaign=blog_oraculos_ts'
+      }
+    },
+    status: 'published',
+    views: 0,
+    likes: 0,
+    shares: 0,
+    clicksWebsite: 0,
+    clicksPlayStore: 0,
+    createdAt: '2026-08-22T09:00:00.000Z',
+    generationModel: 'gemini-3.7-flash'
+  },
+  {
+    id: 'art-divulgacao-diaria-apps-playstore',
+    slug: 'estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store',
+    title: 'Estratégia de Divulgação Diária: Como Escalar Downloads de Apps na Play Store',
+    seoTitle: 'Estratégia de Divulgação Diária na Google Play Store | Portal Vip Brasil',
+    metaDescription: 'Descubra como o ecossistema do Portal Vip Brasil publica diariamente nas redes sociais para manter fluxo contínuo de usuários e engajamento orgânico.',
+    excerpt: 'Como o ecossistema do Portal Vip Brasil publica diariamente nas redes sociais para manter fluxo contínuo de usuários e engajamento orgânico.',
+    category: 'Marketing & SEO',
+    tags: ['Portal Vip Brasil', 'Play Store', 'Marketing Diário', 'SEO Bing Google', 'Tráfego Orgânico', 'ASO', 'PortalVipBrasil'],
+    primaryKeyword: 'divulgação diária play store',
+    secondaryKeywords: ['marketing orgânico de apps', 'escalar downloads play store', 'froc ia marketing engine'],
+    searchIntent: 'guide',
+    author: { name: 'Equipe Editorial Portal Vip Brasil', avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl, role: 'Conteúdo Editorial' },
+    publishedAt: '2026-08-20T09:00:00.000Z',
+    updatedAt: '2026-08-20T09:00:00.000Z',
+    readTime: '6 min de leitura',
+    featured: false,
+    coverImage: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
+    coverAlt: 'Dashboard analítico de tráfego orgânico, SEO e métricas de conversão',
+    relatedProjectId: 'proj_froc_marketing_engine',
+    relatedProjectName: 'Froc IA Marketing Engine',
+    relatedProjectUrl: 'https://froc-ia-marketing-engine.vercel.app/',
+    hasApp: false,
+    sections: [
+      {
+        h2: 'Por Que a Consistência Diária Vence o Tráfego Pago',
+        content: 'A maioria dos aplicativos lançados na Google Play Store perde tração após as primeiras semanas por falta de divulgação contínua. Manter postagens diárias de alto engajamento nas redes com links rastreados gera tração sustentável e custo de aquisição zero.',
+        h3s: [
+          {
+            h3: 'ASO (App Store Optimization) e Autoridade Externa',
+            content: 'Os backlinks originados de blogs autoritativos e redes sociais ativas são sinais vitais de relevância para o ranqueamento na Play Store.'
+          },
+          {
+            h3: 'Automação de Conteúdo em Piloto Automático',
+            content: 'Como o Froc IA Marketing Engine orquestra a publicação diária sem sobrecarregar a equipe operacional.'
+          }
+        ]
+      },
+      {
+        h2: 'O Ecossistema Integrado do Portal Vip Brasil',
+        content: 'No Portal Vip Brasil, cada projeto possui páginas dedicadas, artigos no blog com palavras-chave estratégicas e campanhas para redes sociais com hashtags personalizadas.'
+      }
+    ],
+    faqSection: [
+      {
+        question: 'O que é o Froc IA Marketing Engine?',
+        answer: 'É a plataforma central de automação do Portal Vip Brasil para gerenciamento de marketing de conteúdo e autopilot.'
+      },
+      {
+        question: 'Como os links para os apps são divulgados?',
+        answer: 'Todos os posts e artigos incluem botões diretos e links UTM para download seguro na Google Play Store.'
+      }
+    ],
+    conclusion: 'A escala de downloads depende da disciplina de publicação diária com conteúdo que realmente agrega valor ao leitor.',
+    callToAction: 'Conheça todos os nossos aplicativos publicados na aba Vitrine do Portal Vip Brasil.',
+    internalLinks: [
+      { label: 'Vitrine Oficial Portal Vip Brasil', url: '/vitrine' },
+      { label: 'Artigo: Como a IA Generativa Transforma o Marketing', url: '/blog/como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo' }
+    ],
+    socialCampaign: {
+      instagram: {
+        caption: 'Como manter um fluxo constante de downloads e tráfego orgânico para seus aplicativos na Google Play Store. Leia no Blog Portal Vip Brasil!',
+        hashtags: ['#FrocIAMarketingEngine', '#TrafegoOrganico', '#MarketingPlayStore', '#ASO2026', '#Rank1Google', '#PortalVipBrasil'],
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store?utm_source=instagram&utm_medium=social&utm_campaign=blog_marketing_engine'
+      },
+      facebook: {
+        postText: 'Descubra os segredos da divulgação diária orgânica para aplicativos na Google Play Store. Leia completo no Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store?utm_source=facebook&utm_medium=social&utm_campaign=blog_marketing_engine'
+      },
+      linkedin: {
+        postText: 'Estratégias de ASO e crescimento orgânico de aplicativos móveis: estudo prático publicado no Portal Vip Brasil.',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store?utm_source=linkedin&utm_medium=social&utm_campaign=blog_marketing_engine'
+      },
+      x: {
+        tweetText: 'Aprenda como escalar downloads de aplicativos na Play Store com divulgação diária no Blog Portal Vip Brasil:',
+        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store?utm_source=x&utm_medium=social&utm_campaign=blog_marketing_engine'
+      }
+    },
+    status: 'published',
+    views: 0,
+    likes: 0,
+    shares: 0,
+    clicksWebsite: 0,
+    clicksPlayStore: 0,
+    createdAt: '2026-08-20T09:00:00.000Z',
+    generationModel: 'gemini-3.7-flash'
   }
 ];
 
@@ -512,8 +1093,10 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
     category: article.category,
     targetAudience: knownProject?.targetAudience || '',
     searchIntent,
-    coverImage: article.coverImage,
-    coverImageAlt: article.coverAlt,
+    coverImage: isInvalidOrLogoImage(article.coverImage)
+      ? resolveThematicCoverForProject(article.relatedProjectId, article.title).url
+      : article.coverImage,
+    coverImageAlt: article.coverAlt || resolveThematicCoverForProject(article.relatedProjectId, article.title).alt,
     readingTimeMinutes: Number.parseInt(article.readTime || '', 10) || 5,
     readTime: article.readTime,
     contentMarkdown: words.join('\n\n'),
@@ -531,7 +1114,11 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
       '@type': 'Article',
       headline: article.title,
       description: article.metaDescription || article.excerpt,
-      image: article.coverImage ? [article.coverImage] : undefined,
+      image: [
+        isInvalidOrLogoImage(article.coverImage)
+          ? resolveThematicCoverForProject(article.relatedProjectId, article.title).url
+          : article.coverImage
+      ],
       datePublished: article.publishedAt,
       dateModified: article.updatedAt || article.publishedAt,
       author: { '@type': 'Organization', name: article.author?.name || 'Portal Vip Brasil' },
@@ -541,7 +1128,9 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
     socialRepurpose: {
       instagram: {
         caption: social?.instagram?.caption || article.excerpt,
-        hashtags: social?.instagram?.hashtags || [],
+        hashtags: (social?.instagram?.hashtags && social.instagram.hashtags.length > 0)
+          ? social.instagram.hashtags
+          : (PROJECT_NICHE_HASHTAGS[article.relatedProjectId] || ['#PortalVipBrasil', '#Tecnologia', '#Marketing']),
         utmUrl: social?.instagram?.utmUrl || canonicalUrl
       },
       facebook: {
@@ -590,7 +1179,23 @@ export async function listBlogArticles(filters: {
   try {
     const db = firestore();
     const snap = await db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').limit(500).get();
-    let items: StoredBlogArticle[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    let items: StoredBlogArticle[] = snap.docs.map((d) => {
+      const data = d.data() as any;
+      const article: StoredBlogArticle = { id: d.id, ...data };
+      if (isInvalidOrLogoImage(article.coverImage)) {
+        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title);
+        article.coverImage = thematic.url;
+        article.coverAlt = article.coverAlt || thematic.alt;
+        try {
+          db.collection(COLLECTIONS.blogArticles).doc(d.id).set({
+            coverImage: thematic.url,
+            coverAlt: article.coverAlt,
+            updatedAt: nowIso()
+          }, { merge: true }).catch(() => {});
+        } catch {}
+      }
+      return article;
+    });
 
     if (filters.status && filters.status !== 'all') {
       items = items.filter((article) => article.status === filters.status);
@@ -650,7 +1255,22 @@ export async function getBlogArticleBySlug(slug: string): Promise<StoredBlogArti
       .get();
 
     const publishedDoc = snap.docs.find((doc) => String((doc.data() as any)?.status || '') === 'published');
-    if (publishedDoc) return { id: publishedDoc.id, ...(publishedDoc.data() as any) };
+    if (publishedDoc) {
+      const article: StoredBlogArticle = { id: publishedDoc.id, ...(publishedDoc.data() as any) };
+      if (isInvalidOrLogoImage(article.coverImage)) {
+        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title);
+        article.coverImage = thematic.url;
+        article.coverAlt = article.coverAlt || thematic.alt;
+        try {
+          firestore().collection(COLLECTIONS.blogArticles).doc(publishedDoc.id).set({
+            coverImage: thematic.url,
+            coverAlt: article.coverAlt,
+            updatedAt: nowIso()
+          }, { merge: true }).catch(() => {});
+        } catch {}
+      }
+      return article;
+    }
   } catch (err) {
     console.warn('[BlogEngine] Erro ao buscar artigo por slug no Firestore:', err);
   }
@@ -987,10 +1607,15 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
 
   // URLs com UTM tracking para redes sociais
   const articlePublicUrl = config.appUrl.replace(/\/$/, '') + '/blog/' + finalSlug;
+  const nicheHashtags = PROJECT_NICHE_HASHTAGS[project.id] || ['#PortalVipBrasil', '#MarketingDigital', '#SEO'];
+  const hashtags = (Array.isArray(parsed.socialCampaign?.instagram?.hashtags) && parsed.socialCampaign.instagram.hashtags.length > 0)
+    ? Array.from(new Set([...parsed.socialCampaign.instagram.hashtags, ...nicheHashtags]))
+    : nicheHashtags;
+
   const socialCampaign: SocialRepurposePack = {
     instagram: {
       caption: parsed.socialCampaign?.instagram?.caption || articleExcerpt,
-      hashtags: Array.isArray(parsed.socialCampaign?.instagram?.hashtags) ? parsed.socialCampaign.instagram.hashtags : ['#PortalVipBrasil'],
+      hashtags,
       utmUrl: `${articlePublicUrl}?utm_source=instagram&utm_medium=social&utm_campaign=daily_blog_seo`
     },
     facebook: {
@@ -1007,7 +1632,11 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     }
   };
 
-  let coverImage = project.bannerUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl;
+  const thematicCover = resolveThematicCoverForProject(project.id, parsed?.title || topic);
+  let coverImage = project.bannerUrl && !isInvalidOrLogoImage(project.bannerUrl)
+    ? project.bannerUrl
+    : thematicCover.url;
+  let coverAlt = parsed.coverAlt || thematicCover.alt;
   let coverImageStoragePath: string | undefined;
   let coverImageGenerated = false;
   try {
@@ -1024,18 +1653,24 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
         website: project.websiteUrl,
         websiteUrl: project.websiteUrl
       },
-      theme: 'Imagem editorial original para o artigo "' + String(parsed.title || topic) + '". Contexto: ' + project.name + '. Palavra-chave principal: ' + primaryKeyword + '. Sem logotipos de terceiros e sem texto longo na arte.',
-      style: 'Fotografia editorial premium, realista, limpa, relevante ao tema e apropriada para Google Discover e redes sociais',
+      theme: 'Imagem editorial temática original para o artigo "' + String(parsed.title || topic) + '". Contexto: ' + project.name + '. Palavra-chave principal: ' + primaryKeyword + '. Sem logotipos, sem marcas d\'água, sem texto sobre a foto. Fotografia de altíssima qualidade de acordo com o nicho.',
+      style: 'Fotografia editorial premium, realista, rica em detalhes, iluminação cinematográfica, relevante ao nicho do artigo e sem logotipos',
       aspectRatio: '16:9',
       resolution: '1K'
     });
-    if (generatedCover?.imageUrl) {
+    if (generatedCover?.imageUrl && !isInvalidOrLogoImage(generatedCover.imageUrl)) {
       coverImage = generatedCover.imageUrl;
       coverImageStoragePath = generatedCover.storagePath;
       coverImageGenerated = true;
     }
   } catch (coverError) {
-    console.warn('[BlogEngine] Capa IA indisponível para ' + project.id + '; usando banner oficial como fallback seguro.', coverError);
+    console.warn('[BlogEngine] Capa IA indisponível para ' + project.id + '; usando fotografia temática curada do nicho.', coverError);
+  }
+
+  // Garantia absoluta contra uso de logos ou placeholders
+  if (isInvalidOrLogoImage(coverImage)) {
+    coverImage = thematicCover.url;
+    coverAlt = thematicCover.alt;
   }
 
   const relatedInternalLinks: Array<{ label: string; url: string }> = [
@@ -1082,7 +1717,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     readTime: parsed.readTime || '5 min de leitura',
     featured: false,
     coverImage,
-    coverAlt: safeString(parsed.coverAlt || 'Imagem editorial sobre ' + primaryKeyword + ' no artigo ' + String(parsed.title || topic), 240),
+    coverAlt: safeString(coverAlt || parsed.coverAlt || 'Imagem editorial temática sobre ' + primaryKeyword, 240),
     coverImageStoragePath,
     coverImageGenerated,
     sections: articleSections,
@@ -1271,4 +1906,34 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
     skippedCount,
     failedCount
   };
+}
+
+/**
+ * Varre todos os artigos armazenados no Firestore e substitui permanentemente capas inválidas,
+ * logos ou URLs antigas pelas novas fotografias temáticas de alta resolução.
+ */
+export async function healAllStoredBlogCovers(): Promise<{ healedCount: number; details: string[] }> {
+  const details: string[] = [];
+  let healedCount = 0;
+  try {
+    const db = firestore();
+    const snap = await db.collection(COLLECTIONS.blogArticles).get();
+    for (const doc of snap.docs) {
+      const data = doc.data() as any;
+      if (isInvalidOrLogoImage(data?.coverImage)) {
+        const thematic = resolveThematicCoverForProject(data?.relatedProjectId, data?.title);
+        await db.collection(COLLECTIONS.blogArticles).doc(doc.id).set({
+          coverImage: thematic.url,
+          coverAlt: data?.coverAlt || thematic.alt,
+          updatedAt: nowIso()
+        }, { merge: true });
+        healedCount++;
+        details.push(`Artigo "${data?.title || doc.id}" atualizado com capa temática.`);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[BlogEngine] Erro ao executar healAllStoredBlogCovers:', err);
+    details.push(`Erro: ${err?.message || String(err)}`);
+  }
+  return { healedCount, details };
 }

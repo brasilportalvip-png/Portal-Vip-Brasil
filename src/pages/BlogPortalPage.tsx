@@ -42,6 +42,7 @@ import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProj
 import { apiRequest } from '../lib/api';
 import { trackAnalyticsEvent } from '../lib/firebase';
 import type { PortalBlogArticle, BlogArticleSection, BlogFaqItem } from '../types/blog';
+import { resolveArticleCover, resolveArticleCoverAlt, getThematicCover } from '../utils/thematicCovers';
 
 interface BlogPortalPageProps {
   onNavigate: (tab: string) => void;
@@ -83,10 +84,15 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
     setLoading(true);
     try {
       const data = await apiRequest<{ articles: PortalBlogArticle[]; total: number }>('/api/portal/blog/articles');
-      if (Array.isArray(data?.articles)) {
-        setArticles(data.articles);
+      if (Array.isArray(data?.articles) && data.articles.length > 0) {
+        const sanitized = data.articles.map((art) => ({
+          ...art,
+          coverImage: resolveArticleCover(art.coverImage, art.relatedProjectId, art.title),
+          coverImageAlt: resolveArticleCoverAlt(art.coverImageAlt, art.relatedProjectId, art.title)
+        }));
+        setArticles(sanitized);
       } else {
-        setArticles([]);
+        setArticles(import.meta.env.DEV ? convertLocalArticles(BLOG_ARTICLES) : []);
       }
     } catch (err) {
       console.warn('[BlogPortal] Erro ao buscar artigos do backend:', err);
@@ -110,7 +116,12 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
   }, []);
 
   const openArticle = (article: PortalBlogArticle, updateHistory = true) => {
-    setReadingArticle(article);
+    const sanitized: PortalBlogArticle = {
+      ...article,
+      coverImage: resolveArticleCover(article.coverImage, article.relatedProjectId, article.title),
+      coverImageAlt: resolveArticleCoverAlt(article.coverImageAlt, article.relatedProjectId, article.title)
+    };
+    setReadingArticle(sanitized);
     if (updateHistory) {
       const target = `/blog/${encodeURIComponent(article.slug)}`;
       if (window.location.pathname !== target) window.history.pushState({ tab: 'blog', slug: article.slug }, '', target);
@@ -134,12 +145,24 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       const slug = decodeURIComponent(match[1]);
       const found = articles.find((article) => article.slug === slug);
       if (found) {
-        if (!cancelled) setReadingArticle(found);
+        if (!cancelled) {
+          setReadingArticle({
+            ...found,
+            coverImage: resolveArticleCover(found.coverImage, found.relatedProjectId, found.title),
+            coverImageAlt: resolveArticleCoverAlt(found.coverImageAlt, found.relatedProjectId, found.title)
+          });
+        }
         return;
       }
       try {
         const data = await apiRequest<{ article: PortalBlogArticle }>(`/api/portal/blog/articles/${encodeURIComponent(slug)}`);
-        if (!cancelled && data?.article) setReadingArticle(data.article);
+        if (!cancelled && data?.article) {
+          setReadingArticle({
+            ...data.article,
+            coverImage: resolveArticleCover(data.article.coverImage, data.article.relatedProjectId, data.article.title),
+            coverImageAlt: resolveArticleCoverAlt(data.article.coverImageAlt, data.article.relatedProjectId, data.article.title)
+          });
+        }
       } catch (error) {
         if (!cancelled) {
           console.warn('[BlogPortal] Artigo do deep-link nao foi encontrado:', error);
@@ -165,8 +188,8 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       category: item.category,
       targetAudience: 'Público interessado no projeto',
       searchIntent: 'informational',
-      coverImage: item.coverImage,
-      coverImageAlt: item.title,
+      coverImage: resolveArticleCover(item.coverImage, item.relatedProjectId, item.title),
+      coverImageAlt: resolveArticleCoverAlt(item.title, item.relatedProjectId, item.title),
       readingTimeMinutes: parseInt(item.readTime) || 5,
       readTime: item.readTime,
       contentMarkdown: item.content,
@@ -770,10 +793,13 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                     {/* Cover Image */}
                     <div className="relative w-full h-48 bg-slate-950 overflow-hidden">
                       <img
-                        src={article.coverImage}
-                        alt={article.coverImageAlt || article.title}
+                        src={resolveArticleCover(article.coverImage, article.relatedProjectId, article.title)}
+                        alt={resolveArticleCoverAlt(article.coverImageAlt || article.title, article.relatedProjectId, article.title)}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.src = getThematicCover(article.relatedProjectId, article.title).url;
+                        }}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
 
@@ -1011,9 +1037,12 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
             {/* Cover Image in Modal */}
             <div className="w-full h-64 sm:h-88 rounded-2xl overflow-hidden mb-8 bg-slate-950 shadow-xl">
               <img
-                src={readingArticle.coverImage}
-                alt={readingArticle.coverImageAlt || readingArticle.title}
+                src={resolveArticleCover(readingArticle.coverImage, readingArticle.relatedProjectId, readingArticle.title)}
+                alt={resolveArticleCoverAlt(readingArticle.coverImageAlt || readingArticle.title, readingArticle.relatedProjectId, readingArticle.title)}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.src = getThematicCover(readingArticle.relatedProjectId, readingArticle.title).url;
+                }}
               />
             </div>
 

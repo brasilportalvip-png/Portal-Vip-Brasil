@@ -43,7 +43,7 @@ export const USER_PORTFOLIO_PROJECTS: PortalProject[] = [
     appTitle: 'Magia das Crenças App (Play Store)',
     hasApp: true,
     logoUrl: '/icons/logo.png',
-    bannerUrl: '/icons/icon-512.png',
+    bannerUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80',
     tagline: 'Desperte seu poder interior e a força das suas convicções.',
     description: 'Portal oficial e aplicativo devocional com orações, rituais sagrados, mensagens diárias, artigos holísticos e orientação espiritual para transformação e prosperidade.',
     highlights: [
@@ -73,7 +73,7 @@ export const USER_PORTFOLIO_PROJECTS: PortalProject[] = [
     appTitle: 'Exu Responde App (Play Store)',
     hasApp: true,
     logoUrl: '/icons/logo.png',
-    bannerUrl: '/icons/icon-512.png',
+    bannerUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=80',
     tagline: 'Respostas diretas, firmeza nos caminhos e sabedoria ancestral.',
     description: 'Ambiente oracular dedicado aos guardiões, tiragens de conselhos imediatos, direcionamento para tomada de decisão e aplicativo interativo na Play Store.',
     highlights: [
@@ -103,7 +103,7 @@ export const USER_PORTFOLIO_PROJECTS: PortalProject[] = [
     appTitle: 'Maria Padilha 7 Encruzilhadas App (Play Store)',
     hasApp: true,
     logoUrl: '/icons/logo.png',
-    bannerUrl: '/icons/icon-512.png',
+    bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
     tagline: 'O poder do amor, da autoestima magnética e da vitória sentimental.',
     description: 'Plataforma oficial e aplicativo para aconselhamento afetivo, orações de poder para amar e ser amada, feitiços de proteção e conexão com a Rainha das 7 Encruzilhadas.',
     highlights: [
@@ -133,7 +133,7 @@ export const USER_PORTFOLIO_PROJECTS: PortalProject[] = [
     appTitle: 'Manual Católico App (Play Store)',
     hasApp: true,
     logoUrl: '/icons/logo.png',
-    bannerUrl: '/icons/icon-512.png',
+    bannerUrl: 'https://images.unsplash.com/photo-1548625361-16eb4318c4fc?auto=format&fit=crop&w=1200&q=80',
     tagline: 'Seu companheiro diário de oração, liturgia e doutrina católica.',
     description: 'Compêndio de orações tradicionais da Santa Igreja, santo do dia, novenas milagrosas, terço rezado, catecismo e aplicativo para vivência cristã diária.',
     highlights: [
@@ -161,7 +161,7 @@ export const USER_PORTFOLIO_PROJECTS: PortalProject[] = [
     websiteUrl: 'https://frocia2.vercel.app/',
     hasApp: false,
     logoUrl: '/icons/logo.png',
-    bannerUrl: '/icons/icon-512.png',
+    bannerUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
     tagline: 'A evolução da inteligência artificial para marketing e produção de conteúdo.',
     description: 'Sistema avançado de criação com IA generativa, redação de artigos de alta autoridade, copys magnéticas para vendas e automação de canais digitais.',
     highlights: [
@@ -189,7 +189,7 @@ export const USER_PORTFOLIO_PROJECTS: PortalProject[] = [
     websiteUrl: 'https://oraculos-ts.vercel.app/',
     hasApp: false,
     logoUrl: '/icons/logo.png',
-    bannerUrl: '/icons/icon-512.png',
+    bannerUrl: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
     tagline: 'O universo dos oráculos decodificado com tecnologia de ponta.',
     description: 'Plataforma completa de tiragens de Tarot de Marselha, Baralho Cigano, Runas Nórdicas e I Ching com interpretações profundas geradas em tempo real.',
     highlights: [
@@ -217,7 +217,7 @@ export const USER_PORTFOLIO_PROJECTS: PortalProject[] = [
     websiteUrl: 'https://froc-ia-marketing-engine.vercel.app/',
     hasApp: false,
     logoUrl: '/icons/logo.png',
-    bannerUrl: '/icons/icon-512.png',
+    bannerUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
     tagline: 'O ecossistema completo para dominar as redes sociais e o Google.',
     description: 'Motor central de marketing para criação automática de vídeos, imagens, artigos de blog e agendamento de publicações com proteção contínua anti-quedas.',
     highlights: [
