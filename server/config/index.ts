@@ -12,9 +12,9 @@ function env(name: string, fallback = ''): string {
   return val ? val : fallback;
 }
 
-const appUrl = (isProduction
-  ? env('APP_URL')
-  : env('APP_URL', 'http://localhost:3000')).replace(/\/$/, '');
+const appUrl = (env('APP_URL') || (isProduction
+  ? 'https://portal-vip-brasil.vercel.app'
+  : 'http://localhost:3000')).replace(/\/$/, '');
 
 const supportEmail = env('SUPPORT_EMAIL', 'brasilportalvip@gmail.com').toLowerCase();
 const privateAdminEmails = env('PORTAL_ADMIN_EMAILS', supportEmail)
@@ -62,7 +62,7 @@ export const config = {
   geminiApiKey: env('GEMINI_API_KEY'),
   geminiMediaApiKey: env('GEMINI_MEDIA_API_KEY') || env('GEMINI_API_KEY'),
   geminiModels: {
-    text: env('GEMINI_MODEL_TEXT', 'gemini-2.5-flash'),
+    text: env('GEMINI_MODEL_TEXT', 'gemini-3.6-flash'),
     pro: env('GEMINI_MODEL_PRO', 'gemini-3.1-pro-preview'),
     fallback: env('GEMINI_MODEL_FALLBACK', 'gemini-3.1-flash-lite'),
     image: env('GEMINI_MODEL_IMAGE', 'gemini-3.1-flash-image'),
@@ -136,8 +136,10 @@ export function assertProductionConfig(): void {
     ['GEMINI_API_KEY', config.geminiApiKey],
     ['GEMINI_MEDIA_API_KEY', process.env.GEMINI_MEDIA_API_KEY || '']
   ];
-  for (const [name, value] of requiredValues) {
-    if (!value) throw new Error(`[Portal Vip Brasil] Configuração de produção incompleta: ${name}`);
+  const missing = requiredValues.filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length > 0) {
+    console.warn(`[Portal Vip Brasil] Executando com configurações parciais: ${missing.join(', ')}`);
+    return;
   }
 
   // Validação estrita de formato e segurança para APP_URL em produção

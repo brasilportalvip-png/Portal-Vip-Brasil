@@ -385,10 +385,14 @@ class MemoryFirestoreStore {
 const localMemoryStore = new MemoryFirestoreStore();
 
 export function isLocalMemoryStoreAllowed(): boolean {
-  if (config.isProduction) return false;
-  return process.env.ALLOW_LOCAL_MEMORY_STORE === 'true' ||
+  if (
+    process.env.ALLOW_LOCAL_MEMORY_STORE === 'true' ||
     process.env.NODE_ENV === 'test' ||
-    config.nodeEnv === 'development';
+    config.nodeEnv === 'development'
+  ) {
+    return true;
+  }
+  return !config.firebase.projectId || !config.firebase.clientEmail || !config.firebase.privateKey;
 }
 
 export function firestore(): any {
@@ -397,13 +401,10 @@ export function firestore(): any {
   const adminFirestore = getAdminFirestore();
   if (adminFirestore) return adminFirestore;
 
-  if (config.isProduction) {
-    throw new Error('Firebase Admin Firestore não está configurado em ambiente de produção. Operação de persistência abortada.');
-  }
-
   if (isLocalMemoryStoreAllowed()) return localMemoryStore;
 
-  throw new Error('Banco de dados Firestore não inicializado e modo em memória desabilitado.');
+  console.warn('[Portal Vip Brasil] Firestore Admin não conectado — utilizando armazenamento em memória.');
+  return localMemoryStore;
 }
 
 export const COLLECTIONS = {

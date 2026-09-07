@@ -351,10 +351,10 @@ async function generateRaw(data: {
     return { text, modelUsed: 'test-model', attempts: ['test-model'] };
   }
 
-  // Cascata multi-modelo oficial Froc AI (Gemini 2.5 Flash / 3.1 Pro / 3.1 Flash-Lite / 2.5 Pro)
+  // Cascata multi-modelo oficial Froc AI (Gemini 3.6 Flash / 3.1 Pro / 3.1 Flash-Lite)
   const prioritized = data.useProModel
-    ? [config.geminiModels.pro, 'gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-3.1-flash-lite', 'gemini-2.5-flash']
-    : [config.geminiModels.text, 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview', 'gemini-2.5-pro'];
+    ? [config.geminiModels.pro, 'gemini-3.1-pro-preview', 'gemini-3.1-flash-lite', 'gemini-3.6-flash']
+    : [config.geminiModels.text, 'gemini-3.6-flash', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview'];
 
   const models = Array.from(new Set(prioritized.filter(Boolean)));
   const attempts: string[] = [];

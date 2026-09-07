@@ -12,8 +12,20 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath, { maxAge: '1h', etag: true }));
-    app.get('*', (_req, res) => res.sendFile(path.join(distPath, 'index.html')));
+    app.use(express.static(distPath, {
+      maxAge: '1h',
+      etag: true,
+      index: false,
+      setHeaders(res, filePath) {
+        if (filePath.endsWith('.cjs') || filePath.endsWith('.map')) {
+          res.status(404);
+        }
+      }
+    }));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api/')) return next();
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
   }
 
   app.listen(config.port, config.host, () => {
