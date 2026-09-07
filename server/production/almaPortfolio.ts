@@ -40,8 +40,8 @@ export interface PortalProjectItem {
 }
 
 export const PORTAL_VIP_OFFICIAL_ASSETS = {
-  logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-  bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+  logoUrl: '/icons/logo.png',
+  bannerUrl: '/icons/icon-512.png',
   brandName: 'Portal Vip Brasil',
   officialUrl: 'https://portal-vip-brasil.vercel.app'
 };
@@ -57,8 +57,8 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.magiadascrencas.app',
     appTitle: 'Magia das Crenças App (Play Store)',
     hasApp: true,
-    logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-    bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+    logoUrl: '/icons/logo.png',
+    bannerUrl: '/icons/icon-512.png',
     tagline: 'Desperte seu poder interior e a força das suas convicções.',
     description: 'Portal oficial e aplicativo devocional com orações, rituais sagrados, mensagens diárias, artigos holísticos e orientação espiritual para transformação e prosperidade.',
     highlights: [
@@ -86,8 +86,8 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.portalvipbrasil.exuresponde',
     appTitle: 'Exu Responde App (Play Store)',
     hasApp: true,
-    logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-    bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+    logoUrl: '/icons/logo.png',
+    bannerUrl: '/icons/icon-512.png',
     tagline: 'Respostas diretas, firmeza nos caminhos e sabedoria ancestral.',
     description: 'Ambiente oracular dedicado aos guardiões, tiragens de conselhos imediatos, direcionamento para tomada de decisão e aplicativo interativo na Play Store.',
     highlights: [
@@ -115,8 +115,8 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.portalvipbrasil.mariapadilharainha',
     appTitle: 'Maria Padilha 7 Encruzilhadas App (Play Store)',
     hasApp: true,
-    logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-    bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+    logoUrl: '/icons/logo.png',
+    bannerUrl: '/icons/icon-512.png',
     tagline: 'O poder do amor, da autoestima magnética e da vitória sentimental.',
     description: 'Plataforma oficial e aplicativo para aconselhamento afetivo, orações de poder para amar e ser amada, feitiços de proteção e conexão com a Rainha das 7 Encruzilhadas.',
     highlights: [
@@ -144,8 +144,8 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=br.com.manualcatolico.app',
     appTitle: 'Manual Católico App (Play Store)',
     hasApp: true,
-    logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-    bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+    logoUrl: '/icons/logo.png',
+    bannerUrl: '/icons/icon-512.png',
     tagline: 'Seu companheiro diário de oração, liturgia e doutrina católica.',
     description: 'Compêndio de orações tradicionais da Santa Igreja, santo do dia, novenas milagrosas, terço rezado, catecismo e aplicativo para vivência cristã diária.',
     highlights: [
@@ -171,8 +171,8 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     segment: 'Geração de Conteúdo & Marketing Automatizado',
     websiteUrl: 'https://frocia2.vercel.app/',
     hasApp: false,
-    logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-    bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+    logoUrl: '/icons/logo.png',
+    bannerUrl: '/icons/icon-512.png',
     tagline: 'A evolução da inteligência artificial para marketing e produção de conteúdo.',
     description: 'Sistema avançado de criação com IA generativa, redação de artigos de alta autoridade, copys magnéticas para vendas e automação de canais digitais.',
     highlights: [
@@ -198,8 +198,8 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     segment: 'Motor Oracular TypeScript de Alta Precisão',
     websiteUrl: 'https://oraculos-ts.vercel.app/',
     hasApp: false,
-    logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-    bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+    logoUrl: '/icons/logo.png',
+    bannerUrl: '/icons/icon-512.png',
     tagline: 'O universo dos oráculos decodificado com tecnologia de ponta.',
     description: 'Plataforma completa de tiragens de Tarot de Marselha, Baralho Cigano, Runas Nórdicas e I Ching com interpretações profundas geradas em tempo real.',
     highlights: [
@@ -225,8 +225,8 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     segment: 'Autopilot, Social Hub & Campanhas',
     websiteUrl: 'https://froc-ia-marketing-engine.vercel.app/',
     hasApp: false,
-    logoUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-    bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+    logoUrl: '/icons/logo.png',
+    bannerUrl: '/icons/icon-512.png',
     tagline: 'O ecossistema completo para dominar as redes sociais e o Google.',
     description: 'Motor central de marketing para criação automática de vídeos, imagens, artigos de blog e agendamento de publicações com proteção contínua anti-quedas.',
     highlights: [

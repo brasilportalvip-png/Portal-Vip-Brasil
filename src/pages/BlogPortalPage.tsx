@@ -404,11 +404,14 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
               setSearchQuery('');
             }}
           >
-            <div className="w-11 h-11 rounded-xl bg-slate-900 border border-cyan-500/30 p-1 flex items-center justify-center shadow-lg shadow-cyan-500/10">
+            <div className="w-11 h-11 rounded-xl bg-slate-900 border border-amber-500/30 p-1 flex items-center justify-center shadow-lg shadow-amber-500/10">
               <img
                 src={PORTAL_VIP_BRAND.logoUrl}
                 alt="Portal Vip Brasil"
                 className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.src = '/icons/icon-512.png';
+                }}
               />
             </div>
             <div>
@@ -1535,6 +1538,9 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                   src={PORTAL_VIP_BRAND.logoUrl}
                   alt="Portal Vip Brasil"
                   className="w-8 h-8 object-contain"
+                  onError={(e) => {
+                    e.currentTarget.src = '/icons/icon-512.png';
+                  }}
                 />
                 <span className="text-base font-bold text-white">Portal Vip Brasil</span>
               </div>

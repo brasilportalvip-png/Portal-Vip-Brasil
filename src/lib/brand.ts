@@ -3,8 +3,10 @@ export const BRAND = {
   tagline: 'Blog Oficial, Vitrine de Apps & Central de Marketing',
   concept: 'Portal de Conteúdo, Espiritualidade, Tecnologia e Vitrine de Aplicativos',
   description: 'Artigos diários, orações, sabedoria ancestral, inteligência artificial e a vitrine oficial de sites e aplicativos da Google Play Store.',
-  mascotUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
-  bannerUrl: 'https://portal-vip-brasil.vercel.app/icons/icon-512.png',
+  mascotUrl: '/icons/logo.png',
+  bannerUrl: '/icons/logo.png',
+  logoUrl: '/icons/logo.png',
+  remoteLogoUrl: '/icons/logo.png',
   officialUrl: 'https://portal-vip-brasil.vercel.app',
   colors: {
     primaryBg: '#070B14',

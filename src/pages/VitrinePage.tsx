@@ -98,15 +98,18 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
       <header className="sticky top-0 z-40 w-full bg-[#070B14]/90 backdrop-blur-xl border-b border-white/[0.08]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.('home')}>
-            <div className="w-9 h-9 rounded-xl bg-slate-900 border border-cyan-500/30 p-1 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-slate-900 border border-amber-500/30 p-1 flex items-center justify-center">
               <img
                 src={PORTAL_VIP_BRAND.logoUrl}
                 alt="Portal Vip Brasil"
                 className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.src = '/icons/icon-512.png';
+                }}
               />
             </div>
             <span className="text-base font-black text-white">
-              Portal Vip <span className="text-cyan-400">Brasil</span>
+              Portal Vip <span className="text-amber-400">Brasil</span>
             </span>
           </div>
 
@@ -141,11 +144,14 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
           <div className="flex flex-col md:flex-row items-center justify-between gap-8">
             <div className="flex items-center gap-5 text-left">
-              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-600/20 border border-cyan-500/30 p-2 shadow-2xl shadow-cyan-500/10 flex-shrink-0 flex items-center justify-center">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-gradient-to-br from-amber-500/20 to-yellow-600/20 border border-amber-500/30 p-2 shadow-2xl shadow-amber-500/10 flex-shrink-0 flex items-center justify-center">
                 <img
                   src={PORTAL_VIP_BRAND.logoUrl}
                   alt="Portal Vip Brasil Logo"
                   className="w-full h-full object-contain"
+                  onError={(e) => {
+                    e.currentTarget.src = '/icons/icon-512.png';
+                  }}
                 />
               </div>
               <div>

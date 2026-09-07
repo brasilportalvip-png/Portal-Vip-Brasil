@@ -68,7 +68,7 @@ export function portalProjectToCompany(project: ApiPortalProject): Company {
 export function portalProjectToDisplay(project: ApiPortalProject & { website?: string; coverUrl?: string; niche?: string }): PortalProject {
   const websiteUrl = project.websiteUrl || project.website || '';
   const playStoreUrl = project.playStoreUrl || undefined;
-  const logoUrl = project.logoUrl || 'https://portal-vip-brasil.vercel.app/icons/icon-512.png';
+  const logoUrl = project.logoUrl || '/icons/logo.png';
   return {
     id: project.id,
     name: project.name,
