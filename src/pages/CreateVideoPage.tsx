@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import type { Company, VideoJob } from '../types';
 import { apiRequest } from '../lib/api';
+import { NicheVideoCatalogSection } from '../components/NicheVideoCatalogSection';
+import type { NicheVideoTemplate } from '../lib/nicheVideoCatalog';
 
 interface CreateVideoPageProps {
   selectedCompany: Company | null;
@@ -58,6 +60,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
   const [copied, setCopied] = useState(false);
   const [scriptError, setScriptError] = useState('');
   const [generatedScript, setGeneratedScript] = useState<{
+    scriptTitle?: string;
     hook: string;
     scenes: Array<{
       sceneNumber: number;
@@ -69,6 +72,9 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
     callToAction: string;
     suggestedAudioTrack: string;
     caption: string;
+    hashtags?: string[];
+    nicheId?: string;
+    nicheName?: string;
   } | null>(null);
 
   // Reset video script when company changes (E05)

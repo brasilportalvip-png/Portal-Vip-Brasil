@@ -25,6 +25,7 @@ import {
 import multer from 'multer';
 
 import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso, probeDatabaseHealth, queryData, slugify, writeAdminLog } from './store.js';
+import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './videoCatalog.js';
 
 const router = Router();
 
@@ -507,6 +508,10 @@ router.post('/ai/generate-video', requireAuth, asyncRoute(async (req: Authentica
     status: job.status,
     creditsReserved: job.creditsReserved
   });
+}));
+
+router.get('/ai/niche-video-templates', asyncRoute(async (_req, res) => {
+  res.json({ templates: Object.values(SERVER_NICHE_VIDEO_TEMPLATES) });
 }));
 
 router.get('/ai/video-jobs', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
