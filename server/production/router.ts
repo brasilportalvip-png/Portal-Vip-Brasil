@@ -212,7 +212,7 @@ router.get('/health', asyncRoute(async (_req, res) => {
     appUrl: config.appUrl,
     deployment: {
       platform: process.env.VERCEL ? 'vercel' : 'node',
-      release: 'portal-final-r5c-20260904'
+      release: String(process.env.VERCEL_GIT_COMMIT_SHA || process.env.RELEASE_TAG || 'development').trim()
     },
     automation: {
       cronSecretConfigured: Boolean(config.cronSecret),

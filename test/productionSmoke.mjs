@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 const base = String(process.env.PRODUCTION_URL || 'https://portal-vip-brasil.vercel.app').replace(/\/$/, '');
-const expectedRelease = String(process.env.EXPECTED_RELEASE || 'portal-final-r5c-20260904').trim();
+const expectedRelease = String(process.env.EXPECTED_RELEASE || '').trim();
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function request(path, options = {}) {
@@ -39,8 +39,9 @@ async function waitForExpectedDeployment() {
     try {
       latest = await json('/api/health');
       const deployedRelease = String(latest?.deployment?.release || '');
-      console.log(`[smoke] tentativa ${attempt}/36 — release=${deployedRelease || 'anterior'} esperado=${expectedRelease}`);
-      if (deployedRelease === expectedRelease) return latest;
+      console.log(`[smoke] tentativa ${attempt}/36 — release=${deployedRelease || 'anterior'} esperado=${expectedRelease || '(ativo)'}`);
+      const match = expectedRelease ? deployedRelease === expectedRelease : Boolean(deployedRelease);
+      if (match) return latest;
     } catch (error) {
       console.log(`[smoke] tentativa ${attempt}/36 ainda não pronta: ${error instanceof Error ? error.message : String(error)}`);
     }

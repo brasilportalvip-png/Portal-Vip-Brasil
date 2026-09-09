@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "test": "cross-env NODE_ENV=test tsx --test test/*.test.ts",
+    "check": "npm run typecheck && npm test && npm run build",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",

@@ -131,7 +131,7 @@ test('Comitê final: SSR dinâmico, biblioteca de marca e execução administrat
   const router = source('server/production/router.ts');
   assert.match(router, /router\.post\('\/admin\/scheduler\/run-now'/);
   assert.match(router, /processSchedulerTick\(\{ trigger: 'authorized_api' \}\)/);
-  assert.match(router, /portal-final-r5c-20260904/);
+  assert.match(router, /VERCEL_GIT_COMMIT_SHA/);
   assert.match(router, /!project \|\| project\.active === false/);
 
   const admin = source('src/pages/AdminPage.tsx');
@@ -146,5 +146,5 @@ test('Comitê final: CI mantém quality gate e acrescenta smoke de produção p�
   assert.match(ci, /npm run check/);
   assert.match(ci, /smoke-production:/);
   assert.match(ci, /test\/productionSmoke\.mjs/);
-  assert.match(ci, /EXPECTED_RELEASE: portal-final-r5c-20260904/);
+  assert.match(ci, /EXPECTED_RELEASE:\s*\${{\s*github\.sha\s*}}/);
 });

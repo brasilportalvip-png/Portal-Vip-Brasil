@@ -760,7 +760,6 @@ export function isInvalidOrLogoImage(url: string | undefined | null): boolean {
     trimmed.includes('cropped-507d5ca1') ||
     trimmed.includes('chatgpt-image-19-de-mai') ||
     trimmed.includes('wp-content/uploads') ||
-    trimmed.includes('portalvipbrasil.com.br') ||
     trimmed.includes('placeholder')
   ) {
     return true;

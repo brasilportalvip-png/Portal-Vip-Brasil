@@ -56,6 +56,6 @@ jobs:
 
       - name: Verify deployed production commit and public runtime
         env:
-          EXPECTED_RELEASE: portal-final-r5c-20260904
+          EXPECTED_RELEASE: ${{ github.sha }}
           PRODUCTION_URL: https://portal-vip-brasil.vercel.app
         run: node test/productionSmoke.mjs
