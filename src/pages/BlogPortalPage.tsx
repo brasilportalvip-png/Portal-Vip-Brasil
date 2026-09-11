@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Layers,
   ChevronRight,
+  ChevronLeft,
   ExternalLink,
   MessageSquare,
   Bookmark,
@@ -79,31 +80,142 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
   const [isTriggeringDaily, setIsTriggeringDaily] = useState(false);
   const [dailyMsg, setDailyMsg] = useState<string | null>(null);
 
-  // Load articles from backend API
-  const fetchArticles = async () => {
+  // Pagination state (50 articles per page)
+  const pageSize = 50;
+  const initialPage = useMemo(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const p = parseInt(params.get('page') || '1', 10);
+      return Number.isFinite(p) && p > 0 ? p : 1;
+    } catch {
+      return 1;
+    }
+  }, []);
+  const [currentPage, setCurrentPage] = useState<number>(initialPage);
+  const [totalArticles, setTotalArticles] = useState<number>(0);
+  const articlesListRef = React.useRef<HTMLDivElement>(null);
+
+  const updatePageUrl = (page: number) => {
+    try {
+      const url = new URL(window.location.href);
+      if (page > 1) {
+        url.searchParams.set('page', String(page));
+      } else {
+        url.searchParams.delete('page');
+      }
+      window.history.pushState({ ...window.history.state, page }, '', url.pathname + url.search);
+    } catch {}
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const p = parseInt(params.get('page') || '1', 10);
+        setCurrentPage(Number.isFinite(p) && p > 0 ? p : 1);
+      } catch {}
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Automatically reset to page 1 if search or filters change
+  const prevFilterState = React.useRef({ selectedCategory, selectedProjectId, searchQuery });
+  useEffect(() => {
+    const prev = prevFilterState.current;
+    if (
+      prev.selectedCategory !== selectedCategory ||
+      prev.selectedProjectId !== selectedProjectId ||
+      prev.searchQuery !== searchQuery
+    ) {
+      prevFilterState.current = { selectedCategory, selectedProjectId, searchQuery };
+      if (currentPage !== 1) {
+        setCurrentPage(1);
+        updatePageUrl(1);
+      }
+    }
+  }, [selectedCategory, selectedProjectId, searchQuery, currentPage]);
+
+  // Load articles from backend API with real pagination (50 per page)
+  const fetchArticles = async (
+    page: number = currentPage,
+    cat: string = selectedCategory,
+    proj: string = selectedProjectId,
+    q: string = searchQuery
+  ) => {
     setLoading(true);
     try {
-      const data = await apiRequest<{ articles: PortalBlogArticle[]; total: number }>('/api/portal/blog/articles');
-      if (Array.isArray(data?.articles) && data.articles.length > 0) {
+      const params = new URLSearchParams();
+      params.set('limit', String(pageSize));
+      params.set('offset', String((page - 1) * pageSize));
+      if (cat && cat !== 'Todos') params.set('category', cat);
+      if (proj && proj !== 'todos') params.set('projectId', proj);
+      if (q && q.trim()) params.set('q', q.trim());
+
+      const data = await apiRequest<{
+        articles: PortalBlogArticle[];
+        total: number;
+        limit?: number;
+        offset?: number;
+        page?: number;
+        totalPages?: number;
+      }>(`/api/portal/blog/articles?${params.toString()}`);
+
+      if (Array.isArray(data?.articles)) {
         const sanitized = data.articles.map((art) => ({
           ...art,
           coverImage: resolveArticleCover(art.coverImage, art.relatedProjectId, art.title),
           coverImageAlt: resolveArticleCoverAlt(art.coverImageAlt, art.relatedProjectId, art.title)
         }));
         setArticles(sanitized);
+        setTotalArticles(typeof data.total === 'number' ? data.total : sanitized.length);
       } else {
-        setArticles(import.meta.env.DEV ? convertLocalArticles(BLOG_ARTICLES) : []);
+        const local = convertLocalArticles(BLOG_ARTICLES);
+        const filtered = local.filter((art) => {
+          const matchCat = cat === 'Todos' || art.category === cat;
+          const matchProj = proj === 'todos' || art.relatedProjectId === proj;
+          const qLower = q.toLowerCase().trim();
+          const matchQ = !qLower ||
+            art.title.toLowerCase().includes(qLower) ||
+            art.excerpt.toLowerCase().includes(qLower) ||
+            (art.keywords && art.keywords.some((k) => k.toLowerCase().includes(qLower))) ||
+            (art.relatedProjectName && art.relatedProjectName.toLowerCase().includes(qLower));
+          return matchCat && matchProj && matchQ;
+        });
+        const offset = (page - 1) * pageSize;
+        setArticles(filtered.slice(offset, offset + pageSize));
+        setTotalArticles(filtered.length);
       }
     } catch (err) {
       console.warn('[BlogPortal] Erro ao buscar artigos do backend:', err);
-      setArticles(import.meta.env.DEV ? convertLocalArticles(BLOG_ARTICLES) : []);
+      const local = convertLocalArticles(BLOG_ARTICLES);
+      const filtered = local.filter((art) => {
+        const matchCat = cat === 'Todos' || art.category === cat;
+        const matchProj = proj === 'todos' || art.relatedProjectId === proj;
+        const qLower = q.toLowerCase().trim();
+        const matchQ = !qLower ||
+          art.title.toLowerCase().includes(qLower) ||
+          art.excerpt.toLowerCase().includes(qLower) ||
+          (art.keywords && art.keywords.some((k) => k.toLowerCase().includes(qLower))) ||
+          (art.relatedProjectName && art.relatedProjectName.toLowerCase().includes(qLower));
+        return matchCat && matchProj && matchQ;
+      });
+      const offset = (page - 1) * pageSize;
+      setArticles(filtered.slice(offset, offset + pageSize));
+      setTotalArticles(filtered.length);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchArticles();
+    const handler = setTimeout(() => {
+      fetchArticles(currentPage, selectedCategory, selectedProjectId, searchQuery);
+    }, 200);
+    return () => clearTimeout(handler);
+  }, [currentPage, selectedCategory, selectedProjectId, searchQuery]);
+
+  useEffect(() => {
     apiRequest<{ projects: Array<ApiPortalProject & { website?: string; coverUrl?: string; niche?: string }> }>('/api/vitrine')
       .then((data) => {
         const dynamic = (data.projects || []).map(portalProjectToDisplay);
@@ -272,24 +384,43 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
     }));
   }
 
-  // Filter articles
-  const filteredArticles = useMemo(() => {
-    return articles.filter((article) => {
-      const matchesCategory = selectedCategory === 'Todos' || article.category === selectedCategory;
-      const matchesProject =
-        selectedProjectId === 'todos' ||
-        article.relatedProjectId === selectedProjectId ||
-        article.relatedProjectSlug === selectedProjectId;
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        !searchQuery ||
-        article.title.toLowerCase().includes(q) ||
-        article.excerpt.toLowerCase().includes(q) ||
-        (article.keywords && article.keywords.some((t) => t.toLowerCase().includes(q))) ||
-        (article.relatedProjectName && article.relatedProjectName.toLowerCase().includes(q));
-      return matchesCategory && matchesProject && matchesSearch;
-    });
-  }, [articles, selectedCategory, selectedProjectId, searchQuery]);
+  // The articles array is already filtered and paginated from the backend (50 per page)
+  const filteredArticles = articles;
+  const totalPages = Math.max(1, Math.ceil(totalArticles / pageSize));
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage < 1 || newPage > totalPages || newPage === currentPage) return;
+    setCurrentPage(newPage);
+    updatePageUrl(newPage);
+    articlesListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const paginationRange = useMemo(() => {
+    const delta = 2;
+    const range: (number | string)[] = [];
+    const rangeWithDots: (number | string)[] = [];
+    let l: number | undefined;
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= currentPage - delta && i <= currentPage + delta)) {
+        range.push(i);
+      }
+    }
+
+    for (const i of range) {
+      if (l !== undefined) {
+        if (typeof i === 'number' && i - l === 2) {
+          rangeWithDots.push(l + 1);
+        } else if (typeof i === 'number' && i - l !== 1) {
+          rangeWithDots.push('...');
+        }
+      }
+      rangeWithDots.push(i);
+      if (typeof i === 'number') l = i;
+    }
+
+    return rangeWithDots;
+  }, [currentPage, totalPages]);
 
   const blogCategories = useMemo(() => ['Todos', ...Array.from(new Set([...BLOG_CATEGORIES.filter((cat) => cat !== 'Todos'), ...articles.map((article) => article.category).filter(Boolean)]))], [articles]);
 
@@ -736,11 +867,12 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
         </div>
 
         {/* Section Header */}
+        <div ref={articlesListRef} id="articles-list" className="scroll-mt-24" />
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-cyan-400" />
-              Artigos Publicados ({filteredArticles.length})
+              Artigos Publicados ({totalArticles > 0 ? totalArticles : filteredArticles.length})
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
               Conteúdo com autoridade temática, SEO para Bing & Google e CTAs oficiais
@@ -921,6 +1053,77 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 </article>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-12 flex flex-col sm:flex-row items-center justify-between gap-4 py-6 border-t border-slate-800/80">
+            <div className="text-xs text-slate-400">
+              Mostrando <span className="font-semibold text-slate-200">{Math.min((currentPage - 1) * pageSize + 1, totalArticles)}</span> a{' '}
+              <span className="font-semibold text-slate-200">{Math.min(currentPage * pageSize, totalArticles)}</span> de{' '}
+              <span className="font-semibold text-slate-200">{totalArticles}</span> artigos
+            </div>
+
+            <div className="flex items-center gap-1.5 flex-wrap justify-center">
+              {/* Previous Button */}
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1 || loading}
+                aria-label="Página anterior"
+                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1 transition-all ${
+                  currentPage <= 1 || loading
+                    ? 'border-slate-800 bg-slate-950/50 text-slate-600 cursor-not-allowed'
+                    : 'border-slate-700 bg-slate-900/80 text-slate-300 hover:border-cyan-500/50 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span>Anterior</span>
+              </button>
+
+              {/* Page Numbers */}
+              {paginationRange.map((item, idx) => {
+                if (item === '...') {
+                  return (
+                    <span key={`ellipsis-${idx}`} className="px-2 py-1 text-slate-600 text-xs font-bold select-none">
+                      ...
+                    </span>
+                  );
+                }
+                const pageNum = Number(item);
+                const isActive = pageNum === currentPage;
+                return (
+                  <button
+                    key={`page-${pageNum}`}
+                    onClick={() => handlePageChange(pageNum)}
+                    disabled={loading || isActive}
+                    aria-label={`Ir para página ${pageNum}`}
+                    className={`min-w-[36px] h-9 px-2 rounded-xl border text-xs font-bold transition-all ${
+                      isActive
+                        ? 'border-cyan-500/60 bg-cyan-500/20 text-cyan-300 shadow-md shadow-cyan-500/10'
+                        : 'border-slate-700 bg-slate-900/80 text-slate-300 hover:border-cyan-500/40 hover:text-white hover:bg-slate-800'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              {/* Next Button */}
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= totalPages || loading}
+                aria-label="Próxima página"
+                className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1 transition-all ${
+                  currentPage >= totalPages || loading
+                    ? 'border-slate-800 bg-slate-950/50 text-slate-600 cursor-not-allowed'
+                    : 'border-slate-700 bg-slate-900/80 text-slate-300 hover:border-cyan-500/50 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <span>Próxima</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         )}
 

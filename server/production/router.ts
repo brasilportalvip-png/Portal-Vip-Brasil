@@ -7,6 +7,7 @@ import { analyzeSeo } from './seo.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
 import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
+import { getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8 } from './autopilotMultimediaR8.js';
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, createPortalProjectInDb, deletePortalProjectInDb, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall, runDailyPortalMarketingCycle } from './antiFallEngine.js';
@@ -876,6 +877,16 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
   await ref.set(update, { merge: true });
   const fresh = await ref.get();
   res.json({ message: 'Configuração multimídia do Autopilot salva.', config: { id: fresh.id, ...fresh.data() } });
+}));
+
+router.get('/autopilot/overview', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const projects = await getAutopilotProjectsOverview(req.user!.id);
+  res.json({ projects });
+}));
+
+router.post('/autopilot/trigger-all', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const result = await triggerAllActiveAutopilotMultimediaR8(req.user!.id);
+  res.json(result);
 }));
 
 router.post('/autopilot/trigger-now', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
@@ -1817,7 +1828,15 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
   const projectMap = new Map((await listAllPortalProjectsFromDb()).map((project) => [project.id, project]));
   const articles = result.articles.map((article) => serializeBlogArticleForPublic(article, projectMap.get(article.relatedProjectId)));
   res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
-  res.json({ ...result, articles });
+  res.json({
+    ...result,
+    articles,
+    total: result.total,
+    page: result.page,
+    totalPages: result.totalPages,
+    limit: result.limit,
+    offset: result.offset
+  });
 }));
 
 router.get('/portal/blog/articles/:slug', asyncRoute(async (req: Request, res: Response) => {

@@ -437,6 +437,7 @@ export const COLLECTIONS = {
   securityEvents: 'securityEvents',
   deviceRegistrations: 'deviceRegistrations',
   mediaGenerationJobs: 'mediaGenerationJobs',
+  autopilotJobs: 'autopilotJobs',
   rateLimits: 'rateLimits'
 } as const;
 

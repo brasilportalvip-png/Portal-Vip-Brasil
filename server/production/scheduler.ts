@@ -388,7 +388,8 @@ export async function processScheduledPosts(): Promise<number> {
 }
 
 export async function processAutopilot(): Promise<number> {
-  return processAutopilotMultimediaR8();
+  const res: any = await processAutopilotMultimediaR8();
+  return typeof res === 'number' ? res : Number(res?.processed || 0);
 }
 
 async function processAutoBlog(): Promise<number> {

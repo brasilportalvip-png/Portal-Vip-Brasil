@@ -31,7 +31,7 @@ const MUTATING_METHODS = new Set<ApiMethod>(['POST', 'PATCH', 'DELETE']);
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_-]{8,100}$/;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._~:+/-]{8,200}$/;
 const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
-const DEFAULT_TIMEOUT_MS = 45_000;
+const DEFAULT_TIMEOUT_MS = 240_000;
 const MIN_TIMEOUT_MS = 1_000;
 const MAX_TIMEOUT_MS = 5 * 60_000;
 
@@ -290,11 +290,9 @@ export async function apiRequest<T = any>(
     const data = await parseResponse(response);
     if (!response.ok) {
       const fallback = response.status >= 500
-        ? 'Serviço temporariamente indisponível. Tente novamente.'
+        ? (response.status === 504 ? 'O servidor demorou para responder (Gateway Timeout). A operação pode continuar em segundo plano.' : 'Serviço temporariamente indisponível. Tente novamente.')
         : `Erro na requisição (${response.status}).`;
-      const message = response.status >= 500
-        ? fallback
-        : sanitizedMessage(data?.error || data?.message, fallback);
+      const message = sanitizedMessage(data?.error || data?.message, fallback);
       const requestId = sanitizedMessage(
         response.headers.get('x-request-id') || data?.requestId,
         ''
@@ -315,7 +313,7 @@ export async function apiRequest<T = any>(
     return data as T;
   } catch (error: any) {
     if (timedOut) {
-      throw new Error('A operação demorou demais. Verifique sua conexão e tente novamente.');
+      throw new Error('A operação demorou mais que o limite permitido (240s). O processamento de mídia ou publicação pode ter continuado no servidor.');
     }
     if (controller.signal.aborted || error?.name === 'AbortError') throw createAbortError();
     throw error;

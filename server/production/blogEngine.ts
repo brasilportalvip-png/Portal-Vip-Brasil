@@ -1527,10 +1527,17 @@ export async function listBlogArticles(filters: {
   status?: string;
   limit?: number;
   offset?: number;
-}): Promise<{ articles: StoredBlogArticle[]; total: number }> {
+}): Promise<{
+  articles: StoredBlogArticle[];
+  total: number;
+  limit: number;
+  offset: number;
+  page: number;
+  totalPages: number;
+}> {
   try {
     const db = firestore();
-    const snap = await db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').limit(500).get();
+    const snap = await db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').get();
     let items: StoredBlogArticle[] = snap.docs.map((d) => {
       const data = d.data() as any;
       const article: StoredBlogArticle = { id: d.id, ...data };
@@ -1552,17 +1559,17 @@ export async function listBlogArticles(filters: {
     if (filters.status && filters.status !== 'all') {
       items = items.filter((article) => article.status === filters.status);
     }
-    if (filters.projectId) {
-      items = items.filter((article) => article.relatedProjectId === filters.projectId);
+    if (filters.projectId && filters.projectId !== 'todos') {
+      items = items.filter((article) => article.relatedProjectId === filters.projectId || (article as any).relatedProjectSlug === filters.projectId);
     }
     if (filters.category && filters.category !== 'Todos') {
       items = items.filter((article) => article.category === filters.category);
     }
 
-    if (items.length === 0) {
+    if (items.length === 0 && snap.empty) {
       items = INITIAL_SEEDED_ARTICLES.filter((article) =>
         (!filters.status || filters.status === 'all' || article.status === filters.status) &&
-        (!filters.projectId || article.relatedProjectId === filters.projectId) &&
+        (!filters.projectId || filters.projectId === 'todos' || article.relatedProjectId === filters.projectId || (article as any).relatedProjectSlug === filters.projectId) &&
         (!filters.category || filters.category === 'Todos' || article.category === filters.category)
       );
     }
@@ -1574,7 +1581,8 @@ export async function listBlogArticles(filters: {
         art.excerpt.toLowerCase().includes(q) ||
         art.tags?.some((t) => t.toLowerCase().includes(q)) ||
         art.primaryKeyword?.toLowerCase().includes(q) ||
-        art.secondaryKeywords?.some((keyword) => keyword.toLowerCase().includes(q))
+        art.secondaryKeywords?.some((keyword) => keyword.toLowerCase().includes(q)) ||
+        ((art as any).relatedProjectName && String((art as any).relatedProjectName).toLowerCase().includes(q))
       );
     }
 
@@ -1582,15 +1590,46 @@ export async function listBlogArticles(filters: {
     const total = items.length;
     const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
     const offset = Math.max(Number(filters.offset || 0), 0);
-    return { articles: items.slice(offset, offset + limit), total };
+    const page = Math.floor(offset / limit) + 1;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    return {
+      articles: items.slice(offset, offset + limit),
+      total,
+      limit,
+      offset,
+      page,
+      totalPages
+    };
   } catch (err) {
     console.warn('[BlogEngine] Erro ao listar artigos do Firestore, usando fallback local:', err);
     let items = [...INITIAL_SEEDED_ARTICLES];
     if (filters.status && filters.status !== 'all') items = items.filter((a) => a.status === filters.status);
     if (filters.category && filters.category !== 'Todos') items = items.filter((a) => a.category === filters.category);
-    if (filters.projectId) items = items.filter((a) => a.relatedProjectId === filters.projectId);
+    if (filters.projectId && filters.projectId !== 'todos') items = items.filter((a) => a.relatedProjectId === filters.projectId || (a as any).relatedProjectSlug === filters.projectId);
+    if (filters.query) {
+      const q = filters.query.toLowerCase().trim();
+      items = items.filter((art) =>
+        art.title.toLowerCase().includes(q) ||
+        art.excerpt.toLowerCase().includes(q) ||
+        art.tags?.some((t) => t.toLowerCase().includes(q)) ||
+        art.primaryKeyword?.toLowerCase().includes(q) ||
+        art.secondaryKeywords?.some((keyword) => keyword.toLowerCase().includes(q))
+      );
+    }
     items.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
-    return { articles: items, total: items.length };
+    const total = items.length;
+    const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
+    const offset = Math.max(Number(filters.offset || 0), 0);
+    const page = Math.floor(offset / limit) + 1;
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    return {
+      articles: items.slice(offset, offset + limit),
+      total,
+      limit,
+      offset,
+      page,
+      totalPages
+    };
   }
 }
 
