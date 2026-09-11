@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { config, assertProductionConfig } from './config/index.js';
@@ -213,6 +215,18 @@ export function createApp() {
     if (!config.indexNowKey) return next();
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.type('text/plain').send(config.indexNowKey);
+  });
+
+  app.get(/^\/tiktok[A-Za-z0-9_-]+\.txt$/, (req, res, next) => {
+    const filename = path.basename(req.path);
+    const publicPath = path.join(process.cwd(), 'public', filename);
+    const distPath = path.join(process.cwd(), 'dist', filename);
+    const target = fs.existsSync(publicPath) ? publicPath : fs.existsSync(distPath) ? distPath : null;
+    if (target) {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.type('text/plain').sendFile(target);
+    }
+    next();
   });
 
   app.get('/sitemap.xml', async (_req, res, next) => {
