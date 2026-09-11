@@ -5,6 +5,7 @@ import { COLLECTIONS, firestore, nowIso } from './store.js';
 import {
   createPinterestPin,
   ensureValidSocialAccessToken,
+  findSocialConnection,
   getPinterestBoards,
   normalizeProvider,
   publishInstagramMedia,
@@ -249,17 +250,10 @@ async function downloadMedia(rawUrl: string, kind: 'image' | 'video'): Promise<D
 }
 
 async function getConnection(userId: string, companyId: string, provider: SocialProvider): Promise<{ connection: SocialConnectionRecord; token: string }> {
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', userId)
-    .where('companyId', '==', companyId)
-    .where('provider', '==', provider)
-    .limit(1)
-    .get();
-  if (snap.empty) throw new Error(`Conta ${provider} não conectada para este projeto.`);
-  const doc = snap.docs[0];
-  const connection = { id: doc.id, ...(doc.data() as any) } as SocialConnectionRecord;
-  const token = await ensureValidSocialAccessToken(doc.id);
+  const resolved = await findSocialConnection(userId, companyId, provider);
+  if (!resolved) throw new Error(`Conta ${provider} não conectada para este projeto.`);
+  const connection = { id: resolved.docId, ...(resolved.data as any) } as SocialConnectionRecord;
+  const token = await ensureValidSocialAccessToken(resolved.docId);
   return { connection, token };
 }
 
@@ -947,11 +941,17 @@ export async function assertUniversalConnectionReady(userId: string, companyId: 
   if (provider === 'linkedin' && !config.social.linkedin.apiVersion) {
     throw new Error('LINKEDIN_API_VERSION não configurada para publicação no LinkedIn.');
   }
-  const scopes = Array.isArray(connection.scopes) ? connection.scopes.map(String) : [];
-  if (provider === 'tiktok' && scopes.length > 0 && !scopes.includes('video.upload')) {
+  const allScopes = Array.isArray(connection.scopes)
+    ? connection.scopes.flatMap((s: any) => String(s || '').split(/[ ,]+/)).filter(Boolean)
+    : String(connection.scopes || '').split(/[ ,]+/).filter(Boolean);
+
+  const hasScope = (req: string) =>
+    allScopes.some((s: string) => s.toLowerCase() === req.toLowerCase() || s.toLowerCase().includes(req.toLowerCase()));
+
+  if (provider === 'tiktok' && allScopes.length > 0 && !hasScope('video.upload')) {
     throw new Error('A conexão do TikTok não possui o escopo video.upload. Reconecte a conta.');
   }
-  if (provider === 'x' && scopes.length > 0 && !scopes.includes('media.write')) {
+  if (provider === 'x' && allScopes.length > 0 && !hasScope('media.write')) {
     throw new Error('A conexão do X não possui o escopo media.write necessário para imagem e vídeo. Reconecte a conta X.');
   }
 }

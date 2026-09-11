@@ -770,15 +770,56 @@ export async function getFacebookPageSelectionCandidates(
   };
 }
 
-export async function listConnections(userId: string, companyId?: string) {
-  let snap;
-  if (!companyId || companyId === 'all') {
-    snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).get();
-  } else {
-    snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).where('companyId', '==', companyId).get();
+export async function findSocialConnection(
+  userId: string,
+  companyId?: string,
+  provider?: SocialProvider | string
+): Promise<{ docId: string; data: any } | null> {
+  const db = firestore();
+  if (!userId || !provider) return null;
+  const prov = String(provider).toLowerCase();
+
+  // 1. Tenta buscar conexão específica deste projeto
+  if (companyId && companyId !== 'all') {
+    const snap = await db.collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', userId)
+      .where('companyId', '==', companyId)
+      .where('provider', '==', prov)
+      .limit(1)
+      .get();
+
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      const data = doc.data() as any;
+      if (data.status === 'connected' || !data.status) {
+        return { docId: doc.id, data: { id: doc.id, ...data } };
+      }
+    }
   }
 
-  const output: any[] = [];
+  // 2. Herança inteligente: busca conexão ativa do mesmo usuário em outros projetos do portal
+  const userSnap = await db.collection(COLLECTIONS.socialConnections)
+    .where('userId', '==', userId)
+    .where('provider', '==', prov)
+    .get();
+
+  const connectedDoc = userSnap.docs.find((d: any) => {
+    const data = d.data();
+    return data.status === 'connected' || !data.status;
+  }) || userSnap.docs[0];
+
+  if (connectedDoc) {
+    return { docId: connectedDoc.id, data: { id: connectedDoc.id, ...connectedDoc.data() } };
+  }
+
+  return null;
+}
+
+export async function listConnections(userId: string, companyId?: string) {
+  const db = firestore();
+  const snap = await db.collection(COLLECTIONS.socialConnections).where('userId', '==', userId).get();
+
+  const allDocs: any[] = [];
   for (const doc of snap.docs) {
     let item = doc.data() as any;
     const expiresAt = item.expiresAt ? new Date(item.expiresAt).getTime() : Infinity;
@@ -803,20 +844,64 @@ export async function listConnections(userId: string, companyId?: string) {
     } = item;
     const finalExpiry = item.expiresAt ? new Date(item.expiresAt).getTime() : Infinity;
     const expired = Number.isFinite(finalExpiry) && finalExpiry <= Date.now();
-    output.push({
+    allDocs.push({
       id: doc.id,
       ...safe,
       ...(safe.errorMessage ? { errorMessage: sanitizeProviderMessage(safe.errorMessage, 'Falha na conexão social.') } : {}),
       status: expired ? 'token_expired' : item.status || 'connected'
     });
   }
-  return output;
+
+  if (!companyId || companyId === 'all') {
+    return allDocs;
+  }
+
+  // Mapa de conexões específicas da empresa
+  const companyDocs = allDocs.filter((c: any) => c.companyId === companyId);
+  const providerMap = new Map<string, any>();
+  for (const c of companyDocs) {
+    providerMap.set(c.provider, c);
+  }
+
+  // Herança inteligente do Portal: preenche provedores faltantes a partir de conexões ativas do mesmo usuário
+  for (const c of allDocs) {
+    if (!providerMap.has(c.provider) && (c.status === 'connected' || !c.status)) {
+      providerMap.set(c.provider, {
+        ...c,
+        companyId,
+        inherited: true,
+        originalCompanyId: c.companyId
+      });
+    }
+  }
+
+  return Array.from(providerMap.values());
 }
 
 export async function disconnectSocial(userId: string, companyId: string, provider: string): Promise<boolean> {
-  const snap = await firestore().collection(COLLECTIONS.socialConnections).where('userId', '==', userId).where('companyId', '==', companyId).where('provider', '==', provider).limit(10).get();
-  if (snap.empty) return false;
-  const batch = firestore().batch();
+  const db = firestore();
+  const snap = await db.collection(COLLECTIONS.socialConnections)
+    .where('userId', '==', userId)
+    .where('companyId', '==', companyId)
+    .where('provider', '==', provider)
+    .limit(10)
+    .get();
+
+  if (snap.empty) {
+    // Se não encontrou no projeto atual, tenta desconectar a conexão base do usuário para este provedor
+    const userSnap = await db.collection(COLLECTIONS.socialConnections)
+      .where('userId', '==', userId)
+      .where('provider', '==', provider)
+      .limit(10)
+      .get();
+    if (userSnap.empty) return false;
+    const batch = db.batch();
+    userSnap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    return true;
+  }
+
+  const batch = db.batch();
   snap.docs.forEach((doc) => batch.delete(doc.ref));
   await batch.commit();
   return true;
@@ -1117,26 +1202,8 @@ export async function publishText(data: {
     };
   }
 
-  let snap: any;
-  try {
-    snap = await firestore()
-      .collection(COLLECTIONS.socialConnections)
-      .where('userId', '==', data.userId)
-      .where('companyId', '==', data.companyId)
-      .where('provider', '==', data.provider)
-      .limit(1)
-      .get();
-  } catch (err: any) {
-    return {
-      provider: data.provider,
-      externalId: null,
-      externalState: 'confirmed_failed',
-      retrySafe: true,
-      error: `Erro ao consultar conexão social: ${err?.message || 'Falha no banco de dados'}`
-    };
-  }
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, data.provider);
+  if (!resolved) {
     return {
       provider: data.provider,
       externalId: null,
@@ -1146,8 +1213,9 @@ export async function publishText(data: {
     };
   }
 
-  const connDoc = snap.docs[0];
-  const connection = connDoc.data() as any;
+  const connDocId = resolved.docId;
+  const connDoc = { id: connDocId, ref: firestore().collection(COLLECTIONS.socialConnections).doc(connDocId) };
+  const connection = resolved.data;
 
   if (!connection.encryptedAccessToken && !connection.accessToken) {
     return {
@@ -1161,7 +1229,7 @@ export async function publishText(data: {
 
   let token = '';
   try {
-    token = await ensureValidSocialAccessToken(connDoc.id);
+    token = await ensureValidSocialAccessToken(connDocId);
   } catch (err: any) {
     return {
       provider: data.provider,
@@ -1617,19 +1685,12 @@ export async function uploadTikTokDraftVideo(data: {
     throw new Error('Arquivo de vídeo inválido. Apenas containers MP4 autênticos (.mp4 com assinatura ftyp) são aceitos.');
   }
 
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', 'tiktok')
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, 'tiktok');
+  if (!resolved) {
     throw new Error('Conta TikTok não conectada para este projeto. Conecte sua conta TikTok em Redes Sociais.');
   }
 
-  const token = await ensureValidSocialAccessToken(snap.docs[0].id);
+  const token = await ensureValidSocialAccessToken(resolved.docId);
 
   // 1. Inicializar upload no modo Inbox / Draft (Content Posting API - Inbox video)
   const initEndpoint = 'https://open.tiktokapis.com/v2/post/publish/inbox/video/init/';
@@ -1735,19 +1796,12 @@ export async function getTikTokUploadStatus(data: {
     throw new Error('Envio de rascunho não encontrado ou não pertence a este projeto.');
   }
 
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', 'tiktok')
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, 'tiktok');
+  if (!resolved) {
     throw new Error('Conta TikTok não conectada para este projeto.');
   }
 
-  const connection = snap.docs[0].data() as any;
+  const connection = resolved.data;
   if (connection.expiresAt && new Date(connection.expiresAt).getTime() < Date.now()) {
     throw new Error('A autenticação com o TikTok expirou. Reconecte a conta.');
   }
@@ -1819,19 +1873,12 @@ export async function initTikTokDraftUpload(data: {
     throw new Error('O vídeo excede o limite de 4 MB desta fase do TikTok.');
   }
 
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', 'tiktok')
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, 'tiktok');
+  if (!resolved) {
     throw new Error('Conta TikTok não conectada para este projeto.');
   }
 
-  const token = await ensureValidSocialAccessToken(snap.docs[0].id);
+  const token = await ensureValidSocialAccessToken(resolved.docId);
 
   const initEndpoint = 'https://open.tiktokapis.com/v2/post/publish/inbox/video/init/';
   const initBody = {
@@ -1926,26 +1973,19 @@ export async function publishInstagramMedia(data: {
     throw new Error('É necessário fornecer imageUrl ou videoUrl para publicar no Instagram.');
   }
 
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', 'instagram')
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, 'instagram');
+  if (!resolved) {
     throw new Error('Conta Instagram não conectada para este projeto.');
   }
 
-  const connection = snap.docs[0].data() as any;
+  const connection = resolved.data;
   // accountId é sempre o IG User ID. pageId identifica apenas a Página host da Meta.
   const igUserId = connection.accountId;
   if (!igUserId) {
     throw new Error('Identificador da conta profissional do Instagram não encontrado na conexão.');
   }
 
-  const token = await ensureValidSocialAccessToken(snap.docs[0].id);
+  const token = await ensureValidSocialAccessToken(resolved.docId);
 
   // 1. Criar container de mídia: POST /{ig-user-id}/media
   const containerEndpoint = `https://graph.facebook.com/${config.social.meta.graphVersion}/${encodeURIComponent(igUserId)}/media`;
@@ -2015,19 +2055,12 @@ export async function initYouTubeResumableUpload(data: {
     throw new Error('Título do vídeo no YouTube é obrigatório.');
   }
 
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', 'youtube')
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, 'youtube');
+  if (!resolved) {
     throw new Error('Canal YouTube não conectado para este projeto.');
   }
 
-  const token = await ensureValidSocialAccessToken(snap.docs[0].id);
+  const token = await ensureValidSocialAccessToken(resolved.docId);
 
   // Iniciar sessão de upload resumível do YouTube Data API v3
   const initEndpoint = 'https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status';
@@ -2076,19 +2109,12 @@ export async function getPinterestBoards(data: {
   userId: string;
   companyId: string;
 }): Promise<Array<{ id: string; name: string; description?: string }>> {
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', 'pinterest')
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, 'pinterest');
+  if (!resolved) {
     throw new Error('Conta Pinterest não conectada para este projeto.');
   }
 
-  const token = await ensureValidSocialAccessToken(snap.docs[0].id);
+  const token = await ensureValidSocialAccessToken(resolved.docId);
 
   const res = await socialFetch('https://api.pinterest.com/v5/boards?page_size=50', {
     headers: { Authorization: `Bearer ${token}` }
@@ -2126,19 +2152,12 @@ export async function createPinterestPin(data: {
     throw new Error('Pasta (boardId), título e URL da imagem são obrigatórios para criar Pin no Pinterest.');
   }
 
-  const snap = await firestore()
-    .collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', data.userId)
-    .where('companyId', '==', data.companyId)
-    .where('provider', '==', 'pinterest')
-    .limit(1)
-    .get();
-
-  if (snap.empty) {
+  const resolved = await findSocialConnection(data.userId, data.companyId, 'pinterest');
+  if (!resolved) {
     throw new Error('Conta Pinterest não conectada para este projeto.');
   }
 
-  const token = await ensureValidSocialAccessToken(snap.docs[0].id);
+  const token = await ensureValidSocialAccessToken(resolved.docId);
 
   const pinBody: any = {
     board_id: data.boardId,

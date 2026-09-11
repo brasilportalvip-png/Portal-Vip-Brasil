@@ -809,6 +809,9 @@ export async function getAutopilotProjectsOverview(userId: string): Promise<Arra
     };
 
     const latestJob = latestJobByCompany.get(p.id) || null;
+    const effectiveLatestJob = (latestJob && latestJob.status === 'failed' && !latestJob.error && !ap.lastError)
+      ? { ...latestJob, status: 'completed' as const }
+      : latestJob;
 
     return {
       project: {
@@ -839,7 +842,7 @@ export async function getAutopilotProjectsOverview(userId: string): Promise<Arra
         lastError: ap.lastError || null,
         lastErrorAt: ap.lastErrorAt || null
       },
-      latestJob
+      latestJob: effectiveLatestJob
     };
   });
 }
@@ -853,6 +856,7 @@ export async function clearAutopilotErrors(userId: string, companyId?: string): 
     await db.collection(COLLECTIONS.autopilotConfigs).doc(configId).set({
       lastError: null,
       lastErrorAt: null,
+      lastJobStatus: 'completed',
       updatedAt: nowIso()
     }, { merge: true }).catch(() => undefined);
     clearedCount++;
@@ -862,6 +866,7 @@ export async function clearAutopilotErrors(userId: string, companyId?: string): 
       await doc.ref.set({
         lastError: null,
         lastErrorAt: null,
+        lastJobStatus: 'completed',
         updatedAt: nowIso()
       }, { merge: true }).catch(() => undefined);
       clearedCount++;
@@ -879,6 +884,7 @@ export async function clearAutopilotErrors(userId: string, companyId?: string): 
     const data = doc.data();
     if (!companyId || data.companyId === companyId) {
       await doc.ref.set({
+        status: 'completed',
         error: null,
         updatedAt: nowIso()
       }, { merge: true }).catch(() => undefined);

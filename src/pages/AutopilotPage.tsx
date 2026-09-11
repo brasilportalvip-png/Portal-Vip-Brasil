@@ -64,13 +64,13 @@ interface ProjectOverviewItem {
 }
 
 const channels = [
-  { name: 'Facebook', direct: true },
-  { name: 'Instagram', direct: true },
-  { name: 'LinkedIn', direct: true },
-  { name: 'X', direct: true },
-  { name: 'TikTok', direct: true },
-  { name: 'YouTube', direct: true },
-  { name: 'Pinterest', direct: true }
+  { name: 'Facebook', key: 'facebook', direct: true },
+  { name: 'Instagram', key: 'instagram', direct: true },
+  { name: 'LinkedIn', key: 'linkedin', direct: true },
+  { name: 'X', key: 'x', direct: true },
+  { name: 'TikTok', key: 'tiktok', direct: true },
+  { name: 'YouTube', key: 'youtube', direct: true },
+  { name: 'Pinterest', key: 'pinterest', direct: true }
 ];
 
 const availableHours = [
@@ -95,6 +95,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   const [executionStatus, setExecutionStatus] = useState('');
   const [runningAll, setRunningAll] = useState(false);
   const [runningProjectKey, setRunningProjectKey] = useState<string | null>(null);
+  const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
   const isRunningRef = useRef(false);
 
   useEffect(() => {
@@ -124,13 +125,30 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   }, []);
 
   useEffect(() => {
-    if (!activeCompanyId) { setCfg(null); return; }
+    if (!activeCompanyId) {
+      setCfg(null);
+      setConnectedProviders(new Set());
+      return;
+    }
     setLoading(true);
     setMessage('');
     apiRequest<{ config: AutopilotConfig }>(`/api/autopilot/config?companyId=${encodeURIComponent(activeCompanyId)}`)
       .then((data) => setCfg(data.config))
       .catch((error) => setMessage(error.message || 'Falha ao carregar o Autopilot.'))
       .finally(() => setLoading(false));
+
+    apiRequest<{ connections?: Array<{ provider: string; status: string }> }>(
+      `/api/social/connections/${encodeURIComponent(activeCompanyId)}`
+    )
+      .then((data) => {
+        const set = new Set(
+          (data.connections || [])
+            .filter((c) => c.status === 'connected' || !c.status)
+            .map((c) => c.provider.toLowerCase())
+        );
+        setConnectedProviders(set);
+      })
+      .catch(() => setConnectedProviders(new Set()));
   }, [activeCompanyId]);
 
   const patch = (value: Partial<AutopilotConfig>) => setCfg((current) => current ? { ...current, ...value } : current);
@@ -672,28 +690,50 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
 
               {/* Canais Alvo */}
               <div className="border-t border-slate-800 pt-5">
-                <h3 className="froc-section-title">Canais alvo para publicação</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="froc-section-title">Canais alvo para publicação</h3>
+                  <span className="text-[11px] text-slate-400">
+                    <span className="text-emerald-400 font-bold">{connectedProviders.size}</span> de {channels.length} canais conectados no Portal
+                  </span>
+                </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {channels.map((ch) => {
                     const selected = cfg.targetPlatforms.includes(ch.name);
+                    const isConnected = connectedProviders.has(ch.key);
                     const disabled = cfg.mode === 'automatic' && !ch.direct;
                     return (
                       <button
                         key={ch.name}
                         onClick={() => toggleChannel(ch.name, ch.direct)}
-                        className={`min-h-10 rounded-xl border px-3.5 text-xs font-semibold ${
+                        className={`min-h-10 rounded-xl border px-3 text-xs font-semibold flex items-center gap-2 transition-all ${
                           disabled
                             ? 'cursor-not-allowed border-slate-800 bg-slate-950 text-slate-600'
                             : selected
                               ? 'border-cyan-400/60 bg-cyan-500/10 text-cyan-200'
-                              : 'border-slate-700 bg-slate-900 text-slate-400'
+                              : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200 hover:border-slate-600'
                         }`}
+                        title={isConnected ? `${ch.name}: Conectado e pronto para publicação` : `${ch.name}: Desconectado`}
                       >
-                        {ch.name}
-                        {disabled ? ' · mídia/revisão' : ''}
+                        <span
+                          className={`w-2 h-2 rounded-full shrink-0 ${
+                            isConnected ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]' : 'bg-slate-600'
+                          }`}
+                        />
+                        <span>{ch.name}</span>
+                        {disabled && <span className="text-[10px] text-slate-500">· mídia/revisão</span>}
                       </button>
                     );
                   })}
+                </div>
+                <div className="mt-2.5 flex items-center gap-4 text-[11px] text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    Conectado
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-slate-600" />
+                    Não conectado
+                  </span>
                 </div>
               </div>
 
