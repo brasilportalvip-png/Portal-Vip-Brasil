@@ -162,7 +162,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
     }
     setSaving(true); setMessage('');
     try {
-      const data = await apiRequest<{ config: AutopilotConfig }>('/api/autopilot/config', {
+      const data = await apiRequest<{ config: AutopilotConfig; message?: string; warning?: string }>('/api/autopilot/config', {
         method: 'POST',
         body: {
           ...cfg,
@@ -171,12 +171,25 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
         }
       });
       setCfg(data.config);
-      setMessage('Configuração multimídia salva com sucesso.');
+      setMessage(data.warning || data.message || 'Configuração multimídia salva com sucesso.');
       await loadOverview();
     } catch (error: any) {
       setMessage(error.message || 'Falha ao salvar a automação.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const clearErrors = async (companyId?: string) => {
+    try {
+      await apiRequest('/api/autopilot/clear-errors', {
+        method: 'POST',
+        body: { companyId }
+      });
+      await loadOverview();
+      setMessage(companyId ? 'Aviso do projeto limpo com sucesso.' : 'Histórico de avisos limpo com sucesso.');
+    } catch {
+      // Ignora erro
     }
   };
 
@@ -331,14 +344,24 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
               Acompanhe o estado de cada projeto no Motor Global e no Autopilot Multimídia.
             </p>
           </div>
-          <button
-            onClick={loadOverview}
-            disabled={loadingOverview}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
-          >
-            <RefreshCw size={12} className={loadingOverview ? 'animate-spin text-cyan-400' : ''} />
-            Atualizar status
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => clearErrors()}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+              title="Limpar avisos de erro anteriores em todos os projetos"
+            >
+              <CheckCircle2 size={12} />
+              Limpar avisos
+            </button>
+            <button
+              onClick={loadOverview}
+              disabled={loadingOverview}
+              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+            >
+              <RefreshCw size={12} className={loadingOverview ? 'animate-spin text-cyan-400' : ''} />
+              Atualizar status
+            </button>
+          </div>
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -458,8 +481,21 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                     )}
 
                     {item.autopilot.lastError && (
-                      <div className="mt-1 rounded-lg border border-rose-500/20 bg-rose-500/10 p-1.5 text-[10px] text-rose-300 truncate" title={item.autopilot.lastError}>
-                        Erro: {item.autopilot.lastError}
+                      <div className="mt-1 rounded-lg border border-rose-500/20 bg-rose-500/10 p-1.5 text-[10px] text-rose-300 flex items-center justify-between gap-1.5">
+                        <span className="truncate" title={item.autopilot.lastError}>
+                          Erro: {item.autopilot.lastError}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            clearErrors(item.project.id);
+                          }}
+                          className="shrink-0 text-[10px] text-rose-300 hover:text-white px-1.5 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/40 transition-colors font-medium"
+                          title="Limpar este aviso de erro"
+                        >
+                          Limpar
+                        </button>
                       </div>
                     )}
                   </div>

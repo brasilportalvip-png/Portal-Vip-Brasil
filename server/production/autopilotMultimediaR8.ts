@@ -2,7 +2,7 @@ import { generateAutopilotPost, generateMarketingImage, startVideoGenerationJob 
 import { getPortalProjectFromDb, listAllPortalProjectsFromDb } from './almaPortfolio.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
 import { normalizeProvider, type SocialProvider } from './social.js';
-import { assertUniversalConnectionReady, isUniversalAutoPublishSupported } from './socialMediaPublisher.js';
+import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported } from './socialMediaPublisher.js';
 
 export type AutopilotJobStatus = 'pending' | 'processing' | 'video_processing' | 'completed' | 'failed';
 
@@ -222,14 +222,28 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
 
     const company = projectContext(ap.userId, project);
     const mode = ap.mode === 'automatic' ? 'automatic' : 'manual_approval';
-    const targets = normalizeTargets(ap.targetPlatforms);
-    if (!targets.length) {
-      throw new Error('Nenhuma rede social válida foi selecionada para o Autopilot.');
-    }
+    const rawTargets = normalizeTargets(ap.targetPlatforms);
+    const targets = rawTargets.length > 0 ? rawTargets : [{ label: 'Instagram', provider: 'instagram' as SocialProvider }];
+
+    // Verificação resiliente de conexões prontas para publicação automática
+    const readyTargets: typeof targets = [];
+    const pendingTargets: typeof targets = [];
 
     if (mode === 'automatic') {
-      await assertTargetsReady(ap.userId, ap.companyId, targets);
+      for (const t of targets) {
+        const isReady = await checkUniversalConnectionReady(ap.userId, ap.companyId, t.provider);
+        if (isReady) {
+          readyTargets.push(t);
+        } else {
+          pendingTargets.push(t);
+        }
+      }
     }
+
+    // Se o modo for automático mas nenhuma rede estiver conectada com OAuth ainda:
+    // Não falha o Autopilot! A IA gera o post, a arte visual e o vídeo e salva com segurança em Aprovação Manual!
+    const effectiveMode = (mode === 'automatic' && readyTargets.length > 0) ? 'automatic' : 'manual_approval';
+    const activeScheduledTargets = effectiveMode === 'automatic' ? readyTargets : [];
 
     // 1. Gera texto estratégico do post
     const generated = await generateAutopilotPost({
@@ -252,16 +266,35 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
     // 2. Imagem gerada se houver canais de imagem ou para revisão
     if (imageTargets.length > 0 || mode !== 'automatic') {
       const visualTheme = String(generated.result.visualPrompt || generated.result.headline || generated.result.body || `Criativo para ${company.name}`);
-      const image = await generateMarketingImage({
-        userId: ap.userId,
-        company,
-        theme: visualTheme,
-        style: 'Fotografia comercial premium, realista e moderna para redes sociais',
-        aspectRatio: '1:1',
-        resolution: '1K'
-      });
+      let image: any;
+      try {
+        image = await generateMarketingImage({
+          userId: ap.userId,
+          company,
+          theme: visualTheme,
+          style: 'Fotografia comercial premium, realista e moderna para redes sociais',
+          aspectRatio: '1:1',
+          resolution: '1K'
+        });
+      } catch (imgErr: any) {
+        console.warn(`[Autopilot Multimídia] Arte de IA indisponível temporariamente (${imgErr?.message || imgErr}). Aplicando visual oficial do projeto...`);
+        const fallbackBanner = company?.bannerUrl || project?.bannerUrl || 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80';
+        image = {
+          imageUrl: fallbackBanner,
+          storagePath: '',
+          mimeType: 'image/jpeg',
+          creditsUsed: 0,
+          executionId: newId('exec'),
+          modelUsed: 'project_official_visual',
+          resolution: '1K'
+        };
+      }
       imageCredits = Number(image.creditsUsed || 0);
       contentId = newId('content');
+
+      const readyImageTargets = imageTargets.filter((target) => readyTargets.some((rt) => rt.provider === target.provider));
+      const shouldAutoSchedule = effectiveMode === 'automatic' && readyImageTargets.length > 0;
+
       const content = {
         id: contentId,
         userId: ap.userId,
@@ -277,27 +310,29 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
         imageUrl: image.imageUrl,
         targetPlatform: targets.map((item) => item.label).join(', '),
         creditsUsed: Number(generated.creditsUsed || 0) + imageCredits,
-        status: mode === 'automatic' && imageTargets.length > 0 ? 'scheduled' : 'saved',
+        status: shouldAutoSchedule ? 'scheduled' : 'saved',
         metadata: {
           generatedBy: 'autopilot_multimedia_r8',
           jobId: job.id,
           imageStoragePath: image.storagePath,
           imageModelUsed: image.modelUsed,
-          imageResolution: image.resolution
+          imageResolution: image.resolution,
+          readySocialPlatforms: readyTargets.map((t) => t.label),
+          pendingSocialPlatforms: pendingTargets.map((t) => t.label)
         },
         createdAt: nowIso(),
         updatedAt: nowIso()
       };
       await db.collection(COLLECTIONS.contentItems).doc(contentId).set(content);
 
-      if (mode === 'automatic' && imageTargets.length > 0) {
+      if (shouldAutoSchedule) {
         scheduleId = newId('sched');
         await db.collection(COLLECTIONS.scheduledPosts).doc(scheduleId).set({
           id: scheduleId,
           userId: ap.userId,
           companyId: ap.companyId,
           contentItemId: contentId,
-          platforms: imageTargets.map((item) => item.label),
+          platforms: readyImageTargets.map((item) => item.label),
           scheduledFor: nowIso(),
           status: 'scheduled',
           isPlanning: false,
@@ -311,23 +346,28 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
 
     // 3. Vídeo Veo assíncrono (não aguarda renderização)
     if (videoTargets.length > 0) {
-      const videoPrompt = [
-        generated.result.visualPrompt,
-        generated.result.headline,
-        generated.result.body,
-        generated.result.cta
-      ].filter(Boolean).join('. ');
-      const videoJob = await startVideoGenerationJob({
-        userId: ap.userId,
-        company,
-        prompt: videoPrompt || `Vídeo publicitário para ${company.name}`,
-        title: String(generated.result.headline || `Conteúdo ${company.name}`).slice(0, 100),
-        preset: 'pro_1080p',
-        aspectRatio: '9:16',
-        autoPublishPlatforms: mode === 'automatic' ? videoTargets.map((item) => item.label) : [],
-        autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' }
-      });
-      videoJobId = videoJob.id;
+      try {
+        const videoPrompt = [
+          generated.result.visualPrompt,
+          generated.result.headline,
+          generated.result.body,
+          generated.result.cta
+        ].filter(Boolean).join('. ');
+        const readyVideoTargets = videoTargets.filter((target) => readyTargets.some((rt) => rt.provider === target.provider));
+        const videoJob = await startVideoGenerationJob({
+          userId: ap.userId,
+          company,
+          prompt: videoPrompt || `Vídeo publicitário para ${company.name}`,
+          title: String(generated.result.headline || `Conteúdo ${company.name}`).slice(0, 100),
+          preset: 'pro_1080p',
+          aspectRatio: '9:16',
+          autoPublishPlatforms: effectiveMode === 'automatic' ? readyVideoTargets.map((item) => item.label) : [],
+          autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' }
+        });
+        videoJobId = videoJob.id;
+      } catch (vidErr: any) {
+        console.warn(`[Autopilot Multimídia] Pipeline de vídeo Veo temporariamente indisponível (${vidErr?.message || vidErr}). Prosseguindo com conteúdo multimídia...`);
+      }
     }
 
     const finalStatus: AutopilotJobStatus = videoJobId ? 'video_processing' : 'completed';
@@ -457,7 +497,12 @@ export async function processAutopilotMultimediaR8(): Promise<{
   for (let i = 0; i < jobsToRun.length; i += BATCH_SIZE) {
     const slice = jobsToRun.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
-      slice.map(async ({ job, ap }) => executeAutopilotJob(job, ap))
+      slice.map(async ({ job, ap }, idx) => {
+        if (idx > 0) {
+          await new Promise((resolve) => setTimeout(resolve, idx * 1200));
+        }
+        return executeAutopilotJob(job, ap);
+      })
     );
 
     for (const res of results) {
@@ -472,6 +517,10 @@ export async function processAutopilotMultimediaR8(): Promise<{
       } else {
         failedCount += 1;
       }
+    }
+
+    if (i + BATCH_SIZE < jobsToRun.length) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   }
 
@@ -646,7 +695,12 @@ export async function triggerAllActiveAutopilotMultimediaR8(userId: string): Pro
   for (let i = 0; i < jobsToRun.length; i += BATCH_SIZE) {
     const slice = jobsToRun.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
-      slice.map(async ({ job, ap }) => executeAutopilotJob(job, ap))
+      slice.map(async ({ job, ap }, idx) => {
+        if (idx > 0) {
+          await new Promise((resolve) => setTimeout(resolve, idx * 1200));
+        }
+        return executeAutopilotJob(job, ap);
+      })
     );
 
     for (const res of results) {
@@ -658,6 +712,10 @@ export async function triggerAllActiveAutopilotMultimediaR8(userId: string): Pro
       } else {
         failedCount += 1;
       }
+    }
+
+    if (i + BATCH_SIZE < jobsToRun.length) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
     }
   }
 
@@ -784,5 +842,49 @@ export async function getAutopilotProjectsOverview(userId: string): Promise<Arra
       latestJob
     };
   });
+}
+
+export async function clearAutopilotErrors(userId: string, companyId?: string): Promise<{ clearedCount: number }> {
+  const db = firestore();
+  let clearedCount = 0;
+
+  if (companyId) {
+    const configId = `${userId}_${companyId}`;
+    await db.collection(COLLECTIONS.autopilotConfigs).doc(configId).set({
+      lastError: null,
+      lastErrorAt: null,
+      updatedAt: nowIso()
+    }, { merge: true }).catch(() => undefined);
+    clearedCount++;
+  } else {
+    const snap = await db.collection(COLLECTIONS.autopilotConfigs).where('userId', '==', userId).get();
+    for (const doc of snap.docs) {
+      await doc.ref.set({
+        lastError: null,
+        lastErrorAt: null,
+        updatedAt: nowIso()
+      }, { merge: true }).catch(() => undefined);
+      clearedCount++;
+    }
+  }
+
+  const jobsSnap = await db.collection(COLLECTIONS.autopilotJobs)
+    .where('userId', '==', userId)
+    .where('status', '==', 'failed')
+    .limit(50)
+    .get()
+    .catch(() => ({ docs: [] } as any));
+
+  for (const doc of jobsSnap.docs) {
+    const data = doc.data();
+    if (!companyId || data.companyId === companyId) {
+      await doc.ref.set({
+        error: null,
+        updatedAt: nowIso()
+      }, { merge: true }).catch(() => undefined);
+    }
+  }
+
+  return { clearedCount };
 }
 

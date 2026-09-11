@@ -62,7 +62,7 @@ export const config = {
   geminiApiKey: env('GEMINI_API_KEY'),
   geminiMediaApiKey: env('GEMINI_MEDIA_API_KEY') || env('GEMINI_API_KEY'),
   geminiModels: {
-    text: env('GEMINI_MODEL_TEXT', 'gemini-3.6-flash'),
+    text: env('GEMINI_MODEL_TEXT', 'gemini-3.8-flash'),
     pro: env('GEMINI_MODEL_PRO', 'gemini-3.1-pro-preview'),
     fallback: env('GEMINI_MODEL_FALLBACK', 'gemini-3.1-flash-lite'),
     image: env('GEMINI_MODEL_IMAGE', 'gemini-3.1-flash-image'),

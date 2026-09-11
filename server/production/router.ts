@@ -5,9 +5,9 @@ import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, e
 import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, listUserVideoJobs, textAiClient } from './ai.js';
 import { analyzeSeo } from './seo.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
-import { assertUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
+import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
 import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
-import { getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8 } from './autopilotMultimediaR8.js';
+import { getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors } from './autopilotMultimediaR8.js';
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, createPortalProjectInDb, deletePortalProjectInDb, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall, runDailyPortalMarketingCycle } from './antiFallEngine.js';
@@ -850,18 +850,23 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
   const timezone = safeString(req.body?.timezone, 80) || 'America/Sao_Paulo';
   const targetPlatforms = stringArray(req.body?.targetPlatforms, 10);
 
+  let connectionWarning: string | null = null;
   if (requestedEnabled && requestedMode === 'automatic') {
     const targets = targetPlatforms.length > 0 ? targetPlatforms : ['Facebook'];
+    const pendingChannels: string[] = [];
     for (const plat of targets) {
       const provider = normalizeProvider(plat);
       if (!provider || !isUniversalAutoPublishSupported(provider)) {
-        return res.status(400).json({ error: `O canal "${plat}" não suporta o pipeline multimídia automático.` });
+        pendingChannels.push(plat);
+        continue;
       }
-      try {
-        await assertUniversalConnectionReady(req.user!.id, companyId, provider);
-      } catch (error: any) {
-        return res.status(400).json({ error: error?.message || `O canal "${plat}" não está pronto para o Autopilot.` });
+      const ready = await checkUniversalConnectionReady(req.user!.id, companyId, provider);
+      if (!ready) {
+        pendingChannels.push(plat);
       }
+    }
+    if (pendingChannels.length > 0) {
+      connectionWarning = `Atenção: o(s) canal(is) [${pendingChannels.join(', ')}] ainda não possui(em) conta conectada em Redes Sociais. O Autopilot gerará o conteúdo e arte com IA e manterá salvo com segurança para aprovação até que as contas sejam conectadas.`;
     }
   }
 
@@ -876,7 +881,17 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
   });
   await ref.set(update, { merge: true });
   const fresh = await ref.get();
-  res.json({ message: 'Configuração multimídia do Autopilot salva.', config: { id: fresh.id, ...fresh.data() } });
+  res.json({
+    message: connectionWarning || 'Configuração multimídia do Autopilot salva com sucesso.',
+    warning: connectionWarning,
+    config: { id: fresh.id, ...fresh.data() }
+  });
+}));
+
+router.post('/autopilot/clear-errors', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const companyId = safeString(req.body?.companyId, 200);
+  const result = await clearAutopilotErrors(req.user!.id, companyId || undefined);
+  res.json({ success: true, message: 'Histórico de erros limpo com sucesso.', ...result });
 }));
 
 router.get('/autopilot/overview', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {

@@ -956,6 +956,15 @@ export async function assertUniversalConnectionReady(userId: string, companyId: 
   }
 }
 
+export async function checkUniversalConnectionReady(userId: string, companyId: string, provider: SocialProvider): Promise<boolean> {
+  try {
+    await assertUniversalConnectionReady(userId, companyId, provider);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function universalProviderSummary(): Record<SocialProvider, { automatic: boolean; media: string; note: string }> {
   return {
     facebook: { automatic: true, media: 'text_image_video', note: 'Publicação em Página via Graph API.' },
