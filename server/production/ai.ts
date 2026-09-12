@@ -1888,8 +1888,11 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
   }
 }
 
-export async function processPendingVideoJobs(): Promise<{ checked: number; completed: number; failed: number }> {
+export async function processPendingVideoJobs(options?: { signal?: AbortSignal }): Promise<{ checked: number; completed: number; failed: number }> {
   try {
+    if (options?.signal?.aborted) {
+      return { checked: 0, completed: 0, failed: 0 };
+    }
     const db = firestore();
     const processingSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
       .where('status', '==', 'processing')
@@ -1917,11 +1920,13 @@ export async function processPendingVideoJobs(): Promise<{ checked: number; comp
     let failed = 0;
 
     for (const doc of docs) {
+      if (options?.signal?.aborted) break;
       const job = doc.data() as VideoJobData;
 
       if (job.status === 'queued') {
         checked++;
         try {
+          if (options?.signal?.aborted) break;
           const result = await failVideoJob({
             docRef: db.collection(COLLECTIONS.mediaGenerationJobs).doc(job.id),
             userId: job.userId,
@@ -1946,6 +1951,7 @@ export async function processPendingVideoJobs(): Promise<{ checked: number; comp
 
       checked++;
       try {
+        if (options?.signal?.aborted) break;
         const res = await checkAndCompleteVideoJob(job.userId, job.id);
         if (res.status === 'completed') completed++;
         else if (res.status === 'failed') failed++;

@@ -9,6 +9,8 @@ import {
   processSocialTick,
   isAutopilotDue,
   getLocalDateAndHour,
+  acquireLock,
+  withControlledTimeout,
   type AutopilotScheduleConfig
 } from '../server/production/scheduler.js';
 import { resetMemoryDb, firestore, COLLECTIONS } from '../server/production/store.js';
@@ -134,4 +136,78 @@ test('Scheduler: telemetria reconhece evidência legada do lock sem inventar suc
   assert.equal(runtime.lastCycleStatus, null);
   assert.equal(runtime.legacyLastLeaseStartedAt, new Date(started).toISOString());
   assert.equal(runtime.legacyLastLeaseReleasedAt, new Date(released).toISOString());
+});
+
+test('Scheduler: withControlledTimeout cancela cooperativamente com AbortSignal', async () => {
+  let signalReceived = false;
+  let abortedObserved = false;
+  let sideEffectExecuted = false;
+
+  await assert.rejects(
+    () =>
+      withControlledTimeout(
+        async (signal) => {
+          signalReceived = Boolean(signal);
+          // Simula espera cooperativa
+          for (let i = 0; i < 20; i++) {
+            if (signal.aborted) {
+              abortedObserved = true;
+              return;
+            }
+            await new Promise((r) => setTimeout(r, 20));
+          }
+          sideEffectExecuted = true;
+        },
+        50,
+        'tarefa_teste_timeout'
+      ),
+    /excedeu o limite controlado de 50ms/
+  );
+
+  assert.equal(signalReceived, true, 'O AbortSignal deve ter sido repassado para a tarefa');
+  assert.equal(abortedObserved, true, 'A tarefa deve ter observado o sinal de aborto');
+  assert.equal(sideEffectExecuted, false, 'Efeitos colaterais pós-timeout devem ser bloqueados');
+});
+
+test('Scheduler: acquireLock detecta execução abandonada e recupera telemetria como failed', async () => {
+  resetMemoryDb();
+  const db = firestore();
+
+  // Simula execução anterior que caiu / não fez release e expirou o lock
+  const staleStarted = Date.now() - 15 * 60 * 1000;
+  const staleLockedUntil = Date.now() - 3 * 60 * 1000;
+  await db.collection(COLLECTIONS.schedulerLocks).doc('process').set({
+    owner: 'cron-stale-abandoned',
+    fencingToken: 5,
+    lockedAt: staleStarted,
+    lockedUntil: staleLockedUntil,
+    releasedAt: null
+  });
+
+  await db.collection(COLLECTIONS.systemSettings).doc('schedulerRuntime').set({
+    totalCycles: 5,
+    lastStartedAt: new Date(staleStarted).toISOString(),
+    lastStatus: 'running',
+    lastCycleOwner: 'cron-stale-abandoned',
+    lastCycleFencingToken: 5,
+    staleCyclesRecovered: 0
+  });
+
+  // Novo ciclo adquire o lock
+  const newLease = await acquireLock('vercel_cron');
+  assert.ok(newLease, 'Novo ciclo deve adquirir o lock com sucesso');
+  assert.equal(newLease.fencingToken, 6, 'Token de fencing deve ser incrementado');
+
+  // Verifica runtime
+  const runtimeSnap = await db.collection(COLLECTIONS.systemSettings).doc('schedulerRuntime').get();
+  const runtimeData = runtimeSnap.data() as any;
+
+  assert.equal(runtimeData.staleCyclesRecovered, 1, 'Deve incrementar staleCyclesRecovered');
+  assert.equal(runtimeData.previousCycleStatus, 'failed', 'Ciclo abandonado DEVE ser marcado como failed, NUNCA sucesso');
+  assert.equal(runtimeData.previousCycleError, 'stale_execution_recovered');
+  assert.equal(runtimeData.lastStaleRecoveryOwner, 'cron-stale-abandoned');
+
+  const publicRuntime = await getSchedulerPublicRuntime();
+  assert.equal(publicRuntime.staleCyclesRecovered, 1);
+  assert.equal(typeof publicRuntime.lastStaleRecoveryAt, 'string');
 });

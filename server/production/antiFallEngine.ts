@@ -236,7 +236,7 @@ async function validDirectTargets(db: any, userId: string, project: PortalProjec
  * Gera o conteúdo diário de cada projeto. Só cria agendamento social quando a
  * conexão pertence ao projeto e suporta publicação textual direta.
  */
-export async function runDailyPortalMarketingCycle(userId?: string): Promise<{
+export async function runDailyPortalMarketingCycle(userIdOrOptions?: string | { userId?: string; signal?: AbortSignal }): Promise<{
   success: boolean;
   publishedCount: number;
   generatedCount: number;
@@ -255,6 +255,9 @@ export async function runDailyPortalMarketingCycle(userId?: string): Promise<{
   }>;
   errors?: Array<{ projectId: string; message: string }>;
 }> {
+  const userId = typeof userIdOrOptions === 'string' ? userIdOrOptions : userIdOrOptions?.userId;
+  const signal = typeof userIdOrOptions === 'object' ? userIdOrOptions?.signal : undefined;
+
   const db = firestore();
   const targetUserId = await resolvePortalOwnerUserId(userId);
   const todayDate = new Date().toISOString().slice(0, 10);
@@ -273,13 +276,19 @@ export async function runDailyPortalMarketingCycle(userId?: string): Promise<{
   const projectsToProcess = selectedProjects;
 
   for (const project of projectsToProcess) {
+    if (signal?.aborted) break;
     const claimRef = await acquireDailyMarketingClaim(db, targetUserId, project.id, todayDate);
     if (!claimRef) {
       skippedCount += 1;
       continue;
     }
+    if (signal?.aborted) {
+      await claimRef.set({ status: 'failed', lockedUntil: 0, lastError: 'cycle_aborted', updatedAt: nowIso() }, { merge: true }).catch(() => undefined);
+      break;
+    }
 
     try {
+      if (signal?.aborted) throw new Error('Operação cancelada por timeout/abort.');
       const prompt = `Gere uma publicação de marketing de alto impacto e engajamento para o projeto "${project.name}" do Portal Vip Brasil.
 Informações Oficiais:
 - Categoria: ${project.category}

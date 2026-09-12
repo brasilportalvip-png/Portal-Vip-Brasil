@@ -72,6 +72,42 @@ function projectContext(userId: string, project: any): any {
   };
 }
 
+export function formatImageHashDocId(companyId: string, imageHash: string): string {
+  const cleanComp = String(companyId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '_');
+  const cleanHash = String(imageHash || '').trim().toLowerCase().replace(/[^a-f0-9]/g, '');
+  return `${cleanComp}_${cleanHash}`.slice(0, 150);
+}
+
+export async function reserveImageHashTransaction(
+  db: any,
+  companyId: string,
+  imageHash: string,
+  contentItemId: string
+): Promise<{ success: boolean; reason?: string }> {
+  if (!imageHash || !companyId) return { success: false, reason: 'Identificadores inválidos para reserva de hash.' };
+  const docId = formatImageHashDocId(companyId, imageHash);
+  const ref = db.collection(COLLECTIONS.usedImageHashes).doc(docId);
+
+  return await db.runTransaction(async (tx: any) => {
+    const snap = await tx.get(ref);
+    if (snap.exists) {
+      return {
+        success: false,
+        reason: 'Hash criptográfico idêntico já reservado no índice determinístico.'
+      };
+    }
+    tx.set(ref, {
+      id: docId,
+      companyId,
+      imageHash,
+      contentItemId,
+      reservedAt: nowIso(),
+      createdAt: nowIso()
+    });
+    return { success: true };
+  });
+}
+
 export async function isImageAlreadyUsed(companyId: string, imageInfo: {
   imageUrl?: string;
   storagePath?: string;
@@ -82,21 +118,79 @@ export async function isImageAlreadyUsed(companyId: string, imageInfo: {
   }
 
   const db = firestore();
-  const snap = await db.collection(COLLECTIONS.contentItems)
-    .where('companyId', '==', companyId)
-    .limit(100)
-    .get();
 
-  for (const doc of snap.docs) {
-    const data = doc.data() as any;
-    if (imageInfo.imageHash && data?.metadata?.imageHash && data.metadata.imageHash === imageInfo.imageHash) {
-      return { isDuplicate: true, reason: 'Hash criptográfico idêntico a imagem já utilizada.', matchField: 'hash' };
+  // 1. Verificação primária no índice determinístico O(1) por companyId + imageHash
+  if (imageInfo.imageHash) {
+    const hashDocId = formatImageHashDocId(companyId, imageInfo.imageHash);
+    try {
+      const hashSnap = await db.collection(COLLECTIONS.usedImageHashes).doc(hashDocId).get();
+      if (hashSnap.exists) {
+        return {
+          isDuplicate: true,
+          reason: 'Hash criptográfico idêntico registrado no índice determinístico.',
+          matchField: 'hash'
+        };
+      }
+    } catch {
+      // Prossegue para busca indexada de segurança
     }
-    if (imageInfo.storagePath && data?.metadata?.imageStoragePath && data.metadata.imageStoragePath === imageInfo.storagePath) {
-      return { isDuplicate: true, reason: 'Caminho de armazenamento (storagePath) idêntico a imagem anterior.', matchField: 'storagePath' };
+
+    // Busca indexada direta na coleção de conteúdos (limit 1, sem varredura em massa)
+    try {
+      const snap = await db.collection(COLLECTIONS.contentItems)
+        .where('companyId', '==', companyId)
+        .where('metadata.imageHash', '==', imageInfo.imageHash)
+        .limit(1)
+        .get();
+      if (!snap.empty) {
+        return {
+          isDuplicate: true,
+          reason: 'Hash criptográfico idêntico a imagem já utilizada.',
+          matchField: 'hash'
+        };
+      }
+    } catch {
+      // continua
     }
-    if (imageInfo.imageUrl && data?.imageUrl && data.imageUrl === imageInfo.imageUrl) {
-      return { isDuplicate: true, reason: 'URL pública idêntica a publicação anterior.', matchField: 'imageUrl' };
+  }
+
+  // 2. Busca indexada por storagePath (limit 1)
+  if (imageInfo.storagePath) {
+    try {
+      const snap = await db.collection(COLLECTIONS.contentItems)
+        .where('companyId', '==', companyId)
+        .where('metadata.imageStoragePath', '==', imageInfo.storagePath)
+        .limit(1)
+        .get();
+      if (!snap.empty) {
+        return {
+          isDuplicate: true,
+          reason: 'Caminho de armazenamento (storagePath) idêntico a imagem anterior.',
+          matchField: 'storagePath'
+        };
+      }
+    } catch {
+      // continua
+    }
+  }
+
+  // 3. Busca indexada por URL pública (limit 1)
+  if (imageInfo.imageUrl) {
+    try {
+      const snap = await db.collection(COLLECTIONS.contentItems)
+        .where('companyId', '==', companyId)
+        .where('imageUrl', '==', imageInfo.imageUrl)
+        .limit(1)
+        .get();
+      if (!snap.empty) {
+        return {
+          isDuplicate: true,
+          reason: 'URL pública idêntica a publicação anterior.',
+          matchField: 'imageUrl'
+        };
+      }
+    } catch {
+      // continua
     }
   }
 
@@ -236,9 +330,17 @@ async function reserveAutopilotJob(
   return { job, shouldRun: true };
 }
 
-export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord): Promise<AutopilotJob> {
+export async function executeAutopilotJob(
+  job: AutopilotJob,
+  ap: AutopilotRecord,
+  options?: { signal?: AbortSignal; lease?: any }
+): Promise<AutopilotJob> {
   const db = firestore();
   const jobRef = db.collection(COLLECTIONS.autopilotJobs).doc(job.id);
+
+  if (options?.signal?.aborted) {
+    throw new Error('[Abort] Execução do Autopilot cancelada antes de iniciar.');
+  }
 
   job.status = 'processing';
   job.startedAt = nowIso();
@@ -326,7 +428,7 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
 
       const readyImageTargets = imageTargets.filter((target) => readyTargets.some((rt) => rt.provider === target.provider));
 
-      // Detectar repetição por URL, storage path e hash quando disponível
+      // Detectar repetição por URL, storage path e hash via índice determinístico
       let duplicateCheck: { isDuplicate: boolean; reason?: string; matchField?: string } = { isDuplicate: false };
       if (image && !imageGenerationFailed) {
         duplicateCheck = await isImageAlreadyUsed(ap.companyId, {
@@ -336,7 +438,24 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
         });
       }
 
-      const isImageReused = duplicateCheck.isDuplicate;
+      let isImageReused = duplicateCheck.isDuplicate;
+
+      // Reserva atômica no índice determinístico para blindar concorrência antes de agendar
+      if (!isImageReused && image?.imageHash && !imageGenerationFailed) {
+        const reserveRes = await reserveImageHashTransaction(db, ap.companyId, image.imageHash, contentId);
+        if (!reserveRes.success) {
+          isImageReused = true;
+          duplicateCheck = {
+            isDuplicate: true,
+            reason: reserveRes.reason || 'Concorrência detectada: hash já reservado simultaneamente.',
+            matchField: 'hash'
+          };
+        }
+      }
+
+      if (options?.signal?.aborted) {
+        throw new Error('[Abort] Execução do Autopilot cancelada antes de persistir conteúdo.');
+      }
 
       // Impedir publicação automática com imagem já utilizada ou quando não houver imagem nova
       const shouldAutoSchedule = Boolean(
@@ -389,6 +508,10 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
       await db.collection(COLLECTIONS.contentItems).doc(contentId).set(content);
 
       if (shouldAutoSchedule) {
+        if (options?.signal?.aborted) {
+          throw new Error('[Abort] Execução do Autopilot cancelada antes do agendamento.');
+        }
+
         scheduleId = newId('sched');
         await db.collection(COLLECTIONS.scheduledPosts).doc(scheduleId).set({
           id: scheduleId,
@@ -408,7 +531,7 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
     }
 
     // 3. Vídeo Veo assíncrono (não aguarda renderização)
-    if (videoTargets.length > 0) {
+    if (videoTargets.length > 0 && !options?.signal?.aborted) {
       try {
         const videoPrompt = [
           generated.result.visualPrompt,
@@ -431,6 +554,10 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
       } catch (vidErr: any) {
         console.warn(`[Autopilot Multimídia] Pipeline de vídeo Veo temporariamente indisponível (${vidErr?.message || vidErr}). Prosseguindo com conteúdo multimídia...`);
       }
+    }
+
+    if (options?.signal?.aborted) {
+      throw new Error('[Abort] Execução do Autopilot cancelada antes de finalizar o registro do job.');
     }
 
     const finalStatus: AutopilotJobStatus = videoJobId ? 'video_processing' : 'completed';
@@ -476,6 +603,10 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
 
     return job;
   } catch (error: any) {
+    if (options?.signal?.aborted) {
+      console.warn(`[Autopilot Multimídia] Tarefa cancelada cooperativamente por timeout/abort para ${job.id}.`);
+      throw error;
+    }
     const errorMsg = error instanceof Error ? error.message : String(error);
     job.status = 'failed';
     job.error = errorMsg.slice(0, 1000);
@@ -498,7 +629,10 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
   }
 }
 
-export async function processAutopilotMultimediaR8(): Promise<{
+export async function processAutopilotMultimediaR8(options?: {
+  signal?: AbortSignal;
+  lease?: any;
+}): Promise<{
   processed: number;
   successCount: number;
   failedCount: number;
@@ -520,6 +654,7 @@ export async function processAutopilotMultimediaR8(): Promise<{
   }> = [];
 
   for (const doc of snap.docs) {
+    if (options?.signal?.aborted) break;
     const ap = { id: doc.id, ...doc.data() } as AutopilotRecord;
     const project: any = projectMap.get(ap.companyId);
     if (!project || project.active === false) continue;
@@ -539,6 +674,7 @@ export async function processAutopilotMultimediaR8(): Promise<{
 
   const jobsToRun: Array<{ job: AutopilotJob; ap: AutopilotRecord }> = [];
   for (const item of eligibleItems) {
+    if (options?.signal?.aborted) break;
     const reservation = await reserveAutopilotJob(
       item.ap,
       item.project.name,
@@ -558,13 +694,17 @@ export async function processAutopilotMultimediaR8(): Promise<{
   // Falhas em um projeto jamais bloqueiam os demais
   const BATCH_SIZE = 3;
   for (let i = 0; i < jobsToRun.length; i += BATCH_SIZE) {
+    if (options?.signal?.aborted) break;
     const slice = jobsToRun.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       slice.map(async ({ job, ap }, idx) => {
+        if (options?.signal?.aborted) {
+          throw new Error('[Abort] Execução cancelada antes do processamento do lote.');
+        }
         if (idx > 0) {
           await new Promise((resolve) => setTimeout(resolve, idx * 1200));
         }
-        return executeAutopilotJob(job, ap);
+        return executeAutopilotJob(job, ap, options);
       })
     );
 

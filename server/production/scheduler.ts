@@ -154,6 +154,8 @@ export interface SchedulerPublicRuntime {
   lastErrorStages: string[];
   lastCronErrorCount: number;
   lastCronErrorStages: string[];
+  staleCyclesRecovered?: number;
+  lastStaleRecoveryAt?: string | null;
   checkedAt: string;
   error?: string;
 }
@@ -213,12 +215,39 @@ export async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promi
       startedAt
     };
 
+    // Detecção de execução anterior expirada/abandonada:
+    // Se o lock anterior expirou sem release normal ou o runtime anterior permaneceu com status 'running'
+    const isPreviousLockExpiredWithoutRelease = Boolean(
+      snap.exists &&
+      current?.lockedUntil &&
+      Number(current.lockedUntil) > 0 &&
+      Number(current.lockedUntil) <= now &&
+      !current?.releasedAt
+    );
+    const wasPreviousStatusRunning = Boolean(
+      runtime?.lastStatus === 'running' || runtime?.lastCronStatus === 'running'
+    );
+    const isStaleExecution = isPreviousLockExpiredWithoutRelease || wasPreviousStatusRunning;
+
+    const previousOwner = current?.owner || runtime?.lastCycleOwner || 'unknown';
+    const previousToken = current?.fencingToken || runtime?.lastCycleFencingToken || 0;
+    const currentStaleCount = safeNonNegativeInteger(runtime?.staleCyclesRecovered);
+    const staleRecoveries = currentStaleCount + (isStaleExecution ? 1 : 0);
+
     tx.set(ref, {
       lockedAt: now,
       lockedUntil: lease.lockedUntil,
       owner: lease.owner,
       fencingToken: lease.fencingToken,
-      releasedAt: null
+      releasedAt: null,
+      ...(isStaleExecution ? {
+        lastRecoveredStaleExecution: {
+          recoveredAt: startedAt,
+          previousOwner,
+          previousToken,
+          error: 'stale_execution_recovered'
+        }
+      } : {})
     }, { merge: true });
 
     const runtimePatch: Record<string, any> = {
@@ -230,8 +259,19 @@ export async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promi
       lastTrigger: trigger,
       lastCycleOwner: owner,
       lastCycleFencingToken: fencingToken,
+      staleCyclesRecovered: staleRecoveries,
       updatedAt: startedAt
     };
+
+    if (isStaleExecution) {
+      // Registra recuperação sem nunca marcar como sucesso!
+      runtimePatch.lastStaleRecoveryAt = startedAt;
+      runtimePatch.lastStaleRecoveryOwner = previousOwner;
+      runtimePatch.lastStaleRecoveryError = 'stale_execution_recovered';
+      runtimePatch.previousCycleStatus = 'failed';
+      runtimePatch.previousCycleError = 'stale_execution_recovered';
+    }
+
     if (trigger === 'vercel_cron') {
       runtimePatch.vercelCronCycles = safeNonNegativeInteger(runtime?.vercelCronCycles) + 1;
       runtimePatch.lastCronStartedAt = startedAt;
@@ -246,21 +286,52 @@ export async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promi
 }
 
 export async function withControlledTimeout<T>(
-  taskFn: () => Promise<T>,
+  taskFn: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
-  taskName: string
+  taskName: string,
+  parentSignal?: AbortSignal
 ): Promise<T> {
+  const controller = new AbortController();
+
+  const onParentAbort = () => {
+    controller.abort();
+  };
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      controller.abort();
+    } else {
+      parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    }
+  }
+
   let timer: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
+      controller.abort();
       reject(new Error(`[Timeout] ${taskName} excedeu o limite controlado de ${timeoutMs}ms.`));
     }, timeoutMs);
   });
+
+  const taskPromise = Promise.resolve().then(() => taskFn(controller.signal));
+
   try {
-    return await Promise.race([taskFn(), timeoutPromise]);
+    return await Promise.race([taskPromise, timeoutPromise]);
+  } catch (err: any) {
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+    // Garante assentamento seguro e encerramento de efeitos colaterais
+    await Promise.race([
+      taskPromise.catch(() => undefined),
+      new Promise((resolve) => setTimeout(resolve, 300))
+    ]);
+    throw err;
   } finally {
     if (timer) {
       clearTimeout(timer);
+    }
+    if (parentSignal) {
+      parentSignal.removeEventListener('abort', onParentAbort);
     }
   }
 }
@@ -420,6 +491,8 @@ export async function getSchedulerPublicRuntime(): Promise<SchedulerPublicRuntim
       lastCronErrorStages: runtime?.lastCronErrors && typeof runtime.lastCronErrors === 'object' ? Object.keys(runtime.lastCronErrors).slice(0, 12) : [],
       legacyLastLeaseStartedAt,
       legacyLastLeaseReleasedAt,
+      staleCyclesRecovered: safeNonNegativeInteger(runtime?.staleCyclesRecovered),
+      lastStaleRecoveryAt: runtime?.lastStaleRecoveryAt || null,
       checkedAt: nowIso()
     };
   } catch (err: any) {
@@ -440,6 +513,8 @@ export async function getSchedulerPublicRuntime(): Promise<SchedulerPublicRuntim
       lastCronErrorStages: [],
       legacyLastLeaseStartedAt: null,
       legacyLastLeaseReleasedAt: null,
+      staleCyclesRecovered: 0,
+      lastStaleRecoveryAt: null,
       checkedAt: nowIso(),
       error: 'Falha ao consultar telemetria do scheduler.'
     };
@@ -464,16 +539,22 @@ export async function getSchedulerDiagnostics(): Promise<{
   };
 }
 
-export async function recoverStalePublishingPosts(staleThresholdMinutes = 15): Promise<number> {
-  return recoverStalePublishingPostsR8(staleThresholdMinutes);
+export async function recoverStalePublishingPosts(staleThresholdMinutes = 15, signal?: AbortSignal): Promise<number> {
+  return recoverStalePublishingPostsR8(staleThresholdMinutes, signal);
 }
 
-export async function processScheduledPosts(): Promise<number> {
-  return processScheduledPostsR8();
+export async function processScheduledPosts(options?: {
+  signal?: AbortSignal;
+  lease?: { owner: string; fencingToken: number };
+}): Promise<number> {
+  return processScheduledPostsR8(options);
 }
 
-export async function processAutopilot(): Promise<number> {
-  const res: any = await processAutopilotMultimediaR8();
+export async function processAutopilot(options?: {
+  signal?: AbortSignal;
+  lease?: { owner: string; fencingToken: number };
+}): Promise<number> {
+  const res: any = await processAutopilotMultimediaR8(options);
   return typeof res === 'number' ? res : Number(res?.processed || 0);
 }
 
@@ -547,6 +628,9 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
   const getRemainingBudgetMs = () => Math.max(0, maxExecutionMs - FINALLY_RESERVED_MS - (Date.now() - startTime));
   const hasTimeRemaining = (minRequiredMs = 1_500) => getRemainingBudgetMs() >= minRequiredMs;
 
+  const cycleAbortController = new AbortController();
+  const leaseContext = { owner: lease.owner, fencingToken: lease.fencingToken };
+
   const errors: Record<string, string> = {};
   let finalStatus: Exclude<SchedulerCycleStatus, 'running'> = 'ok';
   let recoveredPublishing = 0;
@@ -563,9 +647,10 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       try {
         const t1 = Math.min(8_000, getRemainingBudgetMs());
         recoveredPublishing = await withControlledTimeout(
-          () => recoverStalePublishingPosts(15),
+          (signal) => recoverStalePublishingPosts(15, signal),
           t1,
-          'recoverStalePublishingPosts'
+          'recoverStalePublishingPosts',
+          cycleAbortController.signal
         );
       } catch (err: any) {
         errors.recoverPublishing = err?.message || String(err);
@@ -577,9 +662,10 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       try {
         const t2 = Math.min(10_000, getRemainingBudgetMs());
         scheduledPosts = await withControlledTimeout(
-          () => processScheduledPosts(),
+          (signal) => processScheduledPosts({ signal, lease: leaseContext }),
           t2,
-          'processScheduledPosts'
+          'processScheduledPosts',
+          cycleAbortController.signal
         );
       } catch (err: any) {
         errors.scheduledPosts = err?.message || String(err);
@@ -593,9 +679,10 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       try {
         const t3 = Math.min(15_000, getRemainingBudgetMs());
         autopilot = await withControlledTimeout(
-          () => processAutopilot(),
+          (signal) => processAutopilot({ signal, lease: leaseContext }),
           t3,
-          'processAutopilot'
+          'processAutopilot',
+          cycleAbortController.signal
         );
       } catch (err: any) {
         errors.autopilot = err?.message || String(err);
@@ -608,9 +695,10 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       try {
         const t4 = Math.min(8_000, getRemainingBudgetMs());
         scheduledPostsAfterGeneration = await withControlledTimeout(
-          () => processScheduledPosts(),
+          (signal) => processScheduledPosts({ signal, lease: leaseContext }),
           t4,
-          'processScheduledPostsAfterGeneration'
+          'processScheduledPostsAfterGeneration',
+          cycleAbortController.signal
         );
         scheduledPosts += scheduledPostsAfterGeneration;
       } catch (err: any) {
@@ -624,9 +712,10 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       try {
         const t5 = Math.min(12_000, getRemainingBudgetMs());
         const blogCycleRes = await withControlledTimeout(
-          () => runDailyBlogCycle(),
+          (signal) => (signal ? runDailyBlogCycle({ signal }) : runDailyBlogCycle()),
           t5,
-          'runDailyBlogCycle'
+          'runDailyBlogCycle',
+          cycleAbortController.signal
         );
         portalBlogCount = blogCycleRes.publishedCount + blogCycleRes.pendingCount;
         if (!blogCycleRes.success) {
@@ -644,9 +733,10 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       try {
         const t6 = Math.min(8_000, getRemainingBudgetMs());
         const pmRes = await withControlledTimeout(
-          () => runDailyPortalMarketingCycle(),
+          (signal) => runDailyPortalMarketingCycle({ signal }),
           t6,
-          'runDailyPortalMarketingCycle'
+          'runDailyPortalMarketingCycle',
+          cycleAbortController.signal
         );
         portalMarketing = pmRes.generatedCount;
         if (!pmRes.success) {
@@ -665,9 +755,10 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       try {
         const t7 = Math.min(8_000, getRemainingBudgetMs());
         videoJobs = await withControlledTimeout(
-          () => processPendingVideoJobs(),
+          (signal) => processPendingVideoJobs({ signal }),
           t7,
-          'processPendingVideoJobs'
+          'processPendingVideoJobs',
+          cycleAbortController.signal
         );
       } catch (err: any) {
         errors.videoJobs = err?.message || String(err);
@@ -693,9 +784,11 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
   } catch (error: any) {
     finalStatus = 'failed';
     errors.scheduler = error?.message || String(error);
+    cycleAbortController.abort();
     throw error;
   } finally {
     try {
+      cycleAbortController.abort();
       await releaseLock(lease, finalStatus, errors);
     } catch (releaseErr: any) {
       console.error('[Scheduler] Erro crítico ao liberar lock:', releaseErr);

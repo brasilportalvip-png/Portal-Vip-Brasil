@@ -19,7 +19,10 @@ function sameProvider(result: any, platform: string, provider?: SocialProvider |
   return Boolean(provider && resultProvider === provider);
 }
 
-export async function recoverStalePublishingPostsR8(staleThresholdMinutes = 15): Promise<number> {
+export async function recoverStalePublishingPostsR8(
+  staleThresholdMinutes = 15,
+  signal?: AbortSignal
+): Promise<number> {
   const db = firestore();
   const snap = await db.collection(COLLECTIONS.scheduledPosts)
     .where('status', '==', 'publishing')
@@ -30,6 +33,7 @@ export async function recoverStalePublishingPostsR8(staleThresholdMinutes = 15):
   const cutoffMs = Date.now() - staleThresholdMinutes * 60 * 1000;
 
   for (const doc of snap.docs) {
+    if (signal?.aborted) break;
     const post = doc.data() as any;
     const timeIso = post.processingAt || post.publishedAt || post.updatedAt || post.createdAt;
     const processingTime = timeIso ? new Date(timeIso).getTime() : 0;
@@ -100,7 +104,26 @@ export async function recoverStalePublishingPostsR8(staleThresholdMinutes = 15):
   return recovered;
 }
 
-export async function processScheduledPostsR8(): Promise<number> {
+async function isLeaseStillValid(db: any, lease?: { owner: string; fencingToken: number }): Promise<boolean> {
+  if (!lease || !lease.owner || !lease.fencingToken) return true;
+  try {
+    const lockSnap = await db.collection(COLLECTIONS.schedulerLocks).doc('process').get();
+    if (!lockSnap.exists) return false;
+    const data = lockSnap.data() as any;
+    return (
+      data?.owner === lease.owner &&
+      Number(data?.fencingToken) === lease.fencingToken &&
+      Number(data?.lockedUntil) > Date.now()
+    );
+  } catch {
+    return false;
+  }
+}
+
+export async function processScheduledPostsR8(options?: {
+  signal?: AbortSignal;
+  lease?: { owner: string; fencingToken: number };
+}): Promise<number> {
   const db = firestore();
   const snap = await db.collection(COLLECTIONS.scheduledPosts)
     .where('status', '==', 'scheduled')
@@ -111,6 +134,12 @@ export async function processScheduledPostsR8(): Promise<number> {
   let processed = 0;
 
   for (const doc of snap.docs) {
+    if (options?.signal?.aborted) break;
+    if (options?.lease && !(await isLeaseStillValid(db, options.lease))) {
+      console.warn('[Scheduler] Lease expirou ou foi substituído; cancelando publicações remanescentes.');
+      break;
+    }
+
     const post = { id: doc.id, ...doc.data() } as any;
     const claimed = await db.runTransaction(async (tx) => {
       const fresh = await tx.get(doc.ref);
@@ -121,6 +150,7 @@ export async function processScheduledPostsR8(): Promise<number> {
     if (!claimed) continue;
 
     try {
+      if (options?.signal?.aborted) break;
       const userSnap = await db.collection(COLLECTIONS.users).doc(post.userId).get();
       if (!userSnap.exists) throw new Error('Inconsistência de segurança: Usuário associado ao agendamento não encontrado.');
 
@@ -144,6 +174,7 @@ export async function processScheduledPostsR8(): Promise<number> {
       const publicationResults: any[] = [];
 
       for (const platform of platforms) {
+        if (options?.signal?.aborted) break;
         const provider = normalizeProvider(String(platform));
         if (!provider) {
           publicationResults.push({
@@ -169,6 +200,12 @@ export async function processScheduledPostsR8(): Promise<number> {
           continue;
         }
 
+        if (options?.signal?.aborted) break;
+        if (options?.lease && !(await isLeaseStillValid(db, options.lease))) {
+          console.warn('[Scheduler] Lease expirou antes do envio à rede social; cancelando.');
+          break;
+        }
+
         const result = await publishScheduledContent({
           userId: post.userId,
           companyId: post.companyId,
@@ -192,6 +229,15 @@ export async function processScheduledPostsR8(): Promise<number> {
           ...(result.requiresUserAction ? { requiresUserAction: true } : {}),
           ...(result.deliveryMode ? { deliveryMode: result.deliveryMode } : {})
         });
+      }
+
+      if (options?.signal?.aborted) {
+        console.warn('[Scheduler] Processamento de post cancelado cooperativamente por timeout.');
+        break;
+      }
+      if (options?.lease && !(await isLeaseStillValid(db, options.lease))) {
+        console.warn('[Scheduler] Lease expirou durante publicação social; cancelando gravação de resultados.');
+        break;
       }
 
       const hasUnknown = publicationResults.some((item) => item.externalState === 'unknown');
@@ -229,25 +275,31 @@ export async function processScheduledPostsR8(): Promise<number> {
         updatedAt: nowIso()
       });
 
-      if (finalStatus === 'published') {
+      if (finalStatus === 'published' && !options?.signal?.aborted) {
         await contentSnap.ref.update({ status: 'published', updatedAt: nowIso() });
       }
 
-      await createNotification({
-        userId: post.userId,
-        title: finalStatus === 'published' ? 'Publicação concluída' : finalStatus === 'requires_review' ? 'Publicação requer verificação' : 'Publicação não concluída',
-        message: finalStatus === 'published'
-          ? `"${content.title || content.headline}" foi publicado nas redes com sucesso.`
-          : finalStatus === 'requires_review'
-          ? hasUserAction
-            ? `"${content.title || content.headline}" foi entregue como rascunho em uma rede que exige sua confirmação no aplicativo.`
-            : `A publicação de "${content.title || content.headline}" teve resposta indefinida e requer conferência manual.`
-          : `A publicação de "${content.title || content.headline}" falhou. Consulte o calendário para detalhes.`,
-        type: finalStatus === 'published' ? 'publication_success' : 'publication_failed'
-      });
+      if (!options?.signal?.aborted) {
+        await createNotification({
+          userId: post.userId,
+          title: finalStatus === 'published' ? 'Publicação concluída' : finalStatus === 'requires_review' ? 'Publicação requer verificação' : 'Publicação não concluída',
+          message: finalStatus === 'published'
+            ? `"${content.title || content.headline}" foi publicado nas redes com sucesso.`
+            : finalStatus === 'requires_review'
+            ? hasUserAction
+              ? `"${content.title || content.headline}" foi entregue como rascunho em uma rede que exige sua confirmação no aplicativo.`
+              : `A publicação de "${content.title || content.headline}" teve resposta indefinida e requer conferência manual.`
+            : `A publicação de "${content.title || content.headline}" falhou. Consulte o calendário para detalhes.`,
+          type: finalStatus === 'published' ? 'publication_success' : 'publication_failed'
+        });
+      }
 
       processed += 1;
     } catch (error) {
+      if (options?.signal?.aborted) {
+        console.warn('[Scheduler] Processamento de post cancelado cooperativamente pelo sinal de abort.');
+        break;
+      }
       const errorMsg = error instanceof Error ? error.message : String(error);
       await doc.ref.update({ status: 'failed', errorMessage: errorMsg.slice(0, 1000), processedAt: nowIso(), updatedAt: nowIso() });
       processed += 1;

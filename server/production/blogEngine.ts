@@ -2213,7 +2213,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
  * Ciclo Diário Completo do Blog:
  * Produz 1 artigo original inédito para CADA projeto ativo da vitrine!
  */
-export async function runDailyBlogCycle(userId?: string): Promise<{
+export async function runDailyBlogCycle(userIdOrOptions?: string | { userId?: string; signal?: AbortSignal }): Promise<{
   success: boolean;
   articlesGenerated: StoredBlogArticle[];
   totalProjects: number;
@@ -2222,6 +2222,9 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
   skippedCount: number;
   failedCount: number;
 }> {
+  const userId = typeof userIdOrOptions === 'string' ? userIdOrOptions : userIdOrOptions?.userId;
+  const signal = typeof userIdOrOptions === 'object' ? userIdOrOptions?.signal : undefined;
+
   let allProjects = await listAllPortalProjectsFromDb();
   if (!allProjects.length) {
     const seeded = await seedPortalProjectsIfEmpty();
@@ -2247,18 +2250,26 @@ export async function runDailyBlogCycle(userId?: string): Promise<{
 
   const worker = async () => {
     while (true) {
+      if (signal?.aborted) return;
       const currentIndex = cursor++;
       if (currentIndex >= projectsToProcess.length) return;
       const project = projectsToProcess[currentIndex];
+      if (signal?.aborted) return;
       const claimRef = await acquireDailyBlogClaim(project.id, cycleDate);
       if (!claimRef) {
         skippedCount += 1;
         continue;
       }
+      if (signal?.aborted) {
+        await claimRef.set({ status: 'failed', lockedUntil: 0, lastError: 'cycle_aborted', updatedAt: nowIso() }, { merge: true }).catch(() => undefined);
+        return;
+      }
 
       const deterministicArticleId = 'daily-blog-' + stableId(cycleDate + ':' + project.id).slice(0, 48);
       try {
+        if (signal?.aborted) throw new Error('Operação cancelada por timeout/abort.');
         const res = await generateArticleForProject(project, { userId: automationUserId, articleId: deterministicArticleId });
+        if (signal?.aborted) throw new Error('Operação cancelada por timeout/abort pós geração.');
         if (!res.success || !res.article) throw new Error('Geração do artigo não retornou persistência confirmada.');
 
         articlesGenerated.push(res.article);
