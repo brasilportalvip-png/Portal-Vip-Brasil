@@ -776,18 +776,48 @@ function extractGeneratedImage(response: any): { data: string; mimeType: string 
 export async function generateMarketingImage(data: {
   userId: string;
   company?: any;
+  title?: string;
   theme: string;
   style?: string;
   aspectRatio?: string;
   resolution?: '1K' | '2K' | '4K';
-}): Promise<{ imageUrl: string; storagePath: string; mimeType: string; creditsUsed: number; executionId: string; modelUsed: string; resolution: string }> {
+  executionId?: string;
+  dateIso?: string;
+}): Promise<{
+  imageUrl: string;
+  storagePath: string;
+  mimeType: string;
+  creditsUsed: number;
+  executionId: string;
+  modelUsed: string;
+  resolution: string;
+  imageHash?: string;
+}> {
   const resolution = data.resolution === '4K' ? '4K' : data.resolution === '2K' ? '2K' : '1K';
   const opKey = resolution === '4K' ? 'image_ai_4k' : resolution === '2K' ? 'image_ai_2k' : 'image_ai_1k';
   const cost = 0;
-  const executionId = newId('exec');
+  const executionId = data.executionId || newId('exec');
   const started = Date.now();
   const aspectRatio = normalizeAspectRatio(data.aspectRatio);
-  const prompt = `${companyContext(data.company)}\n\nCrie uma imagem publicitária premium e original para: ${data.theme}.\nEstilo visual: ${data.style || 'fotografia comercial moderna e sofisticada'}.\nProporção: ${aspectRatio}.\nResolução desejada: ${resolution}.\nNão inclua logotipos ou marcas de terceiros. Não invente selos, depoimentos ou números. Se houver texto na arte, mantenha-o curto, legível e somente se fizer sentido para o briefing.`;
+  const project = String(data.company?.name || 'Portal Vip Brasil');
+  const currentDate = String(data.dateIso || nowIso().slice(0, 10));
+  const title = String(data.title || data.theme);
+  const theme = String(data.theme);
+
+  const prompt = `${companyContext(data.company)}
+
+Projeto: ${project}
+Data: ${currentDate}
+Identificador da execução: ${executionId}
+Título da publicação: ${title}
+Tema visual: ${theme}
+
+Crie uma imagem publicitária premium, exclusiva e original para o projeto "${project}" com base no tema "${theme}" e título "${title}".
+Data de criação: ${currentDate}. Identificador da execução única: ${executionId}.
+Estilo visual: ${data.style || 'fotografia comercial moderna e sofisticada'}.
+Proporção: ${aspectRatio}.
+Resolução desejada: ${resolution}.
+Não inclua logotipos ou marcas de terceiros. Não invente selos, depoimentos ou números. Se houver texto na arte, mantenha-o curto, legível e somente se fizer sentido para o briefing.`;
 
   let model = config.geminiModels.image || 'gemini-3.1-flash-image';
 
@@ -795,6 +825,7 @@ export async function generateMarketingImage(data: {
     let imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     let storagePath = `generated/${data.userId}/${executionId}.jpg`;
     let mimeType = 'image/jpeg';
+    let imageHash = crypto.createHash('sha256').update(imageUrl).digest('hex');
 
     if (process.env.NODE_ENV !== 'test') {
       let response: any = null;
@@ -871,6 +902,7 @@ export async function generateMarketingImage(data: {
       if (!image?.data) throw new Error('O modelo de imagem não retornou um arquivo utilizável.');
       const buffer = Buffer.from(image.data, 'base64');
       if (!buffer.length || buffer.length > 12 * 1024 * 1024) throw new Error('A imagem retornada possui tamanho inválido.');
+      imageHash = crypto.createHash('sha256').update(buffer).digest('hex');
 
       const ext = image.mimeType.includes('png') ? 'png' : image.mimeType.includes('webp') ? 'webp' : 'jpg';
       storagePath = `generated/${data.userId}/${executionId}.${ext}`;
@@ -908,9 +940,10 @@ export async function generateMarketingImage(data: {
       durationMs: Date.now() - started,
       status: 'success',
       outputStoragePath: storagePath,
+      imageHash,
       timestamp: nowIso()
     });
-    return { imageUrl, storagePath, mimeType, creditsUsed: cost, executionId, modelUsed: model, resolution };
+    return { imageUrl, storagePath, mimeType, creditsUsed: cost, executionId, modelUsed: model, resolution, imageHash };
   } catch (error) {
     const message = formatAiErrorMessage(error instanceof Error ? error.message : String(error));
     await firestore().collection(COLLECTIONS.aiExecutions).doc(executionId).set({

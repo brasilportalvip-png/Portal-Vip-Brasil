@@ -10,17 +10,9 @@
     },
     {
       "src": "api/index.ts",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 60
-      }
+      "use": "@vercel/node"
     }
   ],
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 60
-    }
-  },
   "routes": [
     {
       "src": "^/(.*)$",

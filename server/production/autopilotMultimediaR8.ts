@@ -72,6 +72,37 @@ function projectContext(userId: string, project: any): any {
   };
 }
 
+export async function isImageAlreadyUsed(companyId: string, imageInfo: {
+  imageUrl?: string;
+  storagePath?: string;
+  imageHash?: string;
+}): Promise<{ isDuplicate: boolean; reason?: string; matchField?: string }> {
+  if (!imageInfo.imageUrl && !imageInfo.storagePath && !imageInfo.imageHash) {
+    return { isDuplicate: false };
+  }
+
+  const db = firestore();
+  const snap = await db.collection(COLLECTIONS.contentItems)
+    .where('companyId', '==', companyId)
+    .limit(100)
+    .get();
+
+  for (const doc of snap.docs) {
+    const data = doc.data() as any;
+    if (imageInfo.imageHash && data?.metadata?.imageHash && data.metadata.imageHash === imageInfo.imageHash) {
+      return { isDuplicate: true, reason: 'Hash criptográfico idêntico a imagem já utilizada.', matchField: 'hash' };
+    }
+    if (imageInfo.storagePath && data?.metadata?.imageStoragePath && data.metadata.imageStoragePath === imageInfo.storagePath) {
+      return { isDuplicate: true, reason: 'Caminho de armazenamento (storagePath) idêntico a imagem anterior.', matchField: 'storagePath' };
+    }
+    if (imageInfo.imageUrl && data?.imageUrl && data.imageUrl === imageInfo.imageUrl) {
+      return { isDuplicate: true, reason: 'URL pública idêntica a publicação anterior.', matchField: 'imageUrl' };
+    }
+  }
+
+  return { isDuplicate: false };
+}
+
 function localSlot(date: Date, timezone: string): { dayOfWeek: number; hour: number; dateStr: string } {
   try {
     const formatter = new Intl.DateTimeFormat('en-US', {
@@ -266,25 +297,55 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
     // 2. Imagem gerada se houver canais de imagem ou para revisão
     if (imageTargets.length > 0 || mode !== 'automatic') {
       const visualTheme = String(generated.result.visualPrompt || generated.result.headline || generated.result.body || `Criativo para ${company.name}`);
-      let image: any;
+      const executionId = newId('exec');
+      const dateIso = nowIso().slice(0, 10);
+      let image: any = null;
+      let imageGenerationFailed = false;
+      let imageErrorMessage = '';
+
       try {
         image = await generateMarketingImage({
           userId: ap.userId,
           company,
+          title: generated.result.headline,
           theme: visualTheme,
+          dateIso,
+          executionId,
           style: 'Fotografia comercial premium, realista e moderna para redes sociais',
           aspectRatio: '1:1',
           resolution: '1K'
         });
       } catch (imgErr: any) {
-        console.warn(`[Autopilot Multimídia] Falha ao gerar arte de IA para ${company.name}: ${imgErr?.message || imgErr}. Interrompendo para evitar publicação repetida.`);
-        throw new Error(`Falha na geração da arte visual com IA para ${company.name}: ${imgErr?.message || 'Modelo indisponível'}. Ciclo cancelado para evitar publicação com imagem repetida.`);
+        imageGenerationFailed = true;
+        imageErrorMessage = imgErr?.message || String(imgErr);
+        console.warn(`[Autopilot Multimídia] Falha ao gerar arte de IA para ${company.name}: ${imageErrorMessage}. Post será preservado para revisão sem agendamento automático.`);
       }
-      imageCredits = Number(image.creditsUsed || 0);
+
+      imageCredits = Number(image?.creditsUsed || 0);
       contentId = newId('content');
 
       const readyImageTargets = imageTargets.filter((target) => readyTargets.some((rt) => rt.provider === target.provider));
-      const shouldAutoSchedule = effectiveMode === 'automatic' && readyImageTargets.length > 0;
+
+      // Detectar repetição por URL, storage path e hash quando disponível
+      let duplicateCheck: { isDuplicate: boolean; reason?: string; matchField?: string } = { isDuplicate: false };
+      if (image && !imageGenerationFailed) {
+        duplicateCheck = await isImageAlreadyUsed(ap.companyId, {
+          imageUrl: image.imageUrl,
+          storagePath: image.storagePath,
+          imageHash: image.imageHash
+        });
+      }
+
+      const isImageReused = duplicateCheck.isDuplicate;
+
+      // Impedir publicação automática com imagem já utilizada ou quando não houver imagem nova
+      const shouldAutoSchedule = Boolean(
+        effectiveMode === 'automatic' &&
+        readyImageTargets.length > 0 &&
+        !imageGenerationFailed &&
+        !isImageReused &&
+        image?.imageUrl
+      );
 
       const content = {
         id: contentId,
@@ -298,16 +359,27 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
         hashtags: generated.result.hashtags || [],
         keywords: generated.result.keywords || [],
         visualPrompt: generated.result.visualPrompt || '',
-        imageUrl: image.imageUrl,
+        imageUrl: image?.imageUrl || '',
         targetPlatform: targets.map((item) => item.label).join(', '),
         creditsUsed: Number(generated.creditsUsed || 0) + imageCredits,
         status: shouldAutoSchedule ? 'scheduled' : 'saved',
         metadata: {
           generatedBy: 'autopilot_multimedia_r8',
           jobId: job.id,
-          imageStoragePath: image.storagePath,
-          imageModelUsed: image.modelUsed,
-          imageResolution: image.resolution,
+          imageStoragePath: image?.storagePath || null,
+          imageModelUsed: image?.modelUsed || null,
+          imageResolution: image?.resolution || null,
+          imageHash: image?.imageHash || null,
+          imageGenerationFailed,
+          imageErrorMessage: imageErrorMessage || null,
+          imageDuplicateDetected: isImageReused,
+          imageDuplicateReason: duplicateCheck.reason || null,
+          savedForReview: !shouldAutoSchedule,
+          reviewReason: imageGenerationFailed
+            ? 'Falha ao gerar imagem nova; salvo para revisão manual sem publicação automática'
+            : isImageReused
+              ? `Imagem repetida detectada (${duplicateCheck.matchField}); publicação automática cancelada e conteúdo salvo para revisão`
+              : (effectiveMode !== 'automatic' ? 'Aprovação manual necessária' : null),
           readySocialPlatforms: readyTargets.map((t) => t.label),
           pendingSocialPlatforms: pendingTargets.map((t) => t.label)
         },

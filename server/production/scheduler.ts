@@ -184,7 +184,7 @@ function knownCycleStatus(value: any): SchedulerCycleStatus | null {
     : null;
 }
 
-async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<SchedulerLease | null> {
+export async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<SchedulerLease | null> {
   const db = firestore();
   const ref = db.collection(COLLECTIONS.schedulerLocks).doc('process');
   const runtimeRef = db.collection(COLLECTIONS.systemSettings).doc(SCHEDULER_RUNTIME_DOC);
@@ -229,6 +229,7 @@ async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<Sche
       lastErrors: null,
       lastTrigger: trigger,
       lastCycleOwner: owner,
+      lastCycleFencingToken: fencingToken,
       updatedAt: startedAt
     };
     if (trigger === 'vercel_cron') {
@@ -242,6 +243,26 @@ async function acquireLock(trigger: SchedulerTrigger = 'internal'): Promise<Sche
 
     return lease;
   });
+}
+
+export async function withControlledTimeout<T>(
+  taskFn: () => Promise<T>,
+  timeoutMs: number,
+  taskName: string
+): Promise<T> {
+  let timer: NodeJS.Timeout | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`[Timeout] ${taskName} excedeu o limite controlado de ${timeoutMs}ms.`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([taskFn(), timeoutPromise]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
 }
 
 function sanitizeSchedulerErrors(errors: Record<string, string> | number): { count: number; details: Record<string, string> | null } {
@@ -259,7 +280,7 @@ function sanitizeSchedulerErrors(errors: Record<string, string> | number): { cou
   return { count: Object.keys(details).length, details: Object.keys(details).length ? details : null };
 }
 
-async function releaseLock(
+export async function releaseLock(
   lease: SchedulerLease,
   status: Exclude<SchedulerCycleStatus, 'running'> = 'ok',
   errors: Record<string, string> | number = 0
@@ -273,16 +294,28 @@ async function releaseLock(
     return await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       const current = snap.data() as any;
-      const isOurLock = Boolean(snap.exists && current?.owner === lease.owner);
-      const tokenMatches = Number(current?.fencingToken) === lease.fencingToken;
-      const stillOwnsLock = Boolean(isOurLock && tokenMatches);
-      if (!stillOwnsLock && !isOurLock) return false;
+      const ownsLock = Boolean(
+        snap.exists &&
+        current?.owner === lease.owner &&
+        Number(current?.fencingToken) === lease.fencingToken
+      );
+      if (!ownsLock) {
+        console.warn(`[Scheduler] releaseLock cancelado: lock não pertence a este ciclo (atual: ${current?.owner} #${current?.fencingToken}, esperado: ${lease.owner} #${lease.fencingToken})`);
+        return false;
+      }
 
       const runtimeSnap = await tx.get(runtimeRef);
       const runtime = runtimeSnap.data() as any;
       const finishedAt = nowIso();
       tx.set(ref, { lockedUntil: 0, releasedAt: Date.now(), releasedBy: lease.owner }, { merge: true });
-      if (!runtime?.lastCycleOwner || runtime.lastCycleOwner === lease.owner) {
+
+      const isCurrentCycleInRuntime = Boolean(
+        !runtime?.lastCycleOwner ||
+        (runtime.lastCycleOwner === lease.owner &&
+          (runtime.lastCycleFencingToken == null || Number(runtime.lastCycleFencingToken) === lease.fencingToken))
+      );
+
+      if (isCurrentCycleInRuntime) {
         const runtimePatch: Record<string, any> = {
           lastFinishedAt: finishedAt,
           lastStatus: status,
@@ -301,24 +334,47 @@ async function releaseLock(
       return true;
     });
   } catch (txErr) {
-    console.error('[Scheduler] Falha na transação de releaseLock, executando liberação direta:', txErr);
+    console.error('[Scheduler] Falha na transação de releaseLock, tentando fallback direto com verificação estrita:', txErr);
     try {
+      const snap = await ref.get();
+      const current = snap.data() as any;
+      const ownsLock = Boolean(
+        snap.exists &&
+        current?.owner === lease.owner &&
+        Number(current?.fencingToken) === lease.fencingToken
+      );
+      if (!ownsLock) {
+        console.warn(`[Scheduler] Fallback releaseLock cancelado: lock não pertence a este ciclo (atual: ${current?.owner} #${current?.fencingToken}, esperado: ${lease.owner} #${lease.fencingToken})`);
+        return false;
+      }
+
       const finishedAt = nowIso();
       await ref.set({ lockedUntil: 0, releasedAt: Date.now(), releasedBy: lease.owner }, { merge: true });
-      const runtimePatch: Record<string, any> = {
-        lastFinishedAt: finishedAt,
-        lastStatus: status,
-        lastErrorCount: errorSummary.count,
-        lastErrors: errorSummary.details,
-        updatedAt: finishedAt
-      };
-      if (lease.trigger === 'vercel_cron') {
-        runtimePatch.lastCronFinishedAt = finishedAt;
-        runtimePatch.lastCronStatus = status;
-        runtimePatch.lastCronErrorCount = errorSummary.count;
-        runtimePatch.lastCronErrors = errorSummary.details;
+
+      const runtimeSnap = await runtimeRef.get();
+      const runtime = runtimeSnap.data() as any;
+      const isCurrentCycleInRuntime = Boolean(
+        !runtime?.lastCycleOwner ||
+        (runtime.lastCycleOwner === lease.owner &&
+          (runtime.lastCycleFencingToken == null || Number(runtime.lastCycleFencingToken) === lease.fencingToken))
+      );
+
+      if (isCurrentCycleInRuntime) {
+        const runtimePatch: Record<string, any> = {
+          lastFinishedAt: finishedAt,
+          lastStatus: status,
+          lastErrorCount: errorSummary.count,
+          lastErrors: errorSummary.details,
+          updatedAt: finishedAt
+        };
+        if (lease.trigger === 'vercel_cron') {
+          runtimePatch.lastCronFinishedAt = finishedAt;
+          runtimePatch.lastCronStatus = status;
+          runtimePatch.lastCronErrorCount = errorSummary.count;
+          runtimePatch.lastCronErrors = errorSummary.details;
+        }
+        await runtimeRef.set(runtimePatch, { merge: true });
       }
-      await runtimeRef.set(runtimePatch, { merge: true });
       return true;
     } catch (fallbackErr) {
       console.error('[Scheduler] Falha crítica no fallback de releaseLock:', fallbackErr);
@@ -487,7 +543,9 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
 
   const startTime = Date.now();
   const maxExecutionMs = options.timeoutMs || 45_000;
-  const hasTimeRemaining = () => (Date.now() - startTime) < maxExecutionMs;
+  const FINALLY_RESERVED_MS = 6_000;
+  const getRemainingBudgetMs = () => Math.max(0, maxExecutionMs - FINALLY_RESERVED_MS - (Date.now() - startTime));
+  const hasTimeRemaining = (minRequiredMs = 1_500) => getRemainingBudgetMs() >= minRequiredMs;
 
   const errors: Record<string, string> = {};
   let finalStatus: Exclude<SchedulerCycleStatus, 'running'> = 'ok';
@@ -501,77 +559,122 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
 
   try {
     // Fase 1: Desbloqueio e publicação de agendamentos pendentes (Prioridade Imediata)
-    try {
-      recoveredPublishing = await recoverStalePublishingPosts(15);
-    } catch (err: any) {
-      errors.recoverPublishing = err?.message || String(err);
-      console.error('[Scheduler] Erro em recoverStalePublishingPosts:', err);
+    if (hasTimeRemaining(1_000)) {
+      try {
+        const t1 = Math.min(8_000, getRemainingBudgetMs());
+        recoveredPublishing = await withControlledTimeout(
+          () => recoverStalePublishingPosts(15),
+          t1,
+          'recoverStalePublishingPosts'
+        );
+      } catch (err: any) {
+        errors.recoverPublishing = err?.message || String(err);
+        console.error('[Scheduler] Erro em recoverStalePublishingPosts:', err);
+      }
     }
 
-    try {
-      scheduledPosts = await processScheduledPosts();
-    } catch (err: any) {
-      errors.scheduledPosts = err?.message || String(err);
-      console.error('[Scheduler] Erro em processScheduledPosts:', err);
+    if (hasTimeRemaining(1_000)) {
+      try {
+        const t2 = Math.min(10_000, getRemainingBudgetMs());
+        scheduledPosts = await withControlledTimeout(
+          () => processScheduledPosts(),
+          t2,
+          'processScheduledPosts'
+        );
+      } catch (err: any) {
+        errors.scheduledPosts = err?.message || String(err);
+        console.error('[Scheduler] Erro em processScheduledPosts:', err);
+      }
     }
 
     // Fase 2: Autopilot multimídia (Prioridade do Usuário para o slot do dia/hora)
     // Executado ANTES de gerações pesadas para garantir publicação pontual às 10h
-    try {
-      autopilot = await processAutopilot();
-    } catch (err: any) {
-      errors.autopilot = err?.message || String(err);
-      console.error('[Scheduler] Erro em processAutopilot:', err);
+    if (hasTimeRemaining(1_500)) {
+      try {
+        const t3 = Math.min(15_000, getRemainingBudgetMs());
+        autopilot = await withControlledTimeout(
+          () => processAutopilot(),
+          t3,
+          'processAutopilot'
+        );
+      } catch (err: any) {
+        errors.autopilot = err?.message || String(err);
+        console.error('[Scheduler] Erro em processAutopilot:', err);
+      }
     }
 
     // Fase 2.1: Publica imediatamente os novos agendamentos gerados pelo Autopilot para este ciclo
-    try {
-      scheduledPostsAfterGeneration = await processScheduledPosts();
-      scheduledPosts += scheduledPostsAfterGeneration;
-    } catch (err: any) {
-      errors.scheduledPostsAfterGeneration = err?.message || String(err);
-      console.error('[Scheduler] Erro em processScheduledPosts após geração:', err);
+    if (hasTimeRemaining(1_000)) {
+      try {
+        const t4 = Math.min(8_000, getRemainingBudgetMs());
+        scheduledPostsAfterGeneration = await withControlledTimeout(
+          () => processScheduledPosts(),
+          t4,
+          'processScheduledPostsAfterGeneration'
+        );
+        scheduledPosts += scheduledPostsAfterGeneration;
+      } catch (err: any) {
+        errors.scheduledPostsAfterGeneration = err?.message || String(err);
+        console.error('[Scheduler] Erro em processScheduledPosts após geração:', err);
+      }
     }
 
-    // SEO orgânico primeiro: cria os artigos antes das tarefas pesadas de vídeo/marketing.
-    if (hasTimeRemaining()) {
+    // Fase 3: SEO orgânico primeiro: cria os artigos antes das tarefas pesadas de vídeo/marketing.
+    if (hasTimeRemaining(2_000)) {
       try {
-        const blogCycleRes = await runDailyBlogCycle();
+        const t5 = Math.min(12_000, getRemainingBudgetMs());
+        const blogCycleRes = await withControlledTimeout(
+          () => runDailyBlogCycle(),
+          t5,
+          'runDailyBlogCycle'
+        );
         portalBlogCount = blogCycleRes.publishedCount + blogCycleRes.pendingCount;
         if (!blogCycleRes.success) {
           errors.portalBlog = `Ciclo do Blog teve ${blogCycleRes.failedCount} falha(s), ${blogCycleRes.skippedCount} item(ns) já processado(s), em ${blogCycleRes.totalProjects} projeto(s).`;
         }
       } catch (err: any) {
         errors.portalBlog = err?.message || String(err);
-        console.error('[Scheduler] Erro em runDailyBlogCycle:', err);
+        console.error('[Scheduler] Erro ou timeout em runDailyBlogCycle:', err);
       }
     } else {
       console.warn('[Scheduler] Limite de tempo do ciclo atingido; ciclo de blog postergado com segurança.');
     }
 
-    if (hasTimeRemaining()) {
+    if (hasTimeRemaining(2_000)) {
       try {
-        const pmRes = await runDailyPortalMarketingCycle();
+        const t6 = Math.min(8_000, getRemainingBudgetMs());
+        const pmRes = await withControlledTimeout(
+          () => runDailyPortalMarketingCycle(),
+          t6,
+          'runDailyPortalMarketingCycle'
+        );
         portalMarketing = pmRes.generatedCount;
         if (!pmRes.success) {
           errors.portalMarketing = (pmRes.errors || []).map((item) => `${item.projectId}: ${item.message}`).join(' | ').slice(0, 1000) || 'Ciclo diário concluído com falhas.';
         }
       } catch (err: any) {
         errors.portalMarketing = err?.message || String(err);
-        console.error('[Scheduler] Erro em runDailyPortalMarketingCycle:', err);
+        console.error('[Scheduler] Erro ou timeout em runDailyPortalMarketingCycle:', err);
       }
     } else {
       console.warn('[Scheduler] Limite de tempo do ciclo atingido; marketing diário postergado com segurança.');
     }
 
     // Process pending video jobs (async AI/Veo processing)
-    if (hasTimeRemaining()) {
+    if (hasTimeRemaining(2_000)) {
       try {
-        videoJobs = await processPendingVideoJobs();
+        const t7 = Math.min(8_000, getRemainingBudgetMs());
+        videoJobs = await withControlledTimeout(
+          () => processPendingVideoJobs(),
+          t7,
+          'processPendingVideoJobs'
+        );
       } catch (err: any) {
         errors.videoJobs = err?.message || String(err);
-        console.error('[Scheduler] Erro em processPendingVideoJobs:', err);
+        console.error('[Scheduler] Erro ou timeout em processPendingVideoJobs:', err);
       }
+    } else {
+      console.warn('[Scheduler] Limite de tempo do ciclo atingido; verificação de vídeos postergada com segurança.');
     }
 
     finalStatus = Object.keys(errors).length > 0 ? 'degraded' : 'ok';
