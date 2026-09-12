@@ -789,12 +789,18 @@ export async function findSocialConnection(
       .get();
 
     if (!snap.empty) {
-      const doc = snap.docs[0];
+      try {
+        await ensureValidSocialAccessToken(snap.docs[0].id);
+      } catch {}
+      const refreshedDoc = await snap.docs[0].ref.get();
+      const doc = refreshedDoc.exists ? refreshedDoc : snap.docs[0];
       const data = doc.data() as any;
       if (data.status === 'connected' || !data.status) {
         return { docId: doc.id, data: { id: doc.id, ...data } };
       }
     }
+    // Isolamento estrito de projetos: não herdar conexões de outros projetos
+    return null;
   }
 
   // 2. Herança inteligente: busca conexão ativa do mesmo usuário em outros projetos do portal

@@ -849,31 +849,22 @@ export async function generateMarketingImage(data: {
       }
 
       if (!imgSuccess || !response) {
-        console.warn(`[Froc AI Image Resiliência] Modelos de imagem indisponíveis ou limite temporário atingido (${lastImgError?.message || lastImgError}). Utilizando visual oficial de alta definição do projeto...`);
-        const fallbackProjectVisual = data.company?.bannerUrl || data.company?.logoUrl || 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80';
+        console.warn(`[AI Image] Modelos de imagem indisponíveis ou limite temporário atingido (${lastImgError?.message || lastImgError}).`);
         await firestore().collection(COLLECTIONS.aiExecutions).doc(executionId).set({
           userId: data.userId,
           companyId: data.company?.id || null,
           type: opKey,
-          provider: 'Google Gemini (Visual Contingency)',
-          model: 'curated_brand_visual',
+          provider: 'Google Gemini',
+          model,
           promptHash: promptFingerprint(prompt),
           promptLength: prompt.length,
           creditsConsumed: 0,
           durationMs: Date.now() - started,
-          status: 'success',
-          metadata: { contingency: true, originalError: String(lastImgError) },
+          status: 'failed',
+          metadata: { contingency: false, originalError: String(lastImgError) },
           timestamp: nowIso()
-        });
-        return {
-          imageUrl: fallbackProjectVisual,
-          storagePath: '',
-          mimeType: 'image/jpeg',
-          creditsUsed: 0,
-          executionId,
-          modelUsed: 'curated_brand_visual',
-          resolution
-        };
+        }).catch(() => undefined);
+        throw new Error(`Falha ao gerar imagem com IA: ${lastImgError?.message || 'Modelos de imagem indisponíveis'}`);
       }
 
       const image = extractGeneratedImage(response);

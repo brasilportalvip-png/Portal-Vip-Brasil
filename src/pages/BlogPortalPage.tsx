@@ -170,7 +170,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
         setArticles(sanitized);
         setTotalArticles(typeof data.total === 'number' ? data.total : sanitized.length);
       } else {
-        const local = convertLocalArticles(BLOG_ARTICLES);
+        const local = import.meta.env.DEV ? convertLocalArticles(BLOG_ARTICLES) : [];
         const filtered = local.filter((art) => {
           const matchCat = cat === 'Todos' || art.category === cat;
           const matchProj = proj === 'todos' || art.relatedProjectId === proj;
@@ -188,7 +188,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       }
     } catch (err) {
       console.warn('[BlogPortal] Erro ao buscar artigos do backend:', err);
-      const local = convertLocalArticles(BLOG_ARTICLES);
+      const local = import.meta.env.DEV ? convertLocalArticles(BLOG_ARTICLES) : [];
       const filtered = local.filter((art) => {
         const matchCat = cat === 'Todos' || art.category === cat;
         const matchProj = proj === 'todos' || art.relatedProjectId === proj;

@@ -542,6 +542,15 @@ export async function updatePortalProjectInDb(id: string, updates: Partial<Porta
     if (typeof updates.dailyMarketingEnabled === 'boolean') operationalPatch.dailyMarketingEnabled = updates.dailyMarketingEnabled;
     if (typeof updates.dailyBlogEnabled === 'boolean') operationalPatch.dailyBlogEnabled = updates.dailyBlogEnabled;
     if (updates.socialSettings && typeof updates.socialSettings === 'object') operationalPatch.socialSettings = updates.socialSettings;
+    if (typeof updates.tagline === 'string') operationalPatch.tagline = updates.tagline;
+    if (typeof updates.description === 'string') operationalPatch.description = updates.description;
+    if (typeof updates.targetAudience === 'string') operationalPatch.targetAudience = updates.targetAudience;
+    if (typeof updates.bannerUrl === 'string') operationalPatch.bannerUrl = updates.bannerUrl;
+    if (typeof updates.logoUrl === 'string') operationalPatch.logoUrl = updates.logoUrl;
+    if (Array.isArray(updates.highlights)) operationalPatch.highlights = updates.highlights;
+    if (Array.isArray(updates.keywords)) operationalPatch.keywords = updates.keywords;
+    if (Array.isArray(updates.socialMarketingAngles)) operationalPatch.socialMarketingAngles = updates.socialMarketingAngles;
+    if (Array.isArray(updates.bingSeoKeywords)) operationalPatch.bingSeoKeywords = updates.bingSeoKeywords;
     await docRef.set(cleanObject({ ...operationalPatch, updatedAt: now }), { merge: true });
     return getPortalProjectFromDb(current.id) as Promise<PortalProjectItem>;
   }

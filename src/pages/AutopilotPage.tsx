@@ -251,13 +251,12 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
         timeoutMs: 240_000
       });
 
-      const res = data?.result;
-      if (!res?.success) {
-        throw new Error(res?.error || res?.message || 'Falha na execução do ciclo.');
+      if (!data?.result?.success || !data.result.contentId) {
+        throw new Error(data?.result?.error || data?.result?.message || 'O ciclo terminou sem comprovar a gravação do conteúdo.');
       }
       await onRefreshContents();
       await loadOverview();
-      setMessage(res.message || 'Conteúdo gerado com sucesso.');
+      setMessage(data.result.message || 'Conteúdo gerado com sucesso.');
     } catch (error: any) {
       setMessage(error.message || 'Falha ao executar o ciclo.');
       await loadOverview();

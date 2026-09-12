@@ -277,17 +277,8 @@ export async function executeAutopilotJob(job: AutopilotJob, ap: AutopilotRecord
           resolution: '1K'
         });
       } catch (imgErr: any) {
-        console.warn(`[Autopilot Multimídia] Arte de IA indisponível temporariamente (${imgErr?.message || imgErr}). Aplicando visual oficial do projeto...`);
-        const fallbackBanner = company?.bannerUrl || project?.bannerUrl || 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80';
-        image = {
-          imageUrl: fallbackBanner,
-          storagePath: '',
-          mimeType: 'image/jpeg',
-          creditsUsed: 0,
-          executionId: newId('exec'),
-          modelUsed: 'project_official_visual',
-          resolution: '1K'
-        };
+        console.warn(`[Autopilot Multimídia] Falha ao gerar arte de IA para ${company.name}: ${imgErr?.message || imgErr}. Interrompendo para evitar publicação repetida.`);
+        throw new Error(`Falha na geração da arte visual com IA para ${company.name}: ${imgErr?.message || 'Modelo indisponível'}. Ciclo cancelado para evitar publicação com imagem repetida.`);
       }
       imageCredits = Number(image.creditsUsed || 0);
       contentId = newId('content');
@@ -585,12 +576,7 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
 
     const project = await getPortalProjectFromDb(companyId);
     if (!project || project.active === false) {
-      return {
-        success: false,
-        creditsUsed: 0,
-        message: 'Projeto não encontrado ou inativo no cadastro.',
-        error: 'Projeto inativo ou inexistente'
-      };
+      throw new Error('Projeto oficial não encontrado ou inativo no cadastro.');
     }
 
     const timezone = ap.timezone || 'America/Sao_Paulo';

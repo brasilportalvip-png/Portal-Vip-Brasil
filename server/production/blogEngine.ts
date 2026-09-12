@@ -1537,7 +1537,7 @@ export async function listBlogArticles(filters: {
 }> {
   try {
     const db = firestore();
-    const snap = await db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').get();
+    const snap = await db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').limit(500).get();
     let items: StoredBlogArticle[] = snap.docs.map((d) => {
       const data = d.data() as any;
       const article: StoredBlogArticle = { id: d.id, ...data };
