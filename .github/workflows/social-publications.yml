@@ -1,0 +1,33 @@
+name: Automatic Social Publications
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: social-publications
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish-due-content:
+    name: Publish Due Social Content
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger Social Publication Worker
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Secret CRON_SECRET não configurado."
+            exit 1
+          fi
+          curl -sS --fail-with-body --max-time 55 \
+            -X POST "https://portal-vip-brasil.vercel.app/api/cron/social-publications" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "User-Agent: GitHubActions-SocialPublicationWorker/1.0" \
+            -H "Content-Type: application/json"

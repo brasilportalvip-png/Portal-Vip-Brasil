@@ -41,6 +41,7 @@ import multer from 'multer';
 import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso, probeDatabaseHealth, queryData, slugify, writeAdminLog } from './store.js';
 import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './videoCatalog.js';
 import { runVideoRetryWorker, verifyCronAuthorization, getVideoRetryWorkerHealth } from './videoRetryWorker.js';
+import { runSocialPublicationWorker } from './socialPublicationWorker.js';
 
 const router = Router();
 
@@ -626,6 +627,20 @@ router.get('/cron/video-retries/health', asyncRoute(async (req, res) => {
   }
   const health = await getVideoRetryWorkerHealth();
   res.json(health);
+}));
+
+router.post('/cron/social-publications', asyncRoute(async (req, res) => {
+  if (!verifyCronAuthorization(req.headers.authorization)) {
+    return res.status(401).json({ error: 'Cron não autorizado.' });
+  }
+  const result = await runSocialPublicationWorker();
+  if (result.status === 'skipped_concurrent') {
+    return res.status(409).json({ success: false, status: result.status, telemetry: result.telemetry, durationMs: result.durationMs });
+  }
+  if (result.status === 'error') {
+    return res.status(500).json({ success: false, status: result.status, error: result.error, telemetry: result.telemetry, durationMs: result.durationMs });
+  }
+  return res.status(200).json(result);
 }));
 
 router.get('/admin/video-retries/health', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
