@@ -78,3 +78,40 @@ test('Media: vídeo privado usa zero créditos, finaliza uma vez e isola usuári
 
   setMediaAiClientForTesting(undefined);
 });
+
+test('Media: falha do Firebase Storage não cria vídeo concluído nem agendamento com URL local', async () => {
+  resetMemoryDb();
+  firebaseAdminProvider.setAdminStorageForTesting(null);
+  setMediaAiClientForTesting({
+    models: { generateVideos: async () => ({ name: 'operations/storage-failure-video' }) },
+    operations: {
+      getVideosOperation: async () => ({
+        done: true,
+        response: { generatedVideos: [{ video: { videoBytes: validMp4.toString('base64'), mimeType: 'video/mp4' } }] }
+      })
+    }
+  } as any);
+
+  const project = PORTAL_VIP_PROJECTS[0];
+  const job = await startVideoGenerationJob({
+    userId: 'usr_storage_failure',
+    company: { id: project.id, name: project.name },
+    prompt: 'Vídeo que não pode virar fallback local',
+    preset: 'pro_1080p',
+    aspectRatio: '9:16',
+    autoPublishPlatforms: ['youtube'],
+    autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' }
+  });
+
+  const result = await checkAndCompleteVideoJob(job.userId, job.id);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'VIDEO_STORAGE_PERSISTENCE_FAILED');
+  assert.equal(Boolean(result.videoUrl), false);
+  assert.equal(getMemoryCollection('scheduledPosts').size, 0);
+  const failedContent = getMemoryCollection('contentItems').get(result.contentItemId);
+  assert.equal(failedContent?.status, 'failed');
+  assert.equal(Boolean(failedContent?.videoUrl), false);
+
+  setMediaAiClientForTesting(undefined);
+  firebaseAdminProvider.setAdminStorageForTesting(undefined);
+});
