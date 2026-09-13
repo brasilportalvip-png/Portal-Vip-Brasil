@@ -2189,6 +2189,8 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
         const storageInstance = getAdminStorage();
         if (!storageInstance) throw new Error('Firebase Storage não configurado.');
         const bucket = storageInstance.bucket();
+        const bucketName = String(bucket.name || '').trim();
+        if (!bucketName) throw new Error('Firebase Storage sem bucket configurado.');
         await bucket.file(storagePath).save(videoBuffer, {
           resumable: false,
           metadata: {
@@ -2197,12 +2199,44 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
             metadata: { firebaseStorageDownloadTokens: downloadToken }
           }
         });
-        publicVideoUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name || 'froc-ia.firebasestorage.app')}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(downloadToken)}`;
+        publicVideoUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(downloadToken)}`;
       } catch (error) {
-        console.warn('[Froc AI Video Storage Warning] Firebase Storage indisponível, usando vídeo temático local do nicho:', error);
-        const niche = serverDetectNicheForVideo(workingJob.prompt || workingJob.title, workingJob.companyId);
-        publicVideoUrl = niche.sampleVideoUrl || `/videos/${niche.id}.mp4`;
-        storagePath = `local/videos/${niche.id}.mp4`;
+        console.warn('[Portal Vip Video Storage] Falha ao persistir MP4 no Firebase Storage:', sanitizeSecretText(error));
+        return failVideoJob({
+          docRef,
+          userId: workingJob.userId,
+          reservationId: workingJob.reservationId,
+          ownerToken,
+          ownerFence,
+          errorCode: 'VIDEO_STORAGE_PERSISTENCE_FAILED',
+          errorMessage: 'Não foi possível armazenar o vídeo MP4 no Firebase Storage. Nenhum agendamento foi criado.'
+        });
+      }
+
+      let parsedPublicVideoUrl: URL;
+      try {
+        parsedPublicVideoUrl = new URL(publicVideoUrl);
+      } catch {
+        return failVideoJob({
+          docRef,
+          userId: workingJob.userId,
+          reservationId: workingJob.reservationId,
+          ownerToken,
+          ownerFence,
+          errorCode: 'INVALID_PUBLIC_VIDEO_URL',
+          errorMessage: 'O Firebase Storage não retornou uma URL HTTPS válida. Nenhum agendamento foi criado.'
+        });
+      }
+      if (parsedPublicVideoUrl.protocol !== 'https:' || !parsedPublicVideoUrl.hostname) {
+        return failVideoJob({
+          docRef,
+          userId: workingJob.userId,
+          reservationId: workingJob.reservationId,
+          ownerToken,
+          ownerFence,
+          errorCode: 'INVALID_PUBLIC_VIDEO_URL',
+          errorMessage: 'O Firebase Storage não retornou uma URL HTTPS válida. Nenhum agendamento foi criado.'
+        });
       }
 
       const renewedAfterStorage = await renewVideoFinalizationLease(docRef, ownerToken, ownerFence);
