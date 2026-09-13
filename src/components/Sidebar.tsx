@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, FolderOpen, LayoutDashboard, Settings, Share2, ShieldAlert, Sparkles, type LucideIcon } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, FolderOpen, LayoutDashboard, Settings, Share2, ShieldAlert, Sparkles, type LucideIcon } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import type { Company, User as UserType } from '../types';
 
@@ -20,6 +20,7 @@ const menuItems: MenuItem[] = [
   { id: 'projetos', label: 'Meus Projetos & Sites', icon: Sparkles },
   { id: 'autopilot', label: 'Automação', icon: Sparkles, badge: 'AUTO' },
   { id: 'redes-sociais', label: 'Redes Sociais', icon: Share2 },
+  { id: 'calendario', label: 'Calendário', icon: Calendar },
   { id: 'conteudos', label: 'Conteúdos', icon: FolderOpen },
   { id: 'perfil', label: 'Configurações', icon: Settings }
 ];

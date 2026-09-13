@@ -1,5 +1,5 @@
 import React from 'react';
-import { FolderOpen, LayoutDashboard, Network, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { Calendar, FolderOpen, LayoutDashboard, Network, Settings, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import type { User } from '../types';
 
@@ -9,6 +9,7 @@ const items = [
   ['projetos','Meus Projetos & Sites',Sparkles],
   ['autopilot','Automação',Sparkles],
   ['redes-sociais','Redes Sociais',Network],
+  ['calendario','Calendário',Calendar],
   ['conteudos','Conteúdos',FolderOpen],
   ['perfil','Configurações',Settings]
 ] as const;

@@ -49,6 +49,9 @@ export interface UniversalPublishResult {
   statusCode?: number;
   requiresUserAction?: boolean;
   deliveryMode?: 'published' | 'draft';
+  externalUrl?: string;
+  videoUrl?: string;
+  rawResponse?: any;
 }
 
 interface SocialConnectionRecord {
@@ -750,7 +753,22 @@ async function publishYouTubeVideo(data: {
     const json = await upload.json().catch(() => ({} as any));
     if (upload.status >= 500) return unknown('youtube', `Erro interno do YouTube no envio do vídeo (HTTP ${upload.status}).`, upload.status);
     if (!upload.ok) return failure('youtube', json?.error?.message || `YouTube rejeitou o vídeo (HTTP ${upload.status}).`, upload.status !== 401, upload.status);
-    return json?.id ? success('youtube', String(json.id)) : unknown('youtube', 'YouTube aceitou o vídeo sem retornar o ID.', upload.status);
+    if (json?.id) {
+      const videoId = String(json.id);
+      const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const sanitizedResponse = {
+        id: videoId,
+        url: videoUrl,
+        title: data.title.slice(0, 100),
+        status: data.privacyStatus || 'unlisted',
+        uploadStatus: json?.status?.uploadStatus || 'uploaded'
+      };
+      return success('youtube', videoId, {
+        videoUrl,
+        rawResponse: sanitizedResponse
+      });
+    }
+    return unknown('youtube', 'YouTube aceitou o vídeo sem retornar o ID.', upload.status);
   } catch (error: any) {
     return /timeout|fetch failed|network/i.test(String(error?.message || error))
       ? unknown('youtube', error)

@@ -169,6 +169,11 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
                   </div>
 
                   <h3 className="mt-3 line-clamp-2 text-sm font-bold text-white">{item.title || item.headline || 'Conteúdo'}</h3>
+                  {(item.isLegacyImage || item.legacyRepeatedImage) && (
+                    <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold text-amber-300">
+                      ⚠️ Imagem legada do histórico (Unsplash) · Proteção ativa contra reutilização
+                    </div>
+                  )}
                   <p className="mt-2 line-clamp-3 whitespace-pre-line text-xs leading-relaxed text-slate-400">{item.body || item.visualPrompt || item.videoScript || 'Sem texto de prévia.'}</p>
                   {item.hashtags?.length > 0 && <p className="mt-3 line-clamp-2 text-[10px] text-cyan-400">{item.hashtags.join(' ')}</p>}
                   <div className="mt-3 flex items-center justify-between text-[10px] text-slate-500"><span>{new Date(item.createdAt).toLocaleString('pt-BR')}</span><span>Registro operacional</span></div>

@@ -14,7 +14,7 @@ import {
 } from './social.js';
 
 import { recoverStalePublishingPostsR8, processScheduledPostsR8 } from './scheduledPublisherR8.js';
-import { processAutopilotMultimediaR8, triggerUserAutopilotMultimediaR8 } from './autopilotMultimediaR8.js';
+import { processAutopilotMultimediaR8, triggerUserAutopilotMultimediaR8, type AutopilotExecutionResult } from './autopilotMultimediaR8.js';
 
 // Contrato de identidade preservado para logs, notificações e governança de produção.
 export const PORTAL_VIP_AUTOMATION_IDENTITY = {
@@ -606,15 +606,7 @@ async function processAutoBlog(): Promise<number> {
   }
 }
 
-export async function triggerUserAutopilot(userId: string, companyId: string): Promise<{
-  success: boolean;
-  contentId?: string;
-  scheduleId?: string;
-  videoJobId?: string;
-  mode?: string;
-  creditsUsed: number;
-  message: string;
-}> {
+export async function triggerUserAutopilot(userId: string, companyId: string): Promise<AutopilotExecutionResult> {
   return triggerUserAutopilotMultimediaR8(userId, companyId);
 }
 

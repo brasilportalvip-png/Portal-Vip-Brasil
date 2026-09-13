@@ -265,18 +265,36 @@ export async function processScheduledPostsR8(options?: {
           .slice(0, 1000) || 'Falha na publicação social.';
       }
 
+      const youtubeResult = publicationResults.find((item) => item.provider === 'youtube' && item.success && item.externalId);
+      const youtubeMetadata = youtubeResult ? {
+        youtubeVideoId: youtubeResult.externalId,
+        youtubeUrl: youtubeResult.videoUrl || `https://www.youtube.com/watch?v=${youtubeResult.externalId}`,
+        youtubeStatus: post.providerOptions?.youtubePrivacyStatus || 'unlisted',
+        youtubeSanitizedResponse: youtubeResult.rawResponse || {
+          id: youtubeResult.externalId,
+          url: youtubeResult.videoUrl || `https://www.youtube.com/watch?v=${youtubeResult.externalId}`,
+          status: post.providerOptions?.youtubePrivacyStatus || 'unlisted',
+          publishedAt: nowIso()
+        }
+      } : {};
+
       await doc.ref.update({
         status: finalStatus,
         publishedAt: finalStatus === 'published' ? (post.publishedAt || nowIso()) : null,
         lastExternalId,
         publicationResults,
         errorMessage,
+        ...youtubeMetadata,
         processedAt: nowIso(),
         updatedAt: nowIso()
       });
 
       if (finalStatus === 'published' && !options?.signal?.aborted) {
-        await contentSnap.ref.update({ status: 'published', updatedAt: nowIso() });
+        await contentSnap.ref.update({
+          status: 'published',
+          ...youtubeMetadata,
+          updatedAt: nowIso()
+        });
       }
 
       if (!options?.signal?.aborted) {

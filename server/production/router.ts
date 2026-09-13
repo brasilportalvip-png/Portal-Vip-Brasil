@@ -7,7 +7,20 @@ import { analyzeSeo } from './seo.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
 import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
-import { getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors } from './autopilotMultimediaR8.js';
+import { getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors, isLegacyUnsplashImage } from './autopilotMultimediaR8.js';
+
+function annotateLegacyImageRecord<T extends { imageUrl?: string; metadata?: any }>(item: T): T {
+  const isLegacy = isLegacyUnsplashImage(item.imageUrl) || item.metadata?.imageDuplicateDetected === true;
+  if (isLegacy) {
+    return {
+      ...item,
+      isLegacyImage: true,
+      legacyRepeatedImage: true,
+      legacyNote: 'Imagem legada/repetida do Unsplash identificada no histórico (não comprova proteção nova).'
+    };
+  }
+  return item;
+}
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, createPortalProjectInDb, deletePortalProjectInDb, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
 import { executeAiWith2SecAntiFall, runDailyPortalMarketingCycle } from './antiFallEngine.js';
@@ -554,7 +567,8 @@ router.post('/seo/analyze', requireAuth, asyncRoute(async (req: AuthenticatedReq
 router.get('/content', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   let query: any = firestore().collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id);
   if (req.query.companyId) query = query.where('companyId', '==', String(req.query.companyId));
-  const items = queryData<any>(await query.get()).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const rawItems = queryData<any>(await query.get()).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const items = rawItems.map(annotateLegacyImageRecord);
   res.json({ contents: items, items });
 }));
 
@@ -656,7 +670,8 @@ async function scheduledForUser(userId: string, companyId?: string) {
 
 router.get('/content/scheduled', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const scheduledPosts = await scheduledForUser(req.user!.id, req.query.companyId ? String(req.query.companyId) : undefined);
-  res.json({ scheduledPosts, scheduled: scheduledPosts });
+  const annotated = scheduledPosts.map(annotateLegacyImageRecord);
+  res.json({ scheduledPosts: annotated, scheduled: annotated });
 }));
 
 router.get('/content/calendar', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
@@ -665,7 +680,9 @@ router.get('/content/calendar', requireAuth, asyncRoute(async (req: Authenticate
   let query: any = firestore().collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id);
   if (companyId) query = query.where('companyId', '==', companyId);
   const items = queryData<any>(await query.get());
-  res.json({ scheduled, scheduledPosts: scheduled, items, contents: items });
+  const annotatedScheduled = scheduled.map(annotateLegacyImageRecord);
+  const annotatedItems = items.map(annotateLegacyImageRecord);
+  res.json({ scheduled: annotatedScheduled, scheduledPosts: annotatedScheduled, items: annotatedItems, contents: annotatedItems });
 }));
 
 router.post('/content/scheduled/:id/retry', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
@@ -909,7 +926,22 @@ router.post('/autopilot/trigger-now', requireAuth, asyncRoute(async (req: Authen
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório para acionar o Autopilot.' });
   await requireOwnedCompany(req.user!.id, companyId);
   const result = await triggerUserAutopilot(req.user!.id, companyId);
-  res.json({ message: 'Autopilot executado para seu projeto.', result });
+  res.status(result.success ? 200 : 422).json({
+    message: result.message || 'Autopilot executado para seu projeto.',
+    result,
+    success: result.success,
+    jobId: result.jobId,
+    contentId: result.contentId,
+    videoJobId: result.videoJobId,
+    scheduleId: result.scheduleId,
+    stage: result.stage,
+    status: result.status,
+    mode: result.mode,
+    creditsUsed: result.creditsUsed,
+    persisted: result.persisted,
+    publicationConfirmed: result.publicationConfirmed,
+    error: result.error
+  });
 }));
 
 // Social OAuth

@@ -108,6 +108,11 @@ export async function reserveImageHashTransaction(
   });
 }
 
+export function isLegacyUnsplashImage(url?: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  return url.includes('images.unsplash.com') || url.includes('source.unsplash.com');
+}
+
 export async function isImageAlreadyUsed(companyId: string, imageInfo: {
   imageUrl?: string;
   storagePath?: string;
@@ -115,6 +120,15 @@ export async function isImageAlreadyUsed(companyId: string, imageInfo: {
 }): Promise<{ isDuplicate: boolean; reason?: string; matchField?: string }> {
   if (!imageInfo.imageUrl && !imageInfo.storagePath && !imageInfo.imageHash) {
     return { isDuplicate: false };
+  }
+
+  // 0. Bloqueio estrito de URLs estáticas/legadas do Unsplash
+  if (imageInfo.imageUrl && isLegacyUnsplashImage(imageInfo.imageUrl)) {
+    return {
+      isDuplicate: true,
+      reason: 'URL legada/estática do Unsplash detectada; reutilização bloqueada para proteger originalidade.',
+      matchField: 'legacy_unsplash'
+    };
   }
 
   const db = firestore();
@@ -550,14 +564,34 @@ export async function executeAutopilotJob(
           autoPublishPlatforms: effectiveMode === 'automatic' ? readyVideoTargets.map((item) => item.label) : [],
           autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' }
         });
+
+        // Confirmação obrigatória de persistência real do videoJob no Firestore
+        const jobCheck = await db.collection(COLLECTIONS.mediaGenerationJobs).doc(videoJob.id).get();
+        if (!jobCheck.exists) {
+          throw new Error(`Inconsistência de persistência: videoJob ${videoJob.id} não foi gravado no banco de dados.`);
+        }
+
         videoJobId = videoJob.id;
+        if (!contentId && videoJob.contentItemId) {
+          contentId = videoJob.contentItemId;
+        }
       } catch (vidErr: any) {
+        // Se o YouTube foi selecionado ou se não há canais de imagem para este projeto, a falha ao registrar o job de vídeo é fatal
+        if (youtubeSelected || imageTargets.length === 0) {
+          throw new Error(`Falha ao iniciar processamento de vídeo para ${youtubeSelected ? 'YouTube' : 'vídeo'}: ${vidErr?.message || vidErr}`);
+        }
         console.warn(`[Autopilot Multimídia] Pipeline de vídeo Veo temporariamente indisponível (${vidErr?.message || vidErr}). Prosseguindo com conteúdo multimídia...`);
       }
     }
 
     if (options?.signal?.aborted) {
       throw new Error('[Abort] Execução do Autopilot cancelada antes de finalizar o registro do job.');
+    }
+
+    // Validação estrita de persistência: O Autopilot não pode concluir com sucesso sem pelo menos um artefato persistido
+    const hasArtifact = Boolean(contentId || videoJobId || scheduleId);
+    if (!hasArtifact) {
+      throw new Error('Nenhum artefato persistido (contentId, videoJobId ou scheduleId) foi gerado neste ciclo.');
     }
 
     const finalStatus: AutopilotJobStatus = videoJobId ? 'video_processing' : 'completed';
@@ -738,25 +772,40 @@ export async function processAutopilotMultimediaR8(options?: {
 
 const activeAutopilotRuns = new Map<string, number>();
 
-export async function triggerUserAutopilotMultimediaR8(userId: string, companyId: string): Promise<{
+export interface AutopilotExecutionResult {
   success: boolean;
-  jobId?: string;
-  contentId?: string;
-  scheduleId?: string;
-  videoJobId?: string;
+  jobId: string | null;
+  contentId: string | null;
+  videoJobId: string | null;
+  scheduleId: string | null;
+  stage: string;
+  status: string;
   mode?: string;
   creditsUsed: number;
   message: string;
+  persisted: boolean;
+  publicationConfirmed: boolean;
   error?: string;
-}> {
+}
+
+export async function triggerUserAutopilotMultimediaR8(userId: string, companyId: string): Promise<AutopilotExecutionResult> {
   const lockKey = `${userId}_${companyId}`;
   const now = Date.now();
   const lastRun = activeAutopilotRuns.get(lockKey);
   if (lastRun && (now - lastRun) < 240_000) {
     return {
-      success: true,
+      success: false,
+      jobId: null,
+      contentId: null,
+      videoJobId: null,
+      scheduleId: null,
+      stage: 'in_progress',
+      status: 'in_progress',
       creditsUsed: 0,
-      message: 'Uma execução do Autopilot já está em processamento para este projeto. Por favor, aguarde a conclusão.'
+      message: 'Uma execução do Autopilot já está em processamento para este projeto. Por favor, aguarde a conclusão.',
+      persisted: false,
+      publicationConfirmed: false,
+      error: 'Execução concorrente em andamento.'
     };
   }
 
@@ -798,29 +847,83 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
     const reservation = await reserveAutopilotJob(ap, project.name, slot, current, true);
     const finishedJob = await executeAutopilotJob(reservation.job, ap);
 
-    if (finishedJob.status === 'failed') {
+    // Verificação estrita de persistência real no Firestore antes de qualquer confirmação
+    let contentExists = false;
+    let videoJobExists = false;
+    let scheduleExists = false;
+
+    if (finishedJob.contentId) {
+      const cSnap = await db.collection(COLLECTIONS.contentItems).doc(finishedJob.contentId).get().catch(() => null);
+      contentExists = Boolean(cSnap?.exists);
+    }
+    if (finishedJob.videoJobId) {
+      const vSnap = await db.collection(COLLECTIONS.mediaGenerationJobs).doc(finishedJob.videoJobId).get().catch(() => null);
+      videoJobExists = Boolean(vSnap?.exists);
+    }
+    if (finishedJob.scheduleId) {
+      const sSnap = await db.collection(COLLECTIONS.scheduledPosts).doc(finishedJob.scheduleId).get().catch(() => null);
+      scheduleExists = Boolean(sSnap?.exists);
+    }
+
+    const confirmedContentId = (finishedJob.contentId && contentExists) ? finishedJob.contentId : null;
+    const confirmedVideoJobId = (finishedJob.videoJobId && videoJobExists) ? finishedJob.videoJobId : null;
+    const confirmedScheduleId = (finishedJob.scheduleId && scheduleExists) ? finishedJob.scheduleId : null;
+
+    const persisted = Boolean(confirmedContentId || confirmedVideoJobId || confirmedScheduleId);
+    const isVideoProcessing = finishedJob.status === 'video_processing' || Boolean(confirmedVideoJobId);
+    const isFailed = finishedJob.status === 'failed' || !persisted;
+
+    if (isFailed) {
+      const failReason = finishedJob.error || (!persisted ? 'Nenhum artefato comprovadamente persistido no banco de dados.' : 'Falha na execução do Autopilot.');
       return {
         success: false,
-        jobId: finishedJob.id,
+        jobId: finishedJob.id || null,
+        contentId: confirmedContentId,
+        videoJobId: confirmedVideoJobId,
+        scheduleId: confirmedScheduleId,
+        stage: 'failed',
+        status: 'failed',
+        mode: finishedJob.mode,
         creditsUsed: 0,
-        message: `Falha na execução do Autopilot: ${finishedJob.error || 'Erro desconhecido.'}`,
-        error: finishedJob.error || undefined
+        message: `Falha na execução do Autopilot: ${failReason}`,
+        persisted: false,
+        publicationConfirmed: false,
+        error: failReason
       };
+    }
+
+    const stage = isVideoProcessing
+      ? 'video_processing'
+      : confirmedScheduleId
+        ? 'scheduled'
+        : 'saved_for_review';
+
+    const status = isVideoProcessing
+      ? 'video_processing'
+      : finishedJob.status;
+
+    let message: string;
+    if (isVideoProcessing) {
+      message = `Vídeo em processamento pelo pipeline Veo (job: ${confirmedVideoJobId}); agendamento no YouTube será realizado após a disponibilização do arquivo.`;
+    } else if (finishedJob.mode === 'automatic' && confirmedScheduleId) {
+      message = 'Conteúdo multimídia criado e agendado automaticamente.';
+    } else {
+      message = 'Conteúdo multimídia gerado com sucesso e salvo para revisão.';
     }
 
     return {
       success: true,
-      jobId: finishedJob.id,
-      contentId: finishedJob.contentId || undefined,
-      scheduleId: finishedJob.scheduleId || undefined,
-      videoJobId: finishedJob.videoJobId || undefined,
+      jobId: finishedJob.id || null,
+      contentId: confirmedContentId,
+      videoJobId: confirmedVideoJobId,
+      scheduleId: confirmedScheduleId,
+      stage,
+      status,
       mode: finishedJob.mode,
       creditsUsed: finishedJob.creditsUsed || 0,
-      message: finishedJob.videoJobId
-        ? 'Conteúdo multimídia gerado; vídeo Veo em processamento assíncrono para publicação.'
-        : finishedJob.mode === 'automatic'
-          ? 'Conteúdo multimídia criado e agendado automaticamente.'
-          : 'Conteúdo multimídia gerado com sucesso e salvo para revisão.'
+      message,
+      persisted: true,
+      publicationConfirmed: false
     };
   } finally {
     activeAutopilotRuns.delete(lockKey);

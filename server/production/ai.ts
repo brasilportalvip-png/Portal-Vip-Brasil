@@ -1117,6 +1117,17 @@ async function failVideoJob(data: {
       updatedAt: nowIso()
     };
     tx.set(data.docRef, failedJob);
+    if (current.contentItemId) {
+      const contentRef = firestore().collection(COLLECTIONS.contentItems).doc(current.contentItemId);
+      tx.set(contentRef, {
+        status: 'failed',
+        metadata: {
+          errorCode: data.errorCode,
+          errorMessage: data.errorMessage
+        },
+        updatedAt: nowIso()
+      }, { merge: true });
+    }
     return { marked: true, job: failedJob };
   });
 
@@ -1358,6 +1369,31 @@ export async function startVideoGenerationJob(data: {
   // O job durável é criado antes da primeira chamada ao provedor.
   try {
     await docRef.create(queuedJob);
+    const initialContentItem = {
+      id: contentItemId,
+      userId: data.userId,
+      companyId: data.company?.id || 'default',
+      type: 'video',
+      title: data.title || `Vídeo IA - ${data.prompt.slice(0, 60)}`,
+      headline: data.title || '',
+      body: data.prompt,
+      videoUrl: '',
+      targetPlatform: aspectRatio === '9:16' ? 'Reels / TikTok / Shorts' : 'YouTube / Banner',
+      status: 'processing',
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        jobId,
+        preset,
+        resolution: presetConfig.resolution,
+        aspectRatio,
+        modelUsed: presetConfig.model,
+        pipelineState: 'provider_starting',
+        autoPublishPlatforms: data.autoPublishPlatforms || [],
+        autoPublishProviderOptions: data.autoPublishProviderOptions || { youtubePrivacyStatus: 'unlisted' }
+      }
+    };
+    await firestore().collection(COLLECTIONS.contentItems).doc(contentItemId).set(initialContentItem);
   } catch (error) {
     const message = 'Não foi possível registrar o job de vídeo antes do processamento. A operação foi encerrada com segurança.';
     throw new Error(formatAiErrorMessage(error instanceof Error ? error.message : message));

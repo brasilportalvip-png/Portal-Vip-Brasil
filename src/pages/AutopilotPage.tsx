@@ -237,11 +237,27 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
 
     try {
       const data = await apiRequest<{
+        message?: string;
+        success?: boolean;
+        jobId?: string | null;
+        contentId?: string | null;
+        videoJobId?: string | null;
+        scheduleId?: string | null;
+        stage?: string;
+        status?: string;
+        persisted?: boolean;
+        publicationConfirmed?: boolean;
+        error?: string;
         result?: {
           success?: boolean;
-          contentId?: string;
-          videoJobId?: string;
-          scheduleId?: string;
+          jobId?: string | null;
+          contentId?: string | null;
+          videoJobId?: string | null;
+          scheduleId?: string | null;
+          stage?: string;
+          status?: string;
+          persisted?: boolean;
+          publicationConfirmed?: boolean;
           message?: string;
           error?: string;
         };
@@ -251,12 +267,24 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
         timeoutMs: 240_000
       });
 
-      if (!data?.result?.success || !data.result.contentId) {
-        throw new Error(data?.result?.error || data?.result?.message || 'O ciclo terminou sem comprovar a gravação do conteúdo.');
+      const res = data?.result || data;
+      const isPersisted = res?.persisted === true;
+      const isSuccess = res?.success === true && isPersisted;
+
+      if (!isSuccess || !isPersisted) {
+        throw new Error(res?.error || res?.message || 'O ciclo terminou sem comprovar a persistência de artefato no banco de dados (persisted = false).');
       }
+
       await onRefreshContents();
       await loadOverview();
-      setMessage(data.result.message || 'Conteúdo gerado com sucesso.');
+
+      if (res.stage === 'video_processing' || res.videoJobId) {
+        setMessage(
+          `Vídeo em processamento pelo pipeline Veo (Job ID: ${res.videoJobId}). O agendamento no YouTube será realizado após a disponibilização do arquivo renderizado. O envio ao YouTube ainda não ocorreu.`
+        );
+      } else {
+        setMessage(res.message || 'Conteúdo multimídia gerado e persistido com sucesso.');
+      }
     } catch (error: any) {
       setMessage(error.message || 'Falha ao executar o ciclo.');
       await loadOverview();
