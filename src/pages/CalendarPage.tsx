@@ -37,6 +37,7 @@ export const CalendarPage: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionableTab, setActionableTab] = useState<string | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     try {
@@ -199,7 +200,7 @@ export const CalendarPage: React.FC<Props> = ({
             <CalendarIcon className="text-cyan-400" />
             Calendário Editorial
           </h2>
-          <p className="text-xs text-slate-400">Agendamento multimídia real em 7 redes. O executor automático roda uma vez por dia e processa tudo que estiver vencido.</p>
+          <p className="text-xs text-slate-400">Agendamento multimídia real em 7 redes. Vídeos e publicações vencidas são verificados automaticamente ao longo do dia.</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => void onRefreshSchedule()} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-300 hover:border-slate-600">
@@ -244,16 +245,28 @@ export const CalendarPage: React.FC<Props> = ({
               const day = i + 1;
               const prefix = `${monthKey}-${String(day).padStart(2, '0')}`;
               const dayPosts = monthPosts.filter((p) => p.scheduledFor.startsWith(prefix));
+              const expanded = Boolean(expandedDays[prefix]);
+              const visiblePosts = expanded ? dayPosts : dayPosts.slice(0, 3);
               return (
                 <div key={day} className="min-h-24 rounded-xl border border-slate-800 bg-slate-950/40 p-2 flex flex-col justify-between">
                   <div className="text-[11px] font-bold text-slate-400">{day}</div>
                   <div className="mt-1 space-y-1">
-                    {dayPosts.slice(0, 3).map((p) => (
+                    {visiblePosts.map((p) => (
                       <div key={p.id} className="truncate rounded px-1.5 py-0.5 text-[9px] bg-slate-900 border border-slate-800">
                         <span className="font-mono text-cyan-300">{new Date(p.scheduledFor).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span> · {p.status}
                       </div>
                     ))}
-                    {dayPosts.length > 3 && <div className="text-[9px] text-slate-500 font-semibold">+{dayPosts.length - 3} mais</div>}
+                    {dayPosts.length > 3 && (
+                      <button
+                        type="button"
+                        aria-expanded={expanded}
+                        aria-label={expanded ? `Ocultar publicações extras do dia ${day}` : `Mostrar todas as publicações do dia ${day}`}
+                        onClick={() => setExpandedDays((current) => ({ ...current, [prefix]: !current[prefix] }))}
+                        className="text-left text-[9px] font-semibold text-cyan-400 hover:text-cyan-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
+                      >
+                        {expanded ? 'Mostrar menos' : `+${dayPosts.length - 3} mais`}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -522,4 +535,3 @@ export const CalendarPage: React.FC<Props> = ({
     </div>
   );
 };
-
