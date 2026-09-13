@@ -24,7 +24,8 @@ test('Worker social possui endpoint protegido e workflow frequente', () => {
   assert.match(read('.github/workflows/social-publications.yml'), /secrets\.CRON_SECRET/);
 });
 
-test('Vercel reserva 60 segundos para a API de produção', () => {
+test('Vercel nao mistura functions com builds legados', () => {
   const vercel = JSON.parse(read('vercel.json'));
-  assert.equal(vercel.functions['api/index.ts'].maxDuration, 60);
+  assert.ok(Array.isArray(vercel.builds));
+  assert.equal(vercel.functions, undefined);
 });
