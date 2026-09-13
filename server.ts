@@ -31,7 +31,11 @@ async function startServer() {
 
   app.listen(config.port, config.host, () => {
     console.log(`[Froc.IA] servidor em http://${config.host}:${config.port}`);
-    startVideoRetryDaemon();
+    // O daemon em memória é reservado estritamente para VPS, Cloud Run ou ambiente local persistente.
+    // Na Vercel (serverless), o executor obrigatório é o agendador externo via GitHub Actions.
+    if (process.env.VERCEL !== '1' && (process.env.ENABLE_IN_MEMORY_DAEMON === 'true' || !config.isProduction)) {
+      startVideoRetryDaemon();
+    }
   });
 }
 

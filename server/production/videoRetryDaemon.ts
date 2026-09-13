@@ -1,3 +1,14 @@
+/**
+ * Daemon de retentativas em memória reservado estritamente para ambientes com processo Node.js
+ * persistente (ex.: VPS, contêiner Cloud Run ou execução local).
+ *
+ * AVISO ARQUITETURAL SOBRE A VERCEL (SERVERLESS):
+ * Em ambientes serverless como a Vercel, as instâncias são efêmeras e congeladas após o envio da
+ * resposta HTTP. Portanto, timers em memória (setTimeout/setInterval/unref) NÃO garantem retentativas na Vercel.
+ * Na produção Vercel, o executor de retentativas é o agendador externo (GitHub Actions a cada 5 minutos
+ * chamando /api/cron/video-retries com CRON_SECRET).
+ */
+
 import { firestore, COLLECTIONS } from './store.js';
 import { processPendingVideoJobs, setOnRetryScheduledCallback, VideoJobWorkerTelemetry } from './ai.js';
 
@@ -13,13 +24,18 @@ let lastOpportunisticCheck = 0;
 let isRunning = false;
 
 const SWEEP_INTERVAL_MS = 30_000; // 30 segundos
-const OPPORTUNISTIC_THROTTLE_MS = 30_000; // 30 segundos entre checagens por requisição
+const OPPORTUNISTIC_THROTTLE_MS = 60_000; // 60 segundos entre checagens oportunistas
 
 /**
- * Registra um timer em memória no processo Node.js para acordar e processar o job
- * no momento exato de seu nextAttemptAt durante o mesmo dia.
+ * Registra um timer em memória no processo Node.js persistente para acordar e processar o job.
+ * Em ambientes serverless (Vercel), a chamada é ignorada de imediato.
  */
 export function scheduleRetryWakeup(jobId: string, nextAttemptAt: string | Date | number): void {
+  // Ignora completamente se estiver em ambiente serverless (Vercel)
+  if (process.env.VERCEL === '1') {
+    return;
+  }
+
   const targetTime = typeof nextAttemptAt === 'number'
     ? nextAttemptAt
     : new Date(nextAttemptAt).getTime();
@@ -42,7 +58,7 @@ export function scheduleRetryWakeup(jobId: string, nextAttemptAt: string | Date 
   const timer = setTimeout(async () => {
     activeTimers.delete(jobId);
     try {
-      await processPendingVideoJobs();
+      await processPendingVideoJobs({ trigger: 'in_memory_timer' });
     } catch (err) {
       console.warn(`[VideoRetryDaemon] Erro ao executar retry programado para ${jobId}:`, err);
     }
@@ -61,24 +77,34 @@ export function scheduleRetryWakeup(jobId: string, nextAttemptAt: string | Date 
  * e executa o processamento via processPendingVideoJobs.
  */
 export async function sweepDueRetries(): Promise<VideoJobWorkerTelemetry> {
-  return await processPendingVideoJobs();
+  return await processPendingVideoJobs({ trigger: 'daemon_sweep' });
 }
 
 /**
- * Gatilho oportunista não bloqueante para ambientes serverless ou servidores com tráfego.
- * É executado em requisições de API, throttled para no máximo uma verificação a cada 30s.
+ * Checagem oportunista complementar:
+ * ATENÇÃO: Serve apenas como auxílio pontual e NUNCA como executor garantido nem substituto
+ * do agendador externo.
+ * Não utiliza setImmediate solto e não é disparada por recursos estáticos ou rotas públicas.
  */
-export function triggerOpportunisticRetryCheck(): void {
+export function triggerOpportunisticRetryCheck(reqContext?: { path?: string; method?: string }): void {
+  // Se houver contexto de rota, bloqueia requisições públicas, estáticas ou de leitura simples (GET)
+  if (reqContext?.path) {
+    const isPrivateApi = reqContext.path.startsWith('/api/') && !reqContext.path.startsWith('/api/cron/');
+    const isMutation = reqContext.method === 'POST' || reqContext.method === 'PATCH' || reqContext.method === 'DELETE';
+    if (!isPrivateApi || !isMutation) {
+      return;
+    }
+  }
+
   const now = Date.now();
   if (now - lastOpportunisticCheck < OPPORTUNISTIC_THROTTLE_MS) {
     return;
   }
   lastOpportunisticCheck = now;
 
-  // Executa assincronamente em background sem bloquear a resposta HTTP
-  setImmediate(async () => {
+  // Auxílio controlado: sem setImmediate solto, tratando erros de forma segura
+  void (async () => {
     try {
-      // Verifica primeiro se há algum documento em retry_scheduled vencido
       const db = firestore();
       const snap = await db.collection(COLLECTIONS.mediaGenerationJobs)
         .where('status', '==', 'retry_scheduled')
@@ -87,18 +113,22 @@ export function triggerOpportunisticRetryCheck(): void {
         .catch(() => null);
 
       if (snap && !snap.empty) {
-        await processPendingVideoJobs();
+        await processPendingVideoJobs({ trigger: 'opportunistic' });
       }
-    } catch (err) {
-      // Falha silenciosa em background
+    } catch {
+      // Falha silenciosa na checagem oportunista auxiliar
     }
-  });
+  })();
 }
 
 /**
- * Inicia o daemon em segundo plano no processo Node.js (Cloud Run / VPS / servidor local).
+ * Inicia o daemon em segundo plano exclusivamente em processos Node.js persistentes (VPS / Cloud Run / local).
+ * Em ambiente serverless da Vercel, o daemon NÃO é iniciado.
  */
 export function startVideoRetryDaemon(): void {
+  if (process.env.VERCEL === '1') {
+    return;
+  }
   if (isRunning) return;
   isRunning = true;
 
@@ -106,7 +136,7 @@ export function startVideoRetryDaemon(): void {
   setTimeout(async () => {
     if (!isRunning) return;
     try {
-      await processPendingVideoJobs();
+      await processPendingVideoJobs({ trigger: 'daemon_startup' });
     } catch {}
   }, 2000).unref?.();
 

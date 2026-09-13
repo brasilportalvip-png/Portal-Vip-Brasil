@@ -40,6 +40,7 @@ import multer from 'multer';
 
 import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso, probeDatabaseHealth, queryData, slugify, writeAdminLog } from './store.js';
 import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './videoCatalog.js';
+import { runVideoRetryWorker, verifyCronAuthorization, getVideoRetryWorkerHealth } from './videoRetryWorker.js';
 
 const router = Router();
 
@@ -550,19 +551,86 @@ router.post('/ai/video-jobs/:id/retry', requireAuth, asyncRoute(async (req: Auth
 }));
 
 router.post('/cron/video-retries', asyncRoute(async (req, res) => {
-  const auth = String(req.headers.authorization || '');
-  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
-  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
-  const result = await processPendingVideoJobs();
-  res.json({ success: true, result });
+  if (!verifyCronAuthorization(req.headers.authorization)) {
+    return res.status(401).json({ error: 'Cron não autorizado.' });
+  }
+
+  const trigger = safeString(req.body?.trigger, 50) || 'github_actions';
+  const result = await runVideoRetryWorker({ trigger });
+
+  if (result.status === 'skipped_concurrent') {
+    return res.status(409).json({
+      error: 'Execução concorrente bloqueada. Uma execução já está em andamento.',
+      code: 'CONCURRENT_EXECUTION_BLOCKED',
+      status: result.status,
+      durationMs: result.durationMs,
+      telemetry: result.telemetry
+    });
+  }
+
+  if (result.status === 'error') {
+    return res.status(500).json({
+      error: result.error || 'Erro interno ao processar retentativas de vídeo.',
+      success: false,
+      status: 'error'
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    status: result.status,
+    trigger: result.trigger,
+    durationMs: result.durationMs,
+    telemetry: result.telemetry
+  });
 }));
 
 router.get('/cron/video-retries', asyncRoute(async (req, res) => {
-  const auth = String(req.headers.authorization || '');
-  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
-  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
-  const result = await processPendingVideoJobs();
-  res.json({ success: true, result });
+  if (!verifyCronAuthorization(req.headers.authorization)) {
+    return res.status(401).json({ error: 'Cron não autorizado.' });
+  }
+
+  const result = await runVideoRetryWorker({ trigger: 'cron_get' });
+
+  if (result.status === 'skipped_concurrent') {
+    return res.status(409).json({
+      error: 'Execução concorrente bloqueada. Uma execução já está em andamento.',
+      code: 'CONCURRENT_EXECUTION_BLOCKED',
+      status: result.status,
+      durationMs: result.durationMs,
+      telemetry: result.telemetry
+    });
+  }
+
+  if (result.status === 'error') {
+    return res.status(500).json({
+      error: result.error || 'Erro interno ao processar retentativas de vídeo.',
+      success: false,
+      status: 'error'
+    });
+  }
+
+  res.status(200).json({
+    success: true,
+    status: result.status,
+    trigger: result.trigger,
+    durationMs: result.durationMs,
+    telemetry: result.telemetry
+  });
+}));
+
+router.get('/cron/video-retries/health', asyncRoute(async (req, res) => {
+  const isCronAuth = verifyCronAuthorization(req.headers.authorization);
+  if (!isCronAuth) {
+    return res.status(401).json({ error: 'Não autorizado. Forneça o token CRON_SECRET no cabeçalho Authorization.' });
+  }
+  const health = await getVideoRetryWorkerHealth();
+  res.json(health);
+}));
+
+router.get('/admin/video-retries/health', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  const health = await getVideoRetryWorkerHealth();
+  res.json(health);
 }));
 
 router.post('/ai/generate-article', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {

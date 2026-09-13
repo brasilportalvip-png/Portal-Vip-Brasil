@@ -2384,7 +2384,7 @@ export interface VideoJobWorkerTelemetry {
   failed: number;
 }
 
-export async function processPendingVideoJobs(options?: { signal?: AbortSignal }): Promise<VideoJobWorkerTelemetry> {
+export async function processPendingVideoJobs(options?: { signal?: AbortSignal; trigger?: string }): Promise<VideoJobWorkerTelemetry> {
   const telemetry: VideoJobWorkerTelemetry = {
     checked: 0,
     started: 0,

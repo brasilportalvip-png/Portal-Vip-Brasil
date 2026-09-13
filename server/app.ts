@@ -143,7 +143,6 @@ export function createApp() {
       res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
       res.setHeader('Content-Security-Policy', contentSecurityPolicy());
     }
-    triggerOpportunisticRetryCheck();
     next();
   });
 
@@ -304,7 +303,11 @@ export function createApp() {
     res.status(page.status).type('text/html').send(page.html);
   });
 
-  app.use('/api', productionRouter);
+  app.use('/api', (req, _res, next) => {
+    // Auxílio oportunista secundário restrito exclusivamente à API privada (nunca em rotas públicas ou estáticas)
+    triggerOpportunisticRetryCheck({ path: req.originalUrl || req.url, method: req.method });
+    next();
+  }, productionRouter);
   app.use('/api', (_req, res) => {
     res.status(404).json({
       error: 'Endpoint Portal Vip Brasil não encontrado.',
