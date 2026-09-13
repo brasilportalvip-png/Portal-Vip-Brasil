@@ -29,3 +29,9 @@ test('Vercel nao mistura functions com builds legados', () => {
   assert.ok(Array.isArray(vercel.builds));
   assert.equal(vercel.functions, undefined);
 });
+
+test('Estúdio exibe o job mais recente encerrado e sua mensagem real de erro', () => {
+  const source = read('src/pages/CreateVideoPage.tsx');
+  assert.match(source, /refreshedCurrent \|\| ongoing \|\| data\.jobs\[0\] \|\| null/);
+  assert.match(source, /activeJob\.lastErrorMessage \|\| activeJob\.errorMessage \|\| activeJob\.error/);
+});

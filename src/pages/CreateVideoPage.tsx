@@ -103,11 +103,13 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
       const data = await apiRequest<{ jobs: VideoJob[] }>(`/api/ai/video-jobs?companyId=${selectedCompany.id}`);
       if (Array.isArray(data.jobs)) {
         setRecentJobs(data.jobs);
-        // Se houver algum em processamento, seleciona para acompanhar
+        // Mantém o job selecionado atualizado e mostra o mais recente,
+        // inclusive quando ele terminou com falha.
         const ongoing = data.jobs.find((j) => j.status === 'processing' || j.status === 'pending' || j.status === 'finalizing');
-        if (ongoing && !activeJob) {
-          setActiveJob(ongoing);
-        }
+        setActiveJob((current) => {
+          const refreshedCurrent = current ? data.jobs.find((job) => job.id === current.id) : undefined;
+          return refreshedCurrent || ongoing || data.jobs[0] || null;
+        });
       }
     } catch {
       // Falha silenciosa de polling
@@ -592,7 +594,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                     <AlertTriangle size={36} className="text-rose-400 mx-auto" />
                     <div className="text-sm font-bold text-rose-200">Falha na geração do vídeo</div>
                     <p className="text-xs text-rose-300/80 max-w-md mx-auto">
-                      {activeJob.error || 'Ocorreu um erro no processamento. Nenhuma conclusão foi registrada; tente novamente ou revise o job.'}
+                      {activeJob.lastErrorMessage || activeJob.errorMessage || activeJob.error || 'Ocorreu um erro no processamento. Nenhuma conclusão foi registrada; tente novamente ou revise o job.'}
                     </p>
                   </div>
                 )}
