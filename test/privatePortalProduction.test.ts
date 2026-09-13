@@ -92,11 +92,32 @@ test('Produção: cron e SEO usam a configuração oficial', () => {
 });
 
 test('Produção: menu privado não reintroduz entradas públicas/legadas', () => {
+  const sidebar = read('src/components/Sidebar.tsx');
+  const mobileDrawer = read('src/components/MobileDrawer.tsx');
+  const app = read('src/App.tsx');
+
+  // Calendário na Sidebar e no MobileDrawer
+  assert.ok(sidebar.includes("id: 'calendario'"), 'Sidebar deve conter id: calendario');
+  assert.ok(sidebar.includes("label: 'Calendário'"), 'Sidebar deve conter label: Calendário');
+  assert.ok(mobileDrawer.includes("'calendario'"), 'MobileDrawer deve conter calendario');
+  assert.ok(mobileDrawer.includes("'Calendário'"), 'MobileDrawer deve conter Calendário');
+
+  // Rota /calendario configurada
+  assert.ok(app.includes("calendario: '/calendario'"), 'App deve conter rota /calendario');
+
+  // Preservação dos demais itens privados
+  for (const item of ["id: 'dashboard'", "id: 'projetos'", "id: 'autopilot'", "id: 'redes-sociais'", "id: 'conteudos'", "id: 'perfil'"]) {
+    assert.ok(sidebar.includes(item), `Sidebar deve preservar o item privado: ${item}`);
+  }
+  for (const tab of ["'dashboard'", "'projetos'", "'autopilot'", "'redes-sociais'", "'conteudos'", "'perfil'"]) {
+    assert.ok(mobileDrawer.includes(tab), `MobileDrawer deve preservar o item privado: ${tab}`);
+  }
+
+  // Ausência apenas das rotas comerciais/legadas que continuam proibidas
   assertAbsent('src/components/Sidebar.tsx', [
     "id: 'home'",
     "id: 'vitrine'",
     "id: 'froc-ia'",
-    "id: 'calendario'",
     "id: 'analytics'",
     "id: 'suporte'"
   ]);
@@ -104,7 +125,6 @@ test('Produção: menu privado não reintroduz entradas públicas/legadas', () =
     "id: 'home'",
     "id: 'vitrine'",
     "id: 'froc-ia'",
-    "id: 'calendario'",
     "id: 'analytics'",
     "id: 'suporte'"
   ]);
@@ -279,11 +299,18 @@ test('Biblioteca: endpoint e atualização do Autopilot permanecem sincronizados
   assert.ok(app.includes('onRefreshContents={refreshContents}'));
   assert.ok(alma.includes('onRefreshContents={onRefreshContents}'));
 
-  assert.ok(autopilot.includes('data?.result?.success'));
-  assert.ok(autopilot.includes('data.result.contentId'));
+  // Contrato novo do Autopilot
+  assert.ok(autopilot.includes('const res = data?.result || data'));
+  assert.ok(autopilot.includes('res?.success === true'));
+  assert.ok(autopilot.includes('res?.persisted === true'));
+  assert.ok(autopilot.includes('if (!isSuccess || !isPersisted)'));
   assert.ok(autopilot.includes('await onRefreshContents()'));
+  assert.ok(autopilot.includes('res.videoJobId'));
+  assert.ok(autopilot.includes("res.stage === 'video_processing'"));
+  assert.ok(autopilot.includes('O envio ao YouTube ainda não ocorreu.'));
+  assert.ok(!autopilot.includes('criado e agendado automaticamente no YouTube'));
   assert.ok(
-    autopilot.includes('O ciclo terminou sem comprovar a gravação do conteúdo.'),
-    'Autopilot deve falhar visualmente quando não houver prova de gravação.'
+    autopilot.includes('persisted = false') || autopilot.includes('sem comprovar a persistência'),
+    'Autopilot deve falhar visualmente quando não houver prova de gravação/persistência.'
   );
 });
