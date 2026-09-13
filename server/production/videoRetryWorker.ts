@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { firestore, COLLECTIONS } from './store.js';
 import { config } from '../config/index.js';
 import { processPendingVideoJobs, VideoJobWorkerTelemetry } from './ai.js';
+import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 
 export interface VideoRetryExecutionRecord {
   lastExecutionAt: string;
@@ -205,7 +206,7 @@ export async function runVideoRetryWorker(options: {
 } = {}): Promise<RunWorkerResult> {
   const trigger = options.trigger || 'cron';
   const workerId = options.workerId || `worker_cron_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const timeoutMs = options.timeoutMs || 22_000; // Limite seguro para execução serverless (Vercel)
+  const timeoutMs = options.timeoutMs || 18_000; // Limite seguro para execução serverless (Vercel) com folga para curl
   const startTime = Date.now();
   const startTimeIso = new Date(startTime).toISOString();
 
@@ -249,15 +250,24 @@ export async function runVideoRetryWorker(options: {
   let executionError: string | undefined;
 
   try {
-    // Processa os jobs elegíveis
-    telemetry = await processPendingVideoJobs({ trigger });
+    // Processa os jobs elegíveis passando o sinal de aborto cooperativo
+    telemetry = await processPendingVideoJobs({
+      trigger,
+      signal: abortController.signal
+    });
     if (abortController.signal.aborted) {
       executionStatus = 'timeout';
+      executionError = 'Tempo limite de execução excedido durante o processamento de retentativas.';
     }
   } catch (err: any) {
-    executionStatus = 'error';
-    executionError = err?.message || 'Erro inesperado durante processPendingVideoJobs';
-    console.error('[VideoRetryWorker] Falha ao processar jobs:', err);
+    if (abortController.signal.aborted) {
+      executionStatus = 'timeout';
+      executionError = 'Tempo limite de execução excedido durante o processamento de retentativas.';
+    } else {
+      executionStatus = 'error';
+      executionError = sanitizeSecretText(err?.message || 'Erro inesperado durante processPendingVideoJobs');
+      console.error('[VideoRetryWorker] Falha ao processar jobs:', sanitizeSecretText(err));
+    }
   } finally {
     clearTimeout(timer);
     // Libera a trava atômica
@@ -265,6 +275,7 @@ export async function runVideoRetryWorker(options: {
   }
 
   const durationMs = Date.now() - startTime;
+  const sanitizedErrorMessage = executionError ? sanitizeSecretText(executionError) : undefined;
 
   // 3. Persiste a telemetria duravelmente no Firestore
   await saveVideoRetryTelemetry({
@@ -275,7 +286,7 @@ export async function runVideoRetryWorker(options: {
     telemetry,
     fencingToken: lock.fencingToken,
     workerId,
-    errorMessage: executionError,
+    errorMessage: sanitizedErrorMessage,
     updatedAt: new Date().toISOString()
   });
 
@@ -285,6 +296,6 @@ export async function runVideoRetryWorker(options: {
     trigger,
     durationMs,
     telemetry,
-    error: executionError
+    error: sanitizedErrorMessage
   };
 }

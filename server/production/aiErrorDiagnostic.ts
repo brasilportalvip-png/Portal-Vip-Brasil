@@ -24,7 +24,7 @@ export interface AiDiagnosticResult {
 }
 
 /**
- * Remove qualquer segredo, token, chave de API ou credencial de strings de log e erro.
+ * Remove qualquer segredo, token, chave de API, credencial ou dado interno sensível de strings de log e erro.
  */
 export function sanitizeSecretText(input: unknown): string {
   if (input == null) return '';
@@ -32,8 +32,11 @@ export function sanitizeSecretText(input: unknown): string {
   return text
     .replace(/AIzaSy[A-Za-z0-9_-]{33}/g, '[GEMINI_API_KEY_REMOVIDO]')
     .replace(/EAA[A-Za-z0-9_-]{20,}/g, '[META_TOKEN_REMOVIDO]')
-    .replace(/(access_token|refresh_token|client_secret|authorization|api_key|token)[=:\s]+[^ ,;'"&\n\r]+/gi, '$1=[REMOVIDO]')
+    .replace(/\b(sk|key|secret)[_-][a-zA-Z0-9_-]{8,}\b/gi, '[CHAVE_REMOVIDA]')
+    .replace(/(access_token|refresh_token|client_secret|authorization|api_key|apiKey|cron_secret|cronSecret|secret|password|token|chave)[=:\s]+[^ ,;'"&\n\r]+/gi, '$1=[REMOVIDO]')
     .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [REMOVIDO]')
+    .replace(/operations\/[a-zA-Z0-9_.-]+/g, '[OPERACAO_INTERNA_REMOVIDA]')
+    .replace(/prompt[=:\s]+["'][^"']+["']/gi, 'prompt=[PROMPT_REMOVIDO]')
     .replace(/https:\/\/[^/]+:[^@]+@/g, 'https://[CREDENCIAIS_REMOVIDAS]@')
     .replace(/[\r\n\t]+/g, ' ')
     .trim();
