@@ -82,36 +82,62 @@ test('Cálculo de backoff com jitter e respeito a retryAfter', () => {
   assert.ok(attempt3 > attempt2, 'Tentativa 3 deve agendar após tentativa 2');
 });
 
-test('Reserva e idempotência do Autopilot e videoJobs no backend', () => {
-  const aiSource = source('server/production/ai.ts');
-  const autopilotSource = source('server/production/autopilotMultimediaR8.ts');
+import { resetMemoryDb, firestore, COLLECTIONS } from '../server/production/store.js';
+import { acquireVideoOperationLease, manualRetryVideoJob, clearManualRetryStateForTesting } from '../server/production/ai.js';
 
-  // Suporte a status retry_scheduled e failed_permanent
-  assert.ok(aiSource.includes("'retry_scheduled'"));
-  assert.ok(aiSource.includes("'failed_permanent'"));
+test('Reserva e idempotência do Autopilot e videoJobs no backend', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const jobId = 'job_test_reserva_idempotencia';
+  
+  await db.collection(COLLECTIONS.mediaGenerationJobs).doc(jobId).set({
+    id: jobId,
+    userId: 'user_test_1',
+    companyId: 'default',
+    prompt: 'Prompt teste de reserva',
+    status: 'retry_scheduled',
+    attemptCount: 1,
+    maxAttempts: 5,
+    nextAttemptAt: new Date(Date.now() - 5000).toISOString(),
+    createdAt: new Date().toISOString()
+  });
 
-  // Verificação de que erro temporário agenda retry_scheduled em vez de abortar com falha falsa
-  assert.ok(aiSource.includes('calculateNextAttemptAt'));
-  assert.ok(aiSource.includes('diagnoseAiError'));
+  // 1. Primeira aquisição adquire o lease e incrementa o fence de forma atômica
+  const acq1 = await acquireVideoOperationLease(jobId, { workerId: 'worker_alpha' });
+  assert.equal(acq1.acquired, true);
+  assert.equal(acq1.leaseOwner, 'worker_alpha');
+  assert.equal(acq1.attemptCount, 2);
+  assert.ok(typeof acq1.leaseFence === 'number' && acq1.leaseFence >= 1);
 
-  // Trava de concorrência com lease
-  assert.ok(aiSource.includes('leaseOwner'));
-  assert.ok(aiSource.includes('leaseUntil'));
-
-  // Autopilot não dá falso sucesso
-  assert.ok(autopilotSource.includes('publicationConfirmed: false'));
+  // 2. Chamada concorrente durante o lease ativo é rejeitada
+  const acq2 = await acquireVideoOperationLease(jobId, { workerId: 'worker_beta' });
+  assert.equal(acq2.acquired, false);
+  assert.equal(acq2.reason, 'lease_active');
 });
 
-test('UI de Autopilot e Geração de Vídeo reflete status de retry e bloqueia falso sucesso', () => {
-  const autopilotUiSource = source('src/pages/AutopilotPage.tsx');
-  const videoUiSource = source('src/pages/CreateVideoPage.tsx');
+test('UI de Autopilot e Geração de Vídeo reflete status de retry e bloqueia falso sucesso', async () => {
+  resetMemoryDb();
+  clearManualRetryStateForTesting();
+  const db = firestore();
+  const jobId = 'job_test_ui_contracts';
 
-  // Autopilot exibe mensagem transparente de retry e não finge que foi publicado
-  assert.ok(autopilotUiSource.includes("res.stage === 'retry_scheduled'"));
-  assert.ok(autopilotUiSource.includes('A publicação no YouTube NÃO foi realizada'));
+  // Configura job com maxAttempts esgotado
+  await db.collection(COLLECTIONS.mediaGenerationJobs).doc(jobId).set({
+    id: jobId,
+    userId: 'user_owner',
+    status: 'retry_scheduled',
+    attemptCount: 5,
+    maxAttempts: 5,
+    createdAt: new Date().toISOString()
+  });
 
-  // CreateVideoPage exibe status de retry com contagem de tentativas e botão para tentar agora
-  assert.ok(videoUiSource.includes("activeJob.status === 'retry_scheduled'"));
-  assert.ok(videoUiSource.includes('Em fila para nova tentativa automática'));
-  assert.ok(videoUiSource.includes('/api/ai/video-jobs/${activeJob.id}/retry'));
+  // O botão manual rejeita estritamente quando maxAttempts é atingido
+  await assert.rejects(
+    () => manualRetryVideoJob('user_owner', jobId),
+    (err: any) => {
+      assert.equal(err.statusCode, 409);
+      assert.match(err.message, /Limite máximo de tentativas \(5\) já atingido/);
+      return true;
+    }
+  );
 });

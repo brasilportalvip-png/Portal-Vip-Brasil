@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getAdminAuth, getAdminStorage } from '../providers/firebaseAdmin.js';
 import { config } from '../config/index.js';
 import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, ensureUserProfile, hasAcceptedLatestTerms, requireAdmin, requireAuth } from './auth.js';
-import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, listUserVideoJobs, textAiClient } from './ai.js';
+import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, manualRetryVideoJob, processPendingVideoJobs, listUserVideoJobs, textAiClient } from './ai.js';
 import { analyzeSeo } from './seo.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
@@ -540,14 +540,29 @@ router.get('/ai/video-jobs/:id', requireAuth, asyncRoute(async (req: Authenticat
 }));
 
 router.post('/ai/video-jobs/:id/check', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const force = req.body?.force === true;
-  const job = await checkAndCompleteVideoJob(req.user!.id, req.params.id, force);
+  const job = await checkAndCompleteVideoJob(req.user!.id, req.params.id);
   res.json({ job });
 }));
 
 router.post('/ai/video-jobs/:id/retry', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const job = await checkAndCompleteVideoJob(req.user!.id, req.params.id, true);
+  const job = await manualRetryVideoJob(req.user!.id, req.params.id);
   res.json({ job });
+}));
+
+router.post('/cron/video-retries', asyncRoute(async (req, res) => {
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+  const result = await processPendingVideoJobs();
+  res.json({ success: true, result });
+}));
+
+router.get('/cron/video-retries', asyncRoute(async (req, res) => {
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+  const result = await processPendingVideoJobs();
+  res.json({ success: true, result });
 }));
 
 router.post('/ai/generate-article', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {

@@ -7,6 +7,7 @@ import { config, assertProductionConfig } from './config/index.js';
 import productionRouter, { buildRobotsTxt, buildSitemapXml } from './production/router.js';
 import { renderPrivateAppPage, renderPublicPage } from './production/publicPages.js';
 import { consumeRateLimit } from './production/store.js';
+import { triggerOpportunisticRetryCheck } from './production/videoRetryDaemon.js';
 
 assertProductionConfig();
 
@@ -142,6 +143,7 @@ export function createApp() {
       res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
       res.setHeader('Content-Security-Policy', contentSecurityPolicy());
     }
+    triggerOpportunisticRetryCheck();
     next();
   });
 

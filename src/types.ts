@@ -35,6 +35,9 @@ export interface VideoJob {
   lastErrorCategory?: string | null;
   lastErrorCode?: string | null;
   lastErrorMessage?: string | null;
+  leaseOwner?: string | null;
+  leaseFence?: number;
+  leaseUntil?: string | null;
   youtubeVideoId?: string | null;
   youtubeUrl?: string | null;
   publishedAt?: string | null;

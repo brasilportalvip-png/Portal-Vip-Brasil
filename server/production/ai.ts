@@ -1059,6 +1059,7 @@ export interface VideoJobData {
   lastErrorCode?: string | null;
   lastErrorMessage?: string | null;
   leaseOwner?: string | null;
+  leaseFence?: number;
   leaseUntil?: string | null;
   youtubeVideoId?: string | null;
   youtubeUrl?: string | null;
@@ -1549,71 +1550,176 @@ export async function startVideoGenerationJob(data: {
   }
 }
 
-export async function startOrRetryVideoOperation(job: VideoJobData, force = false): Promise<VideoJobData> {
+export interface LeaseAcquisition {
+  acquired: boolean;
+  reason?: 'not_found' | 'terminal_status' | 'lease_active' | 'backoff_not_elapsed' | 'max_attempts_exceeded' | 'conflict';
+  leaseOwner?: string;
+  leaseFence?: number;
+  attemptCount?: number;
+  job?: VideoJobData;
+  error?: string;
+}
+
+let onRetryScheduledCallback: ((jobId: string, nextAttemptAt: string) => void) | null = null;
+export function setOnRetryScheduledCallback(cb: ((jobId: string, nextAttemptAt: string) => void) | null): void {
+  onRetryScheduledCallback = cb;
+}
+
+interface ManualRetryCooldownEntry {
+  lastAttemptTime: number;
+  timestamps: number[];
+}
+
+const manualRetryState = new Map<string, ManualRetryCooldownEntry>();
+const MANUAL_RETRY_COOLDOWN_MS = 15_000; // 15s cooldown
+const MANUAL_RETRY_WINDOW_MS = 5 * 60 * 1000; // 5 minutos
+const MANUAL_RETRY_MAX_PER_WINDOW = 3; // máximo 3 tentativas manuais a cada 5 min
+
+export function resetManualRetryLimitsForTesting(): void {
+  manualRetryState.clear();
+}
+export const clearManualRetryStateForTesting = resetManualRetryLimitsForTesting;
+
+/**
+ * Adquire a trava atômica de execução no Firestore através de transação com verificação
+ * de lease vigente, cooldown/backoff e limite de tentativas com token monotônico de barreira (leaseFence).
+ */
+export async function acquireVideoOperationLease(
+  jobId: string,
+  options?: {
+    workerId?: string;
+    leaseDurationMs?: number;
+  }
+): Promise<LeaseAcquisition> {
   const db = firestore();
-  const docRef = db.collection(COLLECTIONS.mediaGenerationJobs).doc(job.id);
+  const docRef = db.collection(COLLECTIONS.mediaGenerationJobs).doc(jobId);
 
-  if (job.status === 'completed' || job.status === 'published' || job.status === 'failed_permanent') {
-    return job;
-  }
-
-  const now = Date.now();
-
-  // Trava de concorrência por lease
-  if (!force && job.leaseUntil) {
-    const leaseTime = new Date(job.leaseUntil).getTime();
-    if (now < leaseTime) {
-      return job;
+  return await db.runTransaction(async (tx) => {
+    const snap = await tx.get(docRef);
+    if (!snap.exists) {
+      return { acquired: false, reason: 'not_found', error: 'Job de geração de vídeo não encontrado.' };
     }
-  }
 
-  // Backoff check
-  if (!force && job.status === 'retry_scheduled' && job.nextAttemptAt) {
-    const retryTime = new Date(job.nextAttemptAt).getTime();
-    if (now < retryTime) {
-      return job;
+    const current = snap.data() as VideoJobData;
+
+    // Status terminais não admitem novas aquisições de lease
+    if (current.status === 'completed' || current.status === 'published' || current.status === 'failed_permanent') {
+      return { acquired: false, reason: 'terminal_status', job: current, error: 'Job já finalizado.' };
     }
-  }
 
-  const maxAttempts = job.maxAttempts || 5;
-  const currentAttempts = typeof job.attemptCount === 'number' ? job.attemptCount : 0;
-  if (currentAttempts >= maxAttempts && !force) {
-    const failedJob: VideoJobData = {
-      ...job,
-      status: 'failed_permanent',
-      pipelineState: 'failed',
-      errorCode: 'MAX_ATTEMPTS_EXCEEDED',
-      errorMessage: `Limite máximo de tentativas (${maxAttempts}) atingido sem sucesso.`,
-      nextAttemptAt: null,
+    const now = Date.now();
+    const maxAttempts = current.maxAttempts || 5;
+    const currentAttempts = typeof current.attemptCount === 'number' ? current.attemptCount : 0;
+
+    // Se já atingiu maxAttempts, consolida permanentemente com segurança
+    if (currentAttempts >= maxAttempts) {
+      const failedJob: VideoJobData = {
+        ...current,
+        status: 'failed_permanent',
+        pipelineState: 'failed',
+        errorCode: 'MAX_ATTEMPTS_EXCEEDED',
+        errorMessage: `Limite máximo de tentativas (${maxAttempts}) atingido sem sucesso.`,
+        leaseOwner: null,
+        leaseUntil: null,
+        nextAttemptAt: null,
+        updatedAt: nowIso()
+      };
+      tx.set(docRef, failedJob);
+      return { acquired: false, reason: 'max_attempts_exceeded', job: failedJob, error: `Limite máximo de tentativas (${maxAttempts}) atingido.` };
+    }
+
+    // Verificação de lease concorrente ativo
+    if (current.leaseUntil) {
+      const leaseExpiry = new Date(current.leaseUntil).getTime();
+      if (now < leaseExpiry) {
+        return {
+          acquired: false,
+          reason: 'lease_active',
+          job: current,
+          error: 'O processamento deste vídeo já está em andamento sob lease ativo.'
+        };
+      }
+      // Se now >= leaseExpiry, o lease expirou e é seguro recuperá-lo
+    }
+
+    // Verificação de cooldown/backoff para retry_scheduled
+    if (current.status === 'retry_scheduled' && current.nextAttemptAt) {
+      const retryTime = new Date(current.nextAttemptAt).getTime();
+      if (now < retryTime) {
+        return {
+          acquired: false,
+          reason: 'backoff_not_elapsed',
+          job: current,
+          error: 'Aguarde o período de cooldown da IA antes de retentar.'
+        };
+      }
+    }
+
+    // Concede o lease de forma atômica
+    const nextFence = Number(current.leaseFence || 0) + 1;
+    const nextAttempt = currentAttempts + 1;
+    const leaseDuration = options?.leaseDurationMs || 120_000;
+    const leaseOwner = options?.workerId || `worker_${now}_${Math.random().toString(36).slice(2, 9)}`;
+    const leaseUntil = new Date(now + leaseDuration).toISOString();
+
+    const acquiredJob: VideoJobData = {
+      ...current,
+      leaseOwner,
+      leaseFence: nextFence,
+      leaseUntil,
+      attemptCount: nextAttempt,
+      lastAttemptAt: nowIso(),
       updatedAt: nowIso()
     };
-    await docRef.set(failedJob, { merge: true });
-    return failedJob;
+
+    tx.set(docRef, acquiredJob);
+
+    return {
+      acquired: true,
+      leaseOwner,
+      leaseFence: nextFence,
+      attemptCount: nextAttempt,
+      job: acquiredJob
+    };
+  });
+}
+
+/**
+ * Dispara ou retenta a operação no Veo respeitando a trava transacional atômica
+ * e os fencing tokens.
+ */
+export async function startOrRetryVideoOperation(
+  jobOrId: VideoJobData | string,
+  options?: { workerId?: string }
+): Promise<VideoJobData> {
+  const jobId = typeof jobOrId === 'string' ? jobOrId : jobOrId.id;
+  const db = firestore();
+  const docRef = db.collection(COLLECTIONS.mediaGenerationJobs).doc(jobId);
+
+  // 1. Aquisição atômica do lease no Firestore via transação
+  const acquisition = await acquireVideoOperationLease(jobId, options);
+  if (!acquisition.acquired) {
+    return acquisition.job || (await readLatestVideoJob(docRef)) || (typeof jobOrId === 'string' ? null as any : jobOrId);
   }
 
-  const nextAttempt = currentAttempts + 1;
-  const leaseOwner = `worker_${now}_${Math.random().toString(36).slice(2, 7)}`;
-  const leaseUntil = new Date(now + 120_000).toISOString();
-  await docRef.set({
-    leaseOwner,
-    leaseUntil,
-    lastAttemptAt: nowIso(),
-    attemptCount: nextAttempt,
-    updatedAt: nowIso()
-  }, { merge: true });
+  const workingJob = acquisition.job!;
+  const leaseOwner = acquisition.leaseOwner!;
+  const leaseFence = acquisition.leaseFence!;
+  const nextAttempt = acquisition.attemptCount!;
+  const maxAttempts = workingJob.maxAttempts || 5;
 
-  const presetConfig = VIDEO_PRESETS[job.preset || 'pro_1080p'];
-  const finalPrompt = job.finalPrompt || job.prompt;
+  const presetConfig = VIDEO_PRESETS[workingJob.preset || 'pro_1080p'];
+  const finalPrompt = workingJob.finalPrompt || workingJob.prompt;
 
   try {
-    let operationName = `mock_op_${job.id}`;
+    let operationName = `mock_op_${workingJob.id}`;
 
     if (overrideMediaClient !== undefined || process.env.NODE_ENV !== 'test') {
       const videoConfig: any = {
         numberOfVideos: 1,
         resolution: presetConfig.resolution,
         durationSeconds: presetConfig.durationSeconds,
-        aspectRatio: job.aspectRatio || '9:16'
+        aspectRatio: workingJob.aspectRatio || '9:16'
       };
 
       const reqPayload: any = {
@@ -1629,74 +1735,207 @@ export async function startOrRetryVideoOperation(job: VideoJobData, force = fals
       operationName = operation.name;
     }
 
-    const runningJob: VideoJobData = {
-      ...job,
-      operationName,
-      status: 'processing',
-      pipelineState: 'provider_running',
-      providerStartedAt: nowIso(),
-      progressPct: 10,
-      leaseOwner: null,
-      leaseUntil: null,
-      errorCode: undefined,
-      errorMessage: undefined,
-      lastErrorCategory: null,
-      lastErrorCode: null,
-      lastErrorMessage: null,
-      nextAttemptAt: null,
-      updatedAt: nowIso()
-    };
+    // 2. Persistência atômica do status processing com verificação do fencing token
+    const updated = await db.runTransaction(async (tx) => {
+      const freshSnap = await tx.get(docRef);
+      if (!freshSnap.exists) return null;
+      const current = freshSnap.data() as VideoJobData;
+      if (current.leaseFence !== leaseFence || current.leaseOwner !== leaseOwner) {
+        console.warn(`[Video Lease] Fence inválido ao persistir status processing para ${jobId}.`);
+        return current;
+      }
+      const runningJob: VideoJobData = {
+        ...current,
+        operationName,
+        status: 'processing',
+        pipelineState: 'provider_running',
+        providerStartedAt: nowIso(),
+        progressPct: 10,
+        leaseOwner: null,
+        leaseUntil: null,
+        errorCode: undefined,
+        errorMessage: undefined,
+        lastErrorCategory: null,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        nextAttemptAt: null,
+        updatedAt: nowIso()
+      };
+      tx.set(docRef, runningJob);
+      return runningJob;
+    });
 
-    await docRef.set(runningJob);
-    return runningJob;
+    return updated || workingJob;
   } catch (error: any) {
     const diagnostic = diagnoseAiError(error);
     const nowStr = nowIso();
 
     if (diagnostic.isRetryable && nextAttempt < maxAttempts) {
       const nextAttemptAt = calculateNextAttemptAt(nextAttempt, diagnostic.retryAfterSeconds);
-      const retryJob: VideoJobData = {
-        ...job,
-        status: 'retry_scheduled',
-        pipelineState: 'provider_starting',
+      const retryJob = await db.runTransaction(async (tx) => {
+        const freshSnap = await tx.get(docRef);
+        if (!freshSnap.exists) return null;
+        const current = freshSnap.data() as VideoJobData;
+        if (current.leaseFence !== leaseFence || current.leaseOwner !== leaseOwner) {
+          return current;
+        }
+        const next: VideoJobData = {
+          ...current,
+          status: 'retry_scheduled',
+          pipelineState: 'provider_starting',
+          attemptCount: nextAttempt,
+          lastAttemptAt: nowStr,
+          nextAttemptAt,
+          lastErrorCategory: diagnostic.category,
+          lastErrorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+          lastErrorMessage: diagnostic.sanitizedMessage,
+          errorMessage: diagnostic.sanitizedMessage,
+          errorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+          leaseOwner: null,
+          leaseUntil: null,
+          updatedAt: nowStr
+        };
+        tx.set(docRef, next);
+        return next;
+      });
+
+      if (onRetryScheduledCallback) {
+        try {
+          onRetryScheduledCallback(jobId, nextAttemptAt);
+        } catch {}
+      }
+
+      return retryJob || workingJob;
+    }
+
+    const failedJob = await db.runTransaction(async (tx) => {
+      const freshSnap = await tx.get(docRef);
+      if (!freshSnap.exists) return null;
+      const current = freshSnap.data() as VideoJobData;
+      if (current.leaseFence !== leaseFence || current.leaseOwner !== leaseOwner) {
+        return current;
+      }
+      const next: VideoJobData = {
+        ...current,
+        status: 'failed_permanent',
+        pipelineState: 'failed',
         attemptCount: nextAttempt,
         lastAttemptAt: nowStr,
-        nextAttemptAt,
+        nextAttemptAt: null,
         lastErrorCategory: diagnostic.category,
-        lastErrorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+        lastErrorCode: diagnostic.rawErrorCode || 'PERMANENT_ERROR',
         lastErrorMessage: diagnostic.sanitizedMessage,
         errorMessage: diagnostic.sanitizedMessage,
-        errorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+        errorCode: diagnostic.rawErrorCode || 'PERMANENT_ERROR',
         leaseOwner: null,
         leaseUntil: null,
         updatedAt: nowStr
       };
-      await docRef.set(retryJob, { merge: true });
-      return retryJob;
-    }
+      tx.set(docRef, next);
+      return next;
+    });
 
-    const failedJob: VideoJobData = {
-      ...job,
-      status: 'failed_permanent',
-      pipelineState: 'failed',
-      attemptCount: nextAttempt,
-      lastAttemptAt: nowStr,
-      nextAttemptAt: null,
-      lastErrorCategory: diagnostic.category,
-      lastErrorCode: diagnostic.rawErrorCode || 'PERMANENT_ERROR',
-      lastErrorMessage: diagnostic.sanitizedMessage,
-      errorMessage: diagnostic.sanitizedMessage,
-      errorCode: diagnostic.rawErrorCode || 'PERMANENT_ERROR',
-      leaseOwner: null,
-      leaseUntil: null,
-      updatedAt: nowStr
-    };
-    await docRef.set(failedJob, { merge: true });
-    return failedJob;
+    return failedJob || workingJob;
   }
 }
 
-export async function checkAndCompleteVideoJob(userId: string, jobId: string, force = false): Promise<VideoJobData> {
+/**
+ * Executa a retentativa manual com proteção rigorosa contra abusos:
+ * - Rate limit e cooldown por usuário e job
+ * - Validação de autorização de usuário
+ * - Bloqueio de jobs finalizados (completed, published, failed_permanent)
+ * - Bloqueio após atingir maxAttempts
+ * - Respeito ao lease vigente (bloqueio de chamadas simultâneas)
+ * - Respeito ao nextAttemptAt (cooldown da IA)
+ */
+export async function manualRetryVideoJob(userId: string, jobId: string): Promise<VideoJobData> {
+  const userJobKey = `${userId}:${jobId}`;
+  const now = Date.now();
+  const state = manualRetryState.get(userJobKey) || { lastAttemptTime: 0, timestamps: [] };
+
+  // 1. Verificação de cooldown entre cliques manuais
+  if (now - state.lastAttemptTime < MANUAL_RETRY_COOLDOWN_MS) {
+    const remainingSec = Math.ceil((MANUAL_RETRY_COOLDOWN_MS - (now - state.lastAttemptTime)) / 1000);
+    const err: any = new Error(`Cooldown ativo. Aguarde ${remainingSec}s antes de tentar manualmente novamente.`);
+    err.statusCode = 429;
+    throw err;
+  }
+
+  // 2. Verificação de rate limit por janela
+  const recentTimestamps = state.timestamps.filter((t) => now - t < MANUAL_RETRY_WINDOW_MS);
+  if (recentTimestamps.length >= MANUAL_RETRY_MAX_PER_WINDOW) {
+    const err: any = new Error(`Limite de tentativas manuais excedido (${MANUAL_RETRY_MAX_PER_WINDOW} por 5 min). Aguarde.`);
+    err.statusCode = 429;
+    throw err;
+  }
+
+  const db = firestore();
+  const docRef = db.collection(COLLECTIONS.mediaGenerationJobs).doc(jobId);
+  const snap = await docRef.get();
+  if (!snap.exists) {
+    const err: any = new Error('Job de geração de vídeo não encontrado.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const job = snap.data() as VideoJobData;
+  if (job.userId !== userId) {
+    const err: any = new Error('Acesso não autorizado a este job.');
+    err.statusCode = 403;
+    throw err;
+  }
+
+  // 3. Proibição de status terminais
+  if (job.status === 'completed' || job.status === 'published') {
+    const err: any = new Error(`Não é permitido retentar um job que já está ${job.status === 'completed' ? 'concluído' : 'publicado'}.`);
+    err.statusCode = 409;
+    throw err;
+  }
+  if (job.status === 'failed_permanent') {
+    const err: any = new Error('O job atingiu falha permanente e não admite novas tentativas.');
+    err.statusCode = 409;
+    throw err;
+  }
+
+  // 4. Limite de tentativas
+  const maxAttempts = job.maxAttempts || 5;
+  const currentAttempts = typeof job.attemptCount === 'number' ? job.attemptCount : 0;
+  if (currentAttempts >= maxAttempts) {
+    const err: any = new Error(`Limite máximo de tentativas (${maxAttempts}) já atingido.`);
+    err.statusCode = 409;
+    throw err;
+  }
+
+  // 5. Lease ativo
+  if (job.leaseUntil) {
+    const leaseExpiry = new Date(job.leaseUntil).getTime();
+    if (now < leaseExpiry) {
+      const err: any = new Error('O processamento deste vídeo já está em andamento sob lease ativo. Aguarde a conclusão.');
+      err.statusCode = 409;
+      throw err;
+    }
+  }
+
+  // 6. Respeito ao nextAttemptAt da IA
+  if (job.status === 'retry_scheduled' && job.nextAttemptAt) {
+    const retryTime = new Date(job.nextAttemptAt).getTime();
+    if (now < retryTime) {
+      const remainingSec = Math.ceil((retryTime - now) / 1000);
+      const err: any = new Error(`Aguarde o período de cooldown da IA. Próxima tentativa elegível em ${remainingSec}s.`);
+      err.statusCode = 429;
+      throw err;
+    }
+  }
+
+  // Registra o consumo de rate limit
+  recentTimestamps.push(now);
+  manualRetryState.set(userJobKey, { lastAttemptTime: now, timestamps: recentTimestamps });
+
+  // Executa com garantia atômica
+  return await startOrRetryVideoOperation(jobId, { workerId: `manual_${userId}` });
+}
+
+export async function checkAndCompleteVideoJob(userId: string, jobId: string): Promise<VideoJobData> {
   const db = firestore();
   const docRef = db.collection(COLLECTIONS.mediaGenerationJobs).doc(jobId);
   const snap = await docRef.get();
@@ -1718,14 +1957,14 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string, fo
 
   if (job.status === 'retry_scheduled') {
     const isDue = !job.nextAttemptAt || Date.now() >= new Date(job.nextAttemptAt).getTime();
-    if (isDue || force) {
-      return await startOrRetryVideoOperation(job, force);
+    if (isDue) {
+      return await startOrRetryVideoOperation(job.id);
     }
     return job;
   }
 
   if (job.status === 'queued' && !job.operationName) {
-    return await startOrRetryVideoOperation(job, force);
+    return await startOrRetryVideoOperation(job.id);
   }
 
   if (job.status === 'finalizing' && job.finalizationLeaseUntil) {
@@ -2136,10 +2375,28 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string, fo
   }
 }
 
-export async function processPendingVideoJobs(options?: { signal?: AbortSignal }): Promise<{ checked: number; completed: number; failed: number }> {
+export interface VideoJobWorkerTelemetry {
+  checked: number;
+  started: number;
+  retryScheduled: number;
+  completed: number;
+  published: number;
+  failed: number;
+}
+
+export async function processPendingVideoJobs(options?: { signal?: AbortSignal }): Promise<VideoJobWorkerTelemetry> {
+  const telemetry: VideoJobWorkerTelemetry = {
+    checked: 0,
+    started: 0,
+    retryScheduled: 0,
+    completed: 0,
+    published: 0,
+    failed: 0
+  };
+
   try {
     if (options?.signal?.aborted) {
-      return { checked: 0, completed: 0, failed: 0 };
+      return telemetry;
     }
     const db = firestore();
 
@@ -2164,16 +2421,13 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
       .limit(10)
       .get();
 
-    let checked = 0;
-    let completed = 0;
-    let failed = 0;
-
     // Processa retries agendados
     for (const doc of retrySnap.docs) {
       if (options?.signal?.aborted) break;
       const job = doc.data() as VideoJobData;
-      checked++;
+      telemetry.checked++;
 
+      // Se possui lease ativo concedido a outro worker, não interfere
       if (job.leaseUntil && Date.now() < new Date(job.leaseUntil).getTime()) {
         continue;
       }
@@ -2181,11 +2435,18 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
       const nextTime = job.nextAttemptAt ? new Date(job.nextAttemptAt).getTime() : 0;
       if (Date.now() >= nextTime) {
         try {
-          const retried = await startOrRetryVideoOperation(job, false);
-          if (retried.status === 'processing' || retried.status === 'completed' || retried.status === 'published') {
-            completed++;
+          const retried = await startOrRetryVideoOperation(job.id);
+          if (retried.status === 'processing') {
+            telemetry.started++;
+          } else if (retried.status === 'retry_scheduled') {
+            telemetry.retryScheduled++;
+          } else if (retried.status === 'completed') {
+            telemetry.completed++;
+          } else if (retried.status === 'published') {
+            telemetry.published++;
+            telemetry.completed++;
           } else if (retried.status === 'failed_permanent' || retried.status === 'failed') {
-            failed++;
+            telemetry.failed++;
           }
         } catch (err) {
           console.warn(`[Video Background Worker] Erro ao retentar job ${job.id}:`, err);
@@ -2205,7 +2466,7 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
       const job = doc.data() as VideoJobData;
 
       if (job.status === 'queued') {
-        checked++;
+        telemetry.checked++;
         try {
           if (options?.signal?.aborted) break;
           const result = await failVideoJob({
@@ -2215,7 +2476,7 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
             errorCode: 'PROVIDER_START_TIMEOUT',
             errorMessage: 'A inicialização do provedor de vídeo excedeu o tempo seguro. A operação foi encerrada com segurança.'
           });
-          if (result.status === 'failed') failed++;
+          if (result.status === 'failed' || result.status === 'failed_permanent') telemetry.failed++;
         } catch (error) {
           console.warn(`[Video Background Worker] Erro ao encerrar job órfão ${job.id}:`, error);
         }
@@ -2230,21 +2491,29 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
         }
       }
 
-      checked++;
+      telemetry.checked++;
       try {
         if (options?.signal?.aborted) break;
         const res = await checkAndCompleteVideoJob(job.userId, job.id);
-        if (res.status === 'completed' || res.status === 'published') completed++;
-        else if (res.status === 'failed' || res.status === 'failed_permanent') failed++;
+        if (res.status === 'published') {
+          telemetry.published++;
+          telemetry.completed++;
+        } else if (res.status === 'completed') {
+          telemetry.completed++;
+        } else if (res.status === 'retry_scheduled') {
+          telemetry.retryScheduled++;
+        } else if (res.status === 'failed' || res.status === 'failed_permanent') {
+          telemetry.failed++;
+        }
       } catch (err) {
         console.warn(`[Video Background Worker] Erro ao processar job ${job.id}:`, err);
       }
     }
 
-    return { checked, completed, failed };
+    return telemetry;
   } catch (error) {
     console.warn('[Video Background Worker] Erro ao consultar jobs pendentes:', error);
-    return { checked: 0, completed: 0, failed: 0 };
+    return telemetry;
   }
 }
 

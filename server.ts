@@ -3,6 +3,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { createApp } from './server/app.js';
 import { config } from './server/config/index.js';
+import { startVideoRetryDaemon } from './server/production/videoRetryDaemon.js';
 
 async function startServer() {
   const app = createApp();
@@ -30,6 +31,7 @@ async function startServer() {
 
   app.listen(config.port, config.host, () => {
     console.log(`[Froc.IA] servidor em http://${config.host}:${config.port}`);
+    startVideoRetryDaemon();
   });
 }
 
