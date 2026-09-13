@@ -540,7 +540,13 @@ router.get('/ai/video-jobs/:id', requireAuth, asyncRoute(async (req: Authenticat
 }));
 
 router.post('/ai/video-jobs/:id/check', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const job = await checkAndCompleteVideoJob(req.user!.id, req.params.id);
+  const force = req.body?.force === true;
+  const job = await checkAndCompleteVideoJob(req.user!.id, req.params.id, force);
+  res.json({ job });
+}));
+
+router.post('/ai/video-jobs/:id/retry', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const job = await checkAndCompleteVideoJob(req.user!.id, req.params.id, true);
   res.json({ job });
 }));
 
@@ -936,6 +942,12 @@ router.post('/autopilot/trigger-now', requireAuth, asyncRoute(async (req: Authen
     scheduleId: result.scheduleId,
     stage: result.stage,
     status: result.status,
+    videoJobStatus: (result as any).videoJobStatus,
+    attemptCount: (result as any).attemptCount,
+    maxAttempts: (result as any).maxAttempts,
+    nextAttemptAt: (result as any).nextAttemptAt,
+    lastError: (result as any).lastError,
+    lastErrorCategory: (result as any).lastErrorCategory,
     mode: result.mode,
     creditsUsed: result.creditsUsed,
     persisted: result.persisted,

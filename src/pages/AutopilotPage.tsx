@@ -242,6 +242,10 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
         jobId?: string | null;
         contentId?: string | null;
         videoJobId?: string | null;
+        videoJobStatus?: string;
+        nextAttemptAt?: string;
+        attemptCount?: number;
+        maxAttempts?: number;
         scheduleId?: string | null;
         stage?: string;
         status?: string;
@@ -253,6 +257,10 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
           jobId?: string | null;
           contentId?: string | null;
           videoJobId?: string | null;
+          videoJobStatus?: string;
+          nextAttemptAt?: string;
+          attemptCount?: number;
+          maxAttempts?: number;
           scheduleId?: string | null;
           stage?: string;
           status?: string;
@@ -278,7 +286,15 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
       await onRefreshContents();
       await loadOverview();
 
-      if (res.stage === 'video_processing' || res.videoJobId) {
+      if (res.stage === 'retry_scheduled' || res.videoJobStatus === 'retry_scheduled' || res.status === 'retry_scheduled') {
+        const nextAttemptStr = res.nextAttemptAt
+          ? ` Próxima tentativa automática prevista para ${new Date(res.nextAttemptAt).toLocaleTimeString('pt-BR')}.`
+          : '';
+        const attemptsStr = res.attemptCount ? ` (Tentativa ${res.attemptCount}/${res.maxAttempts || 5})` : '';
+        setMessage(
+          `Job de vídeo registrado na fila${attemptsStr} (Job ID: ${res.videoJobId}). A API do Google Gemini atingiu um limite temporário de requisições.${nextAttemptStr} A publicação no YouTube NÃO foi realizada e ocorrerá automaticamente após a renderização real do vídeo.`
+        );
+      } else if (res.stage === 'video_processing' || res.videoJobId) {
         setMessage(
           `Vídeo em processamento pelo pipeline Veo (Job ID: ${res.videoJobId}). O agendamento no YouTube será realizado após a disponibilização do arquivo renderizado. O envio ao YouTube ainda não ocorreu.`
         );
@@ -498,6 +514,11 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                             <CheckCircle2 size={12} /> Concluído
                           </span>
                         )}
+                        {jobStatus === 'retry_scheduled' && (
+                          <span className="text-amber-400 flex items-center gap-1">
+                            <Clock size={12} /> Fila / Nova tentativa
+                          </span>
+                        )}
                         {jobStatus === 'video_processing' && (
                           <span className="text-blue-400 flex items-center gap-1">
                             <Film size={12} /> Vídeo Veo assíncrono
@@ -506,6 +527,11 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                         {jobStatus === 'processing' && (
                           <span className="text-amber-300 flex items-center gap-1 animate-pulse">
                             <RefreshCw size={12} className="animate-spin" /> Processando...
+                          </span>
+                        )}
+                        {jobStatus === 'failed_permanent' && (
+                          <span className="text-rose-500 flex items-center gap-1">
+                            <AlertTriangle size={12} /> Falha permanente
                           </span>
                         )}
                         {jobStatus === 'failed' && (

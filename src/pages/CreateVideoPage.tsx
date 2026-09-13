@@ -21,7 +21,8 @@ import {
   Send,
   ExternalLink,
   Smartphone,
-  MessageSquare
+  MessageSquare,
+  RefreshCw
 } from 'lucide-react';
 import type { Company, VideoJob } from '../types';
 import { apiRequest } from '../lib/api';
@@ -119,7 +120,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
 
   // Polling para acompanhar o status do activeJob
   useEffect(() => {
-    if (!activeJob || activeJob.status === 'completed' || activeJob.status === 'failed') {
+    if (!activeJob || activeJob.status === 'completed' || activeJob.status === 'failed' || activeJob.status === 'failed_permanent' || activeJob.status === 'published') {
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -132,7 +133,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
         const data = await apiRequest<{ job: VideoJob }>(`/api/ai/video-jobs/${activeJob.id}`);
         if (data.job) {
           setActiveJob(data.job);
-          if (data.job.status === 'completed' || data.job.status === 'failed') {
+          if (data.job.status === 'completed' || data.job.status === 'failed' || data.job.status === 'failed_permanent' || data.job.status === 'published') {
             onRefreshContents?.();
             loadRecentJobs();
           }
@@ -462,18 +463,22 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
 
                   <span
                     className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                      activeJob.status === 'completed'
+                      activeJob.status === 'completed' || activeJob.status === 'published'
                         ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : activeJob.status === 'failed'
+                        : activeJob.status === 'retry_scheduled'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
+                        : activeJob.status === 'failed' || activeJob.status === 'failed_permanent'
                         ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                         : activeJob.status === 'finalizing'
                         ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
                         : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse'
                     }`}
                   >
-                    {activeJob.status === 'completed'
+                    {activeJob.status === 'completed' || activeJob.status === 'published'
                       ? 'Concluído'
-                      : activeJob.status === 'failed'
+                      : activeJob.status === 'retry_scheduled'
+                      ? 'Em fila para nova tentativa'
+                      : activeJob.status === 'failed' || activeJob.status === 'failed_permanent'
                       ? 'Falhou'
                       : activeJob.status === 'finalizing'
                       ? 'Finalizando...'
@@ -481,8 +486,42 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                   </span>
                 </div>
 
-                {/* Status em Processamento ou Finalização */}
-                {activeJob.status === 'processing' || activeJob.status === 'pending' || activeJob.status === 'finalizing' ? (
+                {/* Status em Fila de Retry */}
+                {activeJob.status === 'retry_scheduled' ? (
+                  <div className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-6 text-center space-y-4 my-auto">
+                    <Clock size={36} className="text-amber-400 mx-auto animate-pulse" />
+                    <div>
+                      <div className="text-sm font-bold text-amber-200">Em fila para nova tentativa automática</div>
+                      <p className="text-xs text-amber-300/80 max-w-md mx-auto mt-1">
+                        {activeJob.lastErrorMessage || activeJob.errorMessage || 'Limite temporário de requisições de IA atingido na API do Google Gemini.'}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-slate-300">
+                      <div>Tentativa: <strong className="text-white">{activeJob.attemptCount || 1}/{activeJob.maxAttempts || 5}</strong></div>
+                      {activeJob.nextAttemptAt && (
+                        <div>Próxima tentativa: <strong className="text-cyan-300">{new Date(activeJob.nextAttemptAt).toLocaleTimeString('pt-BR')}</strong></div>
+                      )}
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await apiRequest<{ job: VideoJob }>(`/api/ai/video-jobs/${activeJob.id}/retry`, { method: 'POST' });
+                            if (res.job) setActiveJob(res.job);
+                          } catch (e: any) {
+                            console.warn('Erro ao forçar retentativa:', e);
+                          }
+                        }}
+                        className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 text-xs transition-colors"
+                      >
+                        <RefreshCw size={14} /> Tentar agora
+                      </button>
+                    </div>
+                  </div>
+                ) : activeJob.status === 'processing' || activeJob.status === 'pending' || activeJob.status === 'finalizing' ? (
                   <div className="rounded-2xl border border-cyan-500/30 bg-cyan-950/20 p-6 text-center space-y-4 my-auto">
                     <Loader2 size={36} className="text-cyan-400 animate-spin mx-auto" />
                     <div>

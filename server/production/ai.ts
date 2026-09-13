@@ -6,6 +6,7 @@ import { config } from '../config/index.js';
 import { getAdminStorage } from '../providers/firebaseAdmin.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso, queryData } from './store.js';
 import { serverDetectNicheForVideo, SERVER_NICHE_VIDEO_TEMPLATES } from './videoCatalog.js';
+import { diagnoseAiError, calculateNextAttemptAt, sanitizeSecretText } from './aiErrorDiagnostic.js';
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_FINALIZATION_LEASE_MS = 10 * 60 * 1000;
@@ -125,18 +126,9 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function formatAiErrorMessage(error: any): string {
-  const msg = String(error?.message || error || '');
-  if (isRateLimitError(error)) {
-    return 'Limite temporário de requisições de IA atingido na API do Google Gemini. Aguarde alguns segundos e tente novamente.';
-  }
-  if (msg.includes('API_KEY_INVALID') || msg.includes('API key not valid')) {
-    return 'Chave de API do Google Gemini inválida ou sem permissões suficientes no servidor.';
-  }
-  if (msg.includes('SAFETY') || msg.includes('HARM_CATEGORY')) {
-    return 'O conteúdo solicitado foi bloqueado pelas diretrizes de segurança da IA. Modifique o briefing e tente novamente.';
-  }
-  return msg;
+export function formatAiErrorMessage(error: any): string {
+  const diagnostic = diagnoseAiError(error);
+  return diagnostic.sanitizedMessage;
 }
 
 export function parseAiJson<T = any>(value: string): T {
@@ -1006,10 +998,28 @@ export const VIDEO_PRESETS: Record<VideoPreset, VideoPresetConfig> = {
   }
 };
 
+export type VideoJobStatus =
+  | 'queued'
+  | 'pending'
+  | 'processing'
+  | 'retry_scheduled'
+  | 'rendering'
+  | 'ready_to_publish'
+  | 'publishing'
+  | 'published'
+  | 'finalizing'
+  | 'completed'
+  | 'failed'
+  | 'failed_permanent';
+
 export interface VideoJobData {
   id: string;
   userId: string;
   companyId: string;
+  projectId?: string;
+  destinations?: string[];
+  scheduledDate?: string;
+  idempotencyKey?: string;
   operationName?: string;
   reservationId: string;
   creditsReserved: number;
@@ -1031,7 +1041,7 @@ export interface VideoJobData {
   contentItemId: string;
   autoPublishPlatforms?: string[];
   autoPublishProviderOptions?: { pinterestBoardId?: string; youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
-  status: 'queued' | 'processing' | 'finalizing' | 'completed' | 'failed';
+  status: VideoJobStatus;
   pipelineState?: 'credits_reserved' | 'provider_starting' | 'provider_running' | 'result_received' | 'result_persisted' | 'credits_committed' | 'completed' | 'failed';
   errorMessage?: string;
   errorCode?: string;
@@ -1041,6 +1051,19 @@ export interface VideoJobData {
   finalizationFence?: number;
   finalizationStartedAt?: string;
   finalizationLeaseUntil?: string;
+  attemptCount: number;
+  maxAttempts?: number;
+  nextAttemptAt?: string | null;
+  lastAttemptAt?: string | null;
+  lastErrorCategory?: string | null;
+  lastErrorCode?: string | null;
+  lastErrorMessage?: string | null;
+  leaseOwner?: string | null;
+  leaseUntil?: string | null;
+  youtubeVideoId?: string | null;
+  youtubeUrl?: string | null;
+  publishedAt?: string | null;
+  publishedResponse?: any;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -1362,6 +1385,8 @@ export async function startVideoGenerationJob(data: {
     status: 'queued',
     pipelineState: 'provider_starting',
     progressPct: 2,
+    attemptCount: 0,
+    maxAttempts: 5,
     createdAt: now,
     updatedAt: now
   };
@@ -1479,6 +1504,8 @@ export async function startVideoGenerationJob(data: {
       status: 'processing',
       pipelineState: 'provider_running',
       providerStartedAt,
+      attemptCount: 1,
+      lastAttemptAt: providerStartedAt,
       progressPct: 10,
       updatedAt: nowIso()
     };
@@ -1486,19 +1513,190 @@ export async function startVideoGenerationJob(data: {
     await docRef.set(jobData);
     return jobData;
   } catch (error) {
-    const message = formatAiErrorMessage(error instanceof Error ? error.message : String(error));
+    const diagnostic = diagnoseAiError(error);
+    const nowStr = nowIso();
+
+    if (diagnostic.isRetryable) {
+      const nextAttemptAt = calculateNextAttemptAt(1, diagnostic.retryAfterSeconds);
+      const retryJob: VideoJobData = {
+        ...queuedJob,
+        status: 'retry_scheduled',
+        pipelineState: 'provider_starting',
+        attemptCount: 1,
+        lastAttemptAt: nowStr,
+        nextAttemptAt,
+        lastErrorCategory: diagnostic.category,
+        lastErrorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+        lastErrorMessage: diagnostic.sanitizedMessage,
+        errorMessage: diagnostic.sanitizedMessage,
+        errorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+        progressPct: 2,
+        updatedAt: nowStr
+      };
+      await docRef.set(retryJob, { merge: true });
+      return retryJob;
+    }
+
+    const message = diagnostic.sanitizedMessage;
     await failVideoJob({
       docRef,
       userId: data.userId,
       reservationId,
-      errorCode: 'PROVIDER_START_FAILED',
+      errorCode: diagnostic.rawErrorCode || 'PROVIDER_START_FAILED',
       errorMessage: message
     });
     throw new Error(message);
   }
 }
 
-export async function checkAndCompleteVideoJob(userId: string, jobId: string): Promise<VideoJobData> {
+export async function startOrRetryVideoOperation(job: VideoJobData, force = false): Promise<VideoJobData> {
+  const db = firestore();
+  const docRef = db.collection(COLLECTIONS.mediaGenerationJobs).doc(job.id);
+
+  if (job.status === 'completed' || job.status === 'published' || job.status === 'failed_permanent') {
+    return job;
+  }
+
+  const now = Date.now();
+
+  // Trava de concorrência por lease
+  if (!force && job.leaseUntil) {
+    const leaseTime = new Date(job.leaseUntil).getTime();
+    if (now < leaseTime) {
+      return job;
+    }
+  }
+
+  // Backoff check
+  if (!force && job.status === 'retry_scheduled' && job.nextAttemptAt) {
+    const retryTime = new Date(job.nextAttemptAt).getTime();
+    if (now < retryTime) {
+      return job;
+    }
+  }
+
+  const maxAttempts = job.maxAttempts || 5;
+  const currentAttempts = typeof job.attemptCount === 'number' ? job.attemptCount : 0;
+  if (currentAttempts >= maxAttempts && !force) {
+    const failedJob: VideoJobData = {
+      ...job,
+      status: 'failed_permanent',
+      pipelineState: 'failed',
+      errorCode: 'MAX_ATTEMPTS_EXCEEDED',
+      errorMessage: `Limite máximo de tentativas (${maxAttempts}) atingido sem sucesso.`,
+      nextAttemptAt: null,
+      updatedAt: nowIso()
+    };
+    await docRef.set(failedJob, { merge: true });
+    return failedJob;
+  }
+
+  const nextAttempt = currentAttempts + 1;
+  const leaseOwner = `worker_${now}_${Math.random().toString(36).slice(2, 7)}`;
+  const leaseUntil = new Date(now + 120_000).toISOString();
+  await docRef.set({
+    leaseOwner,
+    leaseUntil,
+    lastAttemptAt: nowIso(),
+    attemptCount: nextAttempt,
+    updatedAt: nowIso()
+  }, { merge: true });
+
+  const presetConfig = VIDEO_PRESETS[job.preset || 'pro_1080p'];
+  const finalPrompt = job.finalPrompt || job.prompt;
+
+  try {
+    let operationName = `mock_op_${job.id}`;
+
+    if (overrideMediaClient !== undefined || process.env.NODE_ENV !== 'test') {
+      const videoConfig: any = {
+        numberOfVideos: 1,
+        resolution: presetConfig.resolution,
+        durationSeconds: presetConfig.durationSeconds,
+        aspectRatio: job.aspectRatio || '9:16'
+      };
+
+      const reqPayload: any = {
+        model: presetConfig.model,
+        prompt: finalPrompt,
+        config: videoConfig
+      };
+
+      const operation = await mediaAiClient().models.generateVideos(reqPayload);
+      if (!operation?.name) {
+        throw new Error('A API Veo não retornou o identificador da operação de vídeo.');
+      }
+      operationName = operation.name;
+    }
+
+    const runningJob: VideoJobData = {
+      ...job,
+      operationName,
+      status: 'processing',
+      pipelineState: 'provider_running',
+      providerStartedAt: nowIso(),
+      progressPct: 10,
+      leaseOwner: null,
+      leaseUntil: null,
+      errorCode: undefined,
+      errorMessage: undefined,
+      lastErrorCategory: null,
+      lastErrorCode: null,
+      lastErrorMessage: null,
+      nextAttemptAt: null,
+      updatedAt: nowIso()
+    };
+
+    await docRef.set(runningJob);
+    return runningJob;
+  } catch (error: any) {
+    const diagnostic = diagnoseAiError(error);
+    const nowStr = nowIso();
+
+    if (diagnostic.isRetryable && nextAttempt < maxAttempts) {
+      const nextAttemptAt = calculateNextAttemptAt(nextAttempt, diagnostic.retryAfterSeconds);
+      const retryJob: VideoJobData = {
+        ...job,
+        status: 'retry_scheduled',
+        pipelineState: 'provider_starting',
+        attemptCount: nextAttempt,
+        lastAttemptAt: nowStr,
+        nextAttemptAt,
+        lastErrorCategory: diagnostic.category,
+        lastErrorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+        lastErrorMessage: diagnostic.sanitizedMessage,
+        errorMessage: diagnostic.sanitizedMessage,
+        errorCode: diagnostic.rawErrorCode || 'RATE_LIMIT_TEMPORARY',
+        leaseOwner: null,
+        leaseUntil: null,
+        updatedAt: nowStr
+      };
+      await docRef.set(retryJob, { merge: true });
+      return retryJob;
+    }
+
+    const failedJob: VideoJobData = {
+      ...job,
+      status: 'failed_permanent',
+      pipelineState: 'failed',
+      attemptCount: nextAttempt,
+      lastAttemptAt: nowStr,
+      nextAttemptAt: null,
+      lastErrorCategory: diagnostic.category,
+      lastErrorCode: diagnostic.rawErrorCode || 'PERMANENT_ERROR',
+      lastErrorMessage: diagnostic.sanitizedMessage,
+      errorMessage: diagnostic.sanitizedMessage,
+      errorCode: diagnostic.rawErrorCode || 'PERMANENT_ERROR',
+      leaseOwner: null,
+      leaseUntil: null,
+      updatedAt: nowStr
+    };
+    await docRef.set(failedJob, { merge: true });
+    return failedJob;
+  }
+}
+
+export async function checkAndCompleteVideoJob(userId: string, jobId: string, force = false): Promise<VideoJobData> {
   const db = firestore();
   const docRef = db.collection(COLLECTIONS.mediaGenerationJobs).doc(jobId);
   const snap = await docRef.get();
@@ -1514,7 +1712,21 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
     err.statusCode = 403;
     throw err;
   }
-  if (job.status === 'completed' || job.status === 'failed') return job;
+  if (job.status === 'completed' || job.status === 'published' || job.status === 'failed' || job.status === 'failed_permanent') {
+    return job;
+  }
+
+  if (job.status === 'retry_scheduled') {
+    const isDue = !job.nextAttemptAt || Date.now() >= new Date(job.nextAttemptAt).getTime();
+    if (isDue || force) {
+      return await startOrRetryVideoOperation(job, force);
+    }
+    return job;
+  }
+
+  if (job.status === 'queued' && !job.operationName) {
+    return await startOrRetryVideoOperation(job, force);
+  }
 
   if (job.status === 'finalizing' && job.finalizationLeaseUntil) {
     const lease = new Date(job.finalizationLeaseUntil).getTime();
@@ -1930,6 +2142,13 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
       return { checked: 0, completed: 0, failed: 0 };
     }
     const db = firestore();
+
+    // 1. Jobs em retry_scheduled que aguardam nova tentativa
+    const retrySnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
+      .where('status', '==', 'retry_scheduled')
+      .limit(10)
+      .get();
+
     const processingSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
       .where('status', '==', 'processing')
       .limit(5)
@@ -1945,15 +2164,41 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
       .limit(10)
       .get();
 
+    let checked = 0;
+    let completed = 0;
+    let failed = 0;
+
+    // Processa retries agendados
+    for (const doc of retrySnap.docs) {
+      if (options?.signal?.aborted) break;
+      const job = doc.data() as VideoJobData;
+      checked++;
+
+      if (job.leaseUntil && Date.now() < new Date(job.leaseUntil).getTime()) {
+        continue;
+      }
+
+      const nextTime = job.nextAttemptAt ? new Date(job.nextAttemptAt).getTime() : 0;
+      if (Date.now() >= nextTime) {
+        try {
+          const retried = await startOrRetryVideoOperation(job, false);
+          if (retried.status === 'processing' || retried.status === 'completed' || retried.status === 'published') {
+            completed++;
+          } else if (retried.status === 'failed_permanent' || retried.status === 'failed') {
+            failed++;
+          }
+        } catch (err) {
+          console.warn(`[Video Background Worker] Erro ao retentar job ${job.id}:`, err);
+        }
+      }
+    }
+
     const staleQueuedDocs = queuedSnap.docs.filter((doc: any) => {
       const queuedJob = doc.data() as VideoJobData;
       const providerStartedAt = new Date(queuedJob.providerStartedAt || queuedJob.updatedAt || queuedJob.createdAt).getTime();
       return Number.isFinite(providerStartedAt) && Date.now() - providerStartedAt >= VIDEO_PROVIDER_START_TIMEOUT_MS;
     });
-    const docs = [...processingSnap.docs, ...finalizingSnap.docs, ...staleQueuedDocs].slice(0, 5);
-    let checked = 0;
-    let completed = 0;
-    let failed = 0;
+    const docs = [...processingSnap.docs, ...finalizingSnap.docs, ...staleQueuedDocs].slice(0, 8);
 
     for (const doc of docs) {
       if (options?.signal?.aborted) break;
@@ -1989,8 +2234,8 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal }
       try {
         if (options?.signal?.aborted) break;
         const res = await checkAndCompleteVideoJob(job.userId, job.id);
-        if (res.status === 'completed') completed++;
-        else if (res.status === 'failed') failed++;
+        if (res.status === 'completed' || res.status === 'published') completed++;
+        else if (res.status === 'failed' || res.status === 'failed_permanent') failed++;
       } catch (err) {
         console.warn(`[Video Background Worker] Erro ao processar job ${job.id}:`, err);
       }

@@ -780,6 +780,12 @@ export interface AutopilotExecutionResult {
   scheduleId: string | null;
   stage: string;
   status: string;
+  videoJobStatus?: string;
+  attemptCount?: number;
+  maxAttempts?: number;
+  nextAttemptAt?: string | null;
+  lastError?: string | null;
+  lastErrorCategory?: string | null;
   mode?: string;
   creditsUsed: number;
   message: string;
@@ -851,13 +857,14 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
     let contentExists = false;
     let videoJobExists = false;
     let scheduleExists = false;
+    let vSnap: any = null;
 
     if (finishedJob.contentId) {
       const cSnap = await db.collection(COLLECTIONS.contentItems).doc(finishedJob.contentId).get().catch(() => null);
       contentExists = Boolean(cSnap?.exists);
     }
     if (finishedJob.videoJobId) {
-      const vSnap = await db.collection(COLLECTIONS.mediaGenerationJobs).doc(finishedJob.videoJobId).get().catch(() => null);
+      vSnap = await db.collection(COLLECTIONS.mediaGenerationJobs).doc(finishedJob.videoJobId).get().catch(() => null);
       videoJobExists = Boolean(vSnap?.exists);
     }
     if (finishedJob.scheduleId) {
@@ -869,8 +876,10 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
     const confirmedVideoJobId = (finishedJob.videoJobId && videoJobExists) ? finishedJob.videoJobId : null;
     const confirmedScheduleId = (finishedJob.scheduleId && scheduleExists) ? finishedJob.scheduleId : null;
 
-    const persisted = Boolean(confirmedContentId || confirmedVideoJobId || confirmedScheduleId);
+    const videoJobData: any = (confirmedVideoJobId && vSnap?.exists) ? vSnap.data() : null;
+    const isRetryScheduled = videoJobData?.status === 'retry_scheduled';
     const isVideoProcessing = finishedJob.status === 'video_processing' || Boolean(confirmedVideoJobId);
+    const persisted = Boolean(confirmedContentId || confirmedVideoJobId || confirmedScheduleId);
     const isFailed = finishedJob.status === 'failed' || !persisted;
 
     if (isFailed) {
@@ -893,17 +902,22 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
     }
 
     const stage = isVideoProcessing
-      ? 'video_processing'
+      ? (isRetryScheduled ? 'retry_scheduled' : 'video_processing')
       : confirmedScheduleId
         ? 'scheduled'
         : 'saved_for_review';
 
-    const status = isVideoProcessing
-      ? 'video_processing'
-      : finishedJob.status;
+    const status = isRetryScheduled
+      ? 'retry_scheduled'
+      : isVideoProcessing
+        ? 'video_processing'
+        : finishedJob.status;
 
     let message: string;
-    if (isVideoProcessing) {
+    if (isRetryScheduled) {
+      const retryTimeStr = videoJobData?.nextAttemptAt ? ` Próxima tentativa automática prevista para ${new Date(videoJobData.nextAttemptAt).toLocaleTimeString('pt-BR')}.` : '';
+      message = `Solicitação de vídeo salva na fila (job: ${confirmedVideoJobId}). A API do Google Gemini atingiu um limite temporário de requisições.${retryTimeStr} A publicação no YouTube ocorrerá após a geração bem-sucedida do vídeo.`;
+    } else if (isVideoProcessing) {
       message = `Vídeo em processamento pelo pipeline Veo (job: ${confirmedVideoJobId}); agendamento no YouTube será realizado após a disponibilização do arquivo.`;
     } else if (finishedJob.mode === 'automatic' && confirmedScheduleId) {
       message = 'Conteúdo multimídia criado e agendado automaticamente.';
@@ -919,6 +933,12 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
       scheduleId: confirmedScheduleId,
       stage,
       status,
+      videoJobStatus: videoJobData?.status || (isVideoProcessing ? 'processing' : 'completed'),
+      attemptCount: videoJobData?.attemptCount || (isVideoProcessing ? 1 : 0),
+      maxAttempts: videoJobData?.maxAttempts || 5,
+      nextAttemptAt: videoJobData?.nextAttemptAt || null,
+      lastError: videoJobData?.lastErrorMessage || null,
+      lastErrorCategory: videoJobData?.lastErrorCategory || null,
       mode: finishedJob.mode,
       creditsUsed: finishedJob.creditsUsed || 0,
       message,
