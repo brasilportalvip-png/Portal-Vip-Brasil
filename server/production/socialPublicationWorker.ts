@@ -45,7 +45,7 @@ async function releaseLock(owner: string, fencingToken: number) {
 
 export async function runSocialPublicationWorker(options: { timeoutMs?: number; workerId?: string } = {}): Promise<SocialPublicationWorkerResult> {
   const startedAt = Date.now();
-  const timeoutMs = options.timeoutMs || 48_000;
+  const timeoutMs = options.timeoutMs || 240_000;
   const workerId = options.workerId || `social_worker_${startedAt}_${Math.random().toString(36).slice(2, 8)}`;
   const lock = await acquireLock(workerId, timeoutMs + 15_000);
   const telemetry: SocialPublicationTelemetry = { recovered: 0, processed: 0 };

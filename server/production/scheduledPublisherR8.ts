@@ -229,6 +229,14 @@ export async function processScheduledPostsR8(options?: {
           ...(result.requiresUserAction ? { requiresUserAction: true } : {}),
           ...(result.deliveryMode ? { deliveryMode: result.deliveryMode } : {})
         });
+
+        // Persiste cada resposta confirmada antes de avançar para a próxima rede.
+        // Assim, um timeout posterior não apaga a evidência nem permite republicação duplicada.
+        await doc.ref.update({
+          publicationResults,
+          processingHeartbeatAt: nowIso(),
+          updatedAt: nowIso()
+        });
       }
 
       if (options?.signal?.aborted) {
