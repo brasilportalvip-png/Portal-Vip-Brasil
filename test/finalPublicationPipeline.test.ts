@@ -21,7 +21,15 @@ test('Worker social possui endpoint protegido e workflow frequente', () => {
   const workflow = YAML.parse(read('.github/workflows/social-publications.yml'));
   assert.ok(workflow.on.schedule.some((entry: any) => entry.cron === '*/5 * * * *'));
   assert.equal(workflow.concurrency.group, 'social-publications');
+  assert.equal(workflow.jobs['publish-due-content']['timeout-minutes'], 5);
   assert.match(read('.github/workflows/social-publications.yml'), /secrets\.CRON_SECRET/);
+  assert.match(read('.github/workflows/social-publications.yml'), /--max-time 270/);
+
+  const worker = read('server/production/socialPublicationWorker.ts');
+  assert.match(worker, /options\.timeoutMs \|\| 240_000/);
+
+  const publisher = read('server/production/scheduledPublisherR8.ts');
+  assert.match(publisher, /publicationResults,\s*processingHeartbeatAt: nowIso\(\)/);
 });
 
 test('Vercel nao mistura functions com builds legados', () => {
