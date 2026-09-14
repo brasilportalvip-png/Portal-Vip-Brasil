@@ -1036,6 +1036,7 @@ export interface VideoJobData {
   aspectRatio: '9:16' | '16:9';
   modelUsed: string;
   initialImageUrl?: string;
+  coverImageUrl?: string;
   videoUrl?: string;
   storagePath?: string;
   contentItemId: string;
@@ -1344,6 +1345,7 @@ export async function startVideoGenerationJob(data: {
   preset?: VideoPreset;
   aspectRatio?: '9:16' | '16:9';
   initialImageBase64?: string;
+  coverImageUrl?: string;
   cameraMotion?: string;
   lighting?: string;
   mood?: string;
@@ -1378,6 +1380,7 @@ export async function startVideoGenerationJob(data: {
     aspectRatio,
     modelUsed: presetConfig.model,
     ...(data.initialImageBase64 ? { initialImageUrl: 'provided' } : {}),
+    ...(data.coverImageUrl ? { coverImageUrl: data.coverImageUrl } : {}),
     contentItemId,
     ...(Array.isArray(data.autoPublishPlatforms) && data.autoPublishPlatforms.length > 0
       ? { autoPublishPlatforms: data.autoPublishPlatforms.map((item) => String(item)).filter(Boolean).slice(0, 10) }
@@ -2254,6 +2257,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
         title: workingJob.title || `Vídeo IA - ${(workingJob.sourcePrompt || workingJob.prompt).slice(0, 60)}`,
         headline: workingJob.title || '',
         body: workingJob.sourcePrompt || workingJob.prompt,
+        imageUrl: workingJob.coverImageUrl || '',
         videoUrl: publicVideoUrl,
         targetPlatform: workingJob.aspectRatio === '9:16' ? 'Reels / TikTok / Shorts' : 'YouTube / Banner',
         status: Array.isArray(workingJob.autoPublishPlatforms) && workingJob.autoPublishPlatforms.length > 0 ? 'scheduled' : 'saved',

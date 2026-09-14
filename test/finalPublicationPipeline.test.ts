@@ -35,3 +35,15 @@ test('Estúdio exibe o job mais recente encerrado e sua mensagem real de erro', 
   assert.match(source, /refreshedCurrent \|\| ongoing \|\| data\.jobs\[0\] \|\| null/);
   assert.match(source, /activeJob\.lastErrorMessage \|\| activeJob\.errorMessage \|\| activeJob\.error/);
 });
+
+test('Autopilot reaproveita o vídeo vertical nas redes adequadas sem incluir LinkedIn e X', () => {
+  const autopilot = read('server/production/autopilotMultimediaR8.ts');
+  assert.match(autopilot, /\['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest'\]/);
+  assert.match(autopilot, /imageTargets = targets\.filter\(\(target\) => !videoProviders\.has\(target\.provider\)\)/);
+  assert.match(autopilot, /target\.provider !== 'pinterest' \|\| Boolean\(videoCoverImageUrl\)/);
+  assert.match(autopilot, /imageTargets\.length > 0 \|\| pinterestVideoSelected \|\| mode !== 'automatic'/);
+
+  const ai = read('server/production/ai.ts');
+  assert.match(ai, /imageUrl: workingJob\.coverImageUrl \|\| ''/);
+  assert.match(ai, /coverImageUrl: data\.coverImageUrl/);
+});

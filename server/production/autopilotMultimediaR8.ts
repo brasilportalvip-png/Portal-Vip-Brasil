@@ -401,17 +401,22 @@ export async function executeAutopilotJob(
       goal: ap.primaryGoal || 'Atrair clientes e gerar autoridade'
     });
 
-    const videoTargets = targets.filter((target) => target.provider === 'youtube' || target.provider === 'tiktok');
+    // O MP4 vertical é reaproveitado nas redes adequadas para vídeo curto.
+    // LinkedIn e X permanecem no criativo editorial próprio para evitar
+    // cross-post indiscriminado e custos/limites adicionais de upload.
+    const videoProviders = new Set<SocialProvider>(['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest']);
+    const videoTargets = targets.filter((target) => videoProviders.has(target.provider));
     const youtubeSelected = videoTargets.some((target) => target.provider === 'youtube');
-    const tiktokSelected = videoTargets.some((target) => target.provider === 'tiktok');
-    const imageTargets = targets.filter((target) => target.provider !== 'youtube' && target.provider !== 'tiktok');
+    const pinterestVideoSelected = videoTargets.some((target) => target.provider === 'pinterest');
+    const imageTargets = targets.filter((target) => !videoProviders.has(target.provider));
     let contentId: string | undefined;
     let scheduleId: string | undefined;
     let videoJobId: string | undefined;
+    let videoCoverImageUrl: string | undefined;
     let imageCredits = 0;
 
     // 2. Imagem gerada se houver canais de imagem ou para revisão
-    if (imageTargets.length > 0 || mode !== 'automatic') {
+    if (imageTargets.length > 0 || pinterestVideoSelected || mode !== 'automatic') {
       const visualTheme = String(generated.result.visualPrompt || generated.result.headline || generated.result.body || `Criativo para ${company.name}`);
       const executionId = newId('exec');
       const dateIso = nowIso().slice(0, 10);
@@ -445,6 +450,7 @@ export async function executeAutopilotJob(
       // Detectar repetição por URL, storage path e hash via índice determinístico
       let duplicateCheck: { isDuplicate: boolean; reason?: string; matchField?: string } = { isDuplicate: false };
       if (image && !imageGenerationFailed) {
+        videoCoverImageUrl = String(image.imageUrl || '').trim() || undefined;
         duplicateCheck = await isImageAlreadyUsed(ap.companyId, {
           imageUrl: image.imageUrl,
           storagePath: image.storagePath,
@@ -553,7 +559,12 @@ export async function executeAutopilotJob(
           generated.result.body,
           generated.result.cta
         ].filter(Boolean).join('. ');
-        const readyVideoTargets = videoTargets.filter((target) => readyTargets.some((rt) => rt.provider === target.provider));
+        const readyVideoTargets = videoTargets.filter((target) => {
+          if (!readyTargets.some((rt) => rt.provider === target.provider)) return false;
+          // A API de vídeo do Pinterest exige capa; sem uma imagem válida,
+          // preserva o job para as outras redes sem criar uma falha conjunta.
+          return target.provider !== 'pinterest' || Boolean(videoCoverImageUrl);
+        });
         const videoJob = await startVideoGenerationJob({
           userId: ap.userId,
           company,
@@ -561,6 +572,7 @@ export async function executeAutopilotJob(
           title: String(generated.result.headline || `Conteúdo ${company.name}`).slice(0, 100),
           preset: 'pro_1080p',
           aspectRatio: '9:16',
+          coverImageUrl: videoCoverImageUrl,
           autoPublishPlatforms: effectiveMode === 'automatic' ? readyVideoTargets.map((item) => item.label) : [],
           autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' }
         });
@@ -629,7 +641,7 @@ export async function executeAutopilotJob(
       title: `Autopilot Multimídia: ${company.name}`,
       message: mode === 'automatic'
         ? videoTargets.length > 0
-          ? `Conteúdo de ${company.name} preparado; vídeo enviado para a fila Veo (${[youtubeSelected ? 'YouTube' : '', tiktokSelected ? 'TikTok' : ''].filter(Boolean).join(' e ')}) de forma assíncrona.`
+          ? `Conteúdo de ${company.name} preparado; vídeo enviado para a fila Veo (${videoTargets.map((target) => target.label).join(', ')}) de forma assíncrona.`
           : `Conteúdo multimídia de ${company.name} criado e agendado com sucesso.`
         : `Conteúdo multimídia de ${company.name} criado e salvo para revisão.`,
       type: 'autopilot_ready'
@@ -1214,4 +1226,3 @@ export async function clearAutopilotErrors(userId: string, companyId?: string): 
 
   return { clearedCount };
 }
-
