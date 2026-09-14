@@ -385,14 +385,12 @@ class MemoryFirestoreStore {
 const localMemoryStore = new MemoryFirestoreStore();
 
 export function isLocalMemoryStoreAllowed(): boolean {
-  if (
+  if (config.isProduction) return false;
+  return (
     process.env.ALLOW_LOCAL_MEMORY_STORE === 'true' ||
     process.env.NODE_ENV === 'test' ||
     config.nodeEnv === 'development'
-  ) {
-    return true;
-  }
-  return !config.firebase.projectId || !config.firebase.clientEmail || !config.firebase.privateKey;
+  );
 }
 
 export function firestore(): any {

@@ -138,8 +138,7 @@ export function assertProductionConfig(): void {
   ];
   const missing = requiredValues.filter(([, value]) => !value).map(([name]) => name);
   if (missing.length > 0) {
-    console.warn(`[Portal Vip Brasil] Executando com configurações parciais: ${missing.join(', ')}`);
-    return;
+    throw new Error(`[Portal Vip Brasil] Configuração de produção incompleta: ${missing.join(', ')}`);
   }
 
   // Validação estrita de formato e segurança para APP_URL em produção
