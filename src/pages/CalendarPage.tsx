@@ -57,7 +57,7 @@ export const CalendarPage: React.FC<Props> = ({
   }, [contentItems]);
 
   const posts = useMemo(
-    () => scheduledPosts.filter((p) => !selectedCompany || p.companyId === selectedCompany.id).sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor)),
+    () => scheduledPosts.filter((p) => !selectedCompany || p.companyId === selectedCompany.id).sort((a, b) => b.scheduledFor.localeCompare(a.scheduledFor)),
     [scheduledPosts, selectedCompany]
   );
 
