@@ -3,7 +3,7 @@ import { config } from '../config/index.js';
 import { COLLECTIONS, firestore, nowIso, stableId } from './store.js';
 
 const SOCIAL_REQUEST_TIMEOUT_MS = 20_000;
-const INSTAGRAM_CONTAINER_POLL_DELAYS_MS = [1_000, 2_000, 3_000, 4_000, 5_000, 5_000] as const;
+const INSTAGRAM_CONTAINER_POLL_DELAYS_MS = Array.from({ length: 30 }, () => 5_000) as readonly number[];
 
 async function socialFetch(input: string | URL, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();

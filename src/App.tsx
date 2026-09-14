@@ -472,6 +472,7 @@ export function App() {
             scheduledPosts={scheduledPosts}
             contentItems={contentItems}
             onRefreshSchedule={refreshSchedule}
+            onRefreshContents={refreshContents}
             onNavigate={navigate}
           />
         );

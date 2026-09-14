@@ -8,6 +8,7 @@ interface Props {
   contentItems: ContentItem[];
   selectedCompany: Company | null;
   onRefreshSchedule: () => void;
+  onRefreshContents: () => void;
   onNavigate: (tab: string) => void;
 }
 
@@ -26,6 +27,7 @@ export const CalendarPage: React.FC<Props> = ({
   contentItems,
   selectedCompany,
   onRefreshSchedule,
+  onRefreshContents,
   onNavigate
 }) => {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -203,7 +205,7 @@ export const CalendarPage: React.FC<Props> = ({
           <p className="text-xs text-slate-400">Agendamento multimídia real em 7 redes. Vídeos e publicações vencidas são verificados automaticamente ao longo do dia.</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => void onRefreshSchedule()} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-300 hover:border-slate-600">
+          <button onClick={() => void Promise.all([onRefreshSchedule(), onRefreshContents()])} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-300 hover:border-slate-600">
             <RefreshCw size={14} /> Atualizar
           </button>
           <button onClick={openScheduleModal} className="froc-primary flex items-center justify-center gap-2">
@@ -460,7 +462,11 @@ export const CalendarPage: React.FC<Props> = ({
                 <select value={contentId} onChange={(e) => setContentId(e.target.value)} className="froc-input mt-1.5" required>
                   <option value="">Selecione um conteúdo salvo…</option>
                   {contentItems
-                    .filter((c) => !selectedCompany || c.companyId === selectedCompany.id)
+                    .filter((c) => {
+                      if (!selectedCompany) return true;
+                      const normalize = (value: unknown) => String(value || '').toLowerCase().replace(/^proj[_-]?/, '').replace(/[^a-z0-9]/g, '');
+                      return c.companyId === selectedCompany.id || normalize(c.companyId) === normalize(selectedCompany.id);
+                    })
                     .map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.title || c.headline || 'Sem título'} ({c.type || 'post'})
