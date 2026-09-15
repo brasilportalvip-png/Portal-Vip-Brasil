@@ -2448,18 +2448,55 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
   if (signal?.aborted) return 0;
   const db = firestore();
   const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+
+  // Uma execução de recuperação antiga pode ter encontrado mais de um ciclo
+  // recente do mesmo projeto. Antes de publicar qualquer coisa, preserva só o
+  // agendamento recuperado mais novo de cada projeto e cancela os excedentes.
+  const recoveredSchedulesSnap = await db.collection(COLLECTIONS.scheduledPosts)
+    .where('status', '==', 'scheduled')
+    .limit(100)
+    .get();
+  const recoveredByCompany = new Map<string, any[]>();
+  for (const scheduleDoc of recoveredSchedulesSnap.docs) {
+    const schedule = scheduleDoc.data() as any;
+    if (schedule.recoveredFromCompletedVideo !== true) continue;
+    const companyId = String(schedule.companyId || '');
+    if (!companyId) continue;
+    const group = recoveredByCompany.get(companyId) || [];
+    group.push({ doc: scheduleDoc, schedule });
+    recoveredByCompany.set(companyId, group);
+  }
+  for (const group of recoveredByCompany.values()) {
+    group.sort((left, right) => String(right.schedule.createdAt || '').localeCompare(String(left.schedule.createdAt || '')));
+    for (const duplicate of group.slice(1)) {
+      await duplicate.doc.ref.set({
+        status: 'cancelled',
+        errorMessage: 'Agendamento recuperado excedente cancelado: somente o vídeo mais recente deste projeto será publicado.',
+        cancelledAt: nowIso(),
+        updatedAt: nowIso()
+      }, { merge: true });
+    }
+  }
+
   const completedSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
     .where('status', '==', 'completed')
     .limit(100)
     .get();
   let recovered = 0;
 
-  const candidates = completedSnap.docs
+  const recentCandidates = completedSnap.docs
     .map((doc: any) => ({ doc, job: doc.data() as VideoJobData }))
     .filter(({ job }) => {
       const timestamp = new Date(job.completedAt || job.updatedAt || job.createdAt).getTime();
       return Number.isFinite(timestamp) && timestamp >= cutoff && Boolean(job.contentItemId && job.videoUrl);
     })
+    .sort((a, b) => String(b.job.createdAt).localeCompare(String(a.job.createdAt)));
+  const newestByCompany = new Map<string, { doc: any; job: VideoJobData }>();
+  for (const candidate of recentCandidates) {
+    const companyId = String(candidate.job.companyId || 'default');
+    if (!newestByCompany.has(companyId)) newestByCompany.set(companyId, candidate);
+  }
+  const candidates = [...newestByCompany.values()]
     .sort((a, b) => String(a.job.createdAt).localeCompare(String(b.job.createdAt)));
 
   for (const { doc, job } of candidates) {
