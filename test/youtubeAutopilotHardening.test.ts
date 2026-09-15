@@ -137,3 +137,24 @@ test('Worker de vídeos possui tempo para finalizar todos os projetos', () => {
   assert.match(workerSource, /timeoutMs \+ 30_000/);
   assert.match(workflowSource, /--max-time 270/);
 });
+
+test('Worker recupera agendamentos ausentes de vídeos concluídos sem duplicar publicação', () => {
+  const aiSource = source('server/production/ai.ts');
+
+  assert.match(aiSource, /recoverCompletedVideoSchedules/);
+  assert.match(aiSource, /sched-video-\$\{job\.id\}/);
+  assert.match(aiSource, /freshSchedule\.exists/);
+  assert.match(aiSource, /recoveredFromCompletedVideo:\s*true/);
+  assert.match(aiSource, /schedulesRecovered/);
+  assert.match(aiSource, /autopilotJob\?\.mode === 'automatic'/);
+});
+
+test('Worker retenta somente falhas recentes e transitórias do Veo', () => {
+  const aiSource = source('server/production/ai.ts');
+
+  assert.match(aiSource, /where\('status', '==', 'failed'\)/);
+  assert.match(aiSource, /internal server\|temporar\|try again\|timeout\|indispon/i);
+  assert.match(aiSource, /attempts >= maxAttempts/);
+  assert.match(aiSource, /48 \* 60 \* 60 \* 1000/);
+  assert.match(aiSource, /startOrRetryVideoOperation\(job\.id/);
+});

@@ -32,7 +32,8 @@ const DEFAULT_TELEMETRY: VideoJobWorkerTelemetry = {
   retryScheduled: 0,
   completed: 0,
   published: 0,
-  failed: 0
+  failed: 0,
+  schedulesRecovered: 0
 };
 
 /**
@@ -180,7 +181,8 @@ export async function getVideoRetryWorkerHealth(): Promise<VideoRetryWorkerHealt
       retryScheduled: Number(data.telemetry?.retryScheduled || 0),
       completed: Number(data.telemetry?.completed || 0),
       published: Number(data.telemetry?.published || 0),
-      failed: Number(data.telemetry?.failed || 0)
+      failed: Number(data.telemetry?.failed || 0),
+      schedulesRecovered: Number(data.telemetry?.schedulesRecovered || 0)
     },
     isCronSecretConfigured: hasSecret
   };

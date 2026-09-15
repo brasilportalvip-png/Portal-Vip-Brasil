@@ -2422,6 +2422,117 @@ export interface VideoJobWorkerTelemetry {
   completed: number;
   published: number;
   failed: number;
+  schedulesRecovered: number;
+}
+
+const VIDEO_AUTOPUBLISH_PROVIDERS = new Map<string, string>([
+  ['facebook', 'Facebook'],
+  ['instagram', 'Instagram'],
+  ['tiktok', 'TikTok'],
+  ['youtube', 'YouTube'],
+  ['pinterest', 'Pinterest']
+]);
+
+function recoverableVideoPlatforms(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  const recovered = new Set<string>();
+  for (const value of values) {
+    const normalized = String(value || '').trim().toLowerCase();
+    const provider = VIDEO_AUTOPUBLISH_PROVIDERS.get(normalized);
+    if (provider) recovered.add(provider);
+  }
+  return [...recovered];
+}
+
+async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<number> {
+  if (signal?.aborted) return 0;
+  const db = firestore();
+  const cutoff = Date.now() - 48 * 60 * 60 * 1000;
+  const completedSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
+    .where('status', '==', 'completed')
+    .limit(100)
+    .get();
+  let recovered = 0;
+
+  const candidates = completedSnap.docs
+    .map((doc: any) => ({ doc, job: doc.data() as VideoJobData }))
+    .filter(({ job }) => {
+      const timestamp = new Date(job.completedAt || job.updatedAt || job.createdAt).getTime();
+      return Number.isFinite(timestamp) && timestamp >= cutoff && Boolean(job.contentItemId && job.videoUrl);
+    })
+    .sort((a, b) => String(a.job.createdAt).localeCompare(String(b.job.createdAt)));
+
+  for (const { doc, job } of candidates) {
+    if (signal?.aborted) break;
+    const scheduleRef = db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${job.id}`);
+    const existingSchedule = await scheduleRef.get();
+    if (existingSchedule.exists) {
+      const autopilotSnap = await db.collection(COLLECTIONS.autopilotJobs).where('videoJobId', '==', job.id).limit(1).get();
+      if (!autopilotSnap.empty && String(autopilotSnap.docs[0].data()?.status || '') === 'video_processing') {
+        await autopilotSnap.docs[0].ref.set({
+          status: 'completed',
+          contentId: job.contentItemId,
+          completedAt: job.completedAt || nowIso(),
+          updatedAt: nowIso()
+        }, { merge: true });
+      }
+      continue;
+    }
+
+    let platforms = recoverableVideoPlatforms(job.autoPublishPlatforms);
+    const autopilotSnap = await db.collection(COLLECTIONS.autopilotJobs).where('videoJobId', '==', job.id).limit(1).get();
+    if (platforms.length === 0 && !autopilotSnap.empty) {
+      const autopilotJob = autopilotSnap.docs[0].data() as any;
+      const configId = `${job.userId}_${job.companyId}`;
+      let configSnap = await db.collection(COLLECTIONS.autopilotConfigs).doc(configId).get();
+      if (!configSnap.exists) configSnap = await db.collection(COLLECTIONS.autopilotConfigs).doc(job.companyId).get();
+      const autopilotConfig = configSnap.exists ? (configSnap.data() as any) : null;
+      if (autopilotJob?.mode === 'automatic' && autopilotConfig?.mode === 'automatic' && autopilotConfig?.enabled !== false) {
+        platforms = recoverableVideoPlatforms(autopilotConfig.targetPlatforms);
+      }
+    }
+    if (platforms.length === 0) continue;
+
+    const contentRef = db.collection(COLLECTIONS.contentItems).doc(String(job.contentItemId));
+    const didRecover = await db.runTransaction(async (tx: any) => {
+      const [freshJob, freshSchedule, contentSnap] = await Promise.all([
+        tx.get(doc.ref), tx.get(scheduleRef), tx.get(contentRef)
+      ]);
+      if (!freshJob.exists || freshJob.data()?.status !== 'completed' || freshSchedule.exists || !contentSnap.exists) return false;
+      const content = contentSnap.data() as any;
+      if (!content.videoUrl || content.userId !== job.userId || content.companyId !== job.companyId) return false;
+      const timestamp = nowIso();
+      tx.set(scheduleRef, {
+        id: `sched-video-${job.id}`,
+        userId: job.userId,
+        companyId: job.companyId,
+        contentItemId: job.contentItemId,
+        platforms,
+        scheduledFor: timestamp,
+        status: 'scheduled',
+        isPlanning: false,
+        autopilotGenerated: true,
+        recoveredFromCompletedVideo: true,
+        providerOptions: job.autoPublishProviderOptions || { youtubePrivacyStatus: 'unlisted' },
+        createdAt: timestamp,
+        updatedAt: timestamp
+      });
+      tx.set(contentRef, { status: 'scheduled', updatedAt: timestamp }, { merge: true });
+      tx.set(doc.ref, { autoPublishPlatforms: platforms, scheduleRecoveredAt: timestamp, updatedAt: timestamp }, { merge: true });
+      return true;
+    });
+    if (didRecover) recovered++;
+
+    if (!autopilotSnap.empty) {
+      await autopilotSnap.docs[0].ref.set({
+        status: 'completed',
+        contentId: job.contentItemId,
+        completedAt: job.completedAt || nowIso(),
+        updatedAt: nowIso()
+      }, { merge: true });
+    }
+  }
+  return recovered;
 }
 
 export async function processPendingVideoJobs(options?: { signal?: AbortSignal; trigger?: string }): Promise<VideoJobWorkerTelemetry> {
@@ -2431,7 +2542,8 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal; 
     retryScheduled: 0,
     completed: 0,
     published: 0,
-    failed: 0
+    failed: 0,
+    schedulesRecovered: 0
   };
 
   try {
@@ -2460,6 +2572,33 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal; 
       .where('status', '==', 'queued')
       .limit(10)
       .get();
+
+    const failedSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
+      .where('status', '==', 'failed')
+      .limit(10)
+      .get();
+
+    for (const doc of failedSnap.docs) {
+      if (options?.signal?.aborted) break;
+      const job = doc.data() as VideoJobData;
+      const failedAt = new Date(job.updatedAt || job.createdAt).getTime();
+      const message = String(job.errorMessage || '');
+      const attempts = Number(job.attemptCount || 0);
+      const maxAttempts = Number(job.maxAttempts || 5);
+      const isRecent = Number.isFinite(failedAt) && Date.now() - failedAt <= 48 * 60 * 60 * 1000;
+      const isTransient = /internal server|temporar|try again|timeout|indispon/i.test(message);
+      if (!isRecent || !isTransient || attempts >= maxAttempts) continue;
+      telemetry.checked++;
+      try {
+        const retried = await startOrRetryVideoOperation(job.id, { workerId: `recovery_${options?.trigger || 'cron'}` });
+        if (retried.status === 'processing') telemetry.started++;
+        else if (retried.status === 'retry_scheduled') telemetry.retryScheduled++;
+        else if (retried.status === 'completed') telemetry.completed++;
+        else if (retried.status === 'failed' || retried.status === 'failed_permanent') telemetry.failed++;
+      } catch (error) {
+        console.warn(`[Video Background Worker] Erro ao recuperar job falho ${job.id}:`, error);
+      }
+    }
 
     // Processa retries agendados
     for (const doc of retrySnap.docs) {
@@ -2561,6 +2700,7 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal; 
       }
     }
 
+    telemetry.schedulesRecovered = await recoverCompletedVideoSchedules(options?.signal);
     return telemetry;
   } catch (error) {
     console.warn('[Video Background Worker] Erro ao consultar jobs pendentes:', error);
