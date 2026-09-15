@@ -1298,6 +1298,7 @@ DIRETRIZES CINEMATOGRÁFICAS E REALISMO:
 3. Especifique movimento de câmera preciso e estável (ex: smooth dolly push-in, low-angle orbital tracking, macro slider).
 4. Especifique gradação de cor, resolução 8k e tom cinematográfico de alto impacto estético vertical (9:16) para TikTok e Reels.
 5. REGRAS DE INTEGRIDADE VISUAL: Enfatize anatomia natural, ausência de artefatos de morfologia, sem membros extras, sem distorção.
+6. REGRA ABSOLUTA DE TEXTO: A cena não pode conter palavras, letras, números, legendas, placas, letreiros, interfaces, marcas d'água ou logotipos. Nunca peça ao Veo para desenhar texto. Toda comunicação escrita será adicionada posteriormente pelo sistema.
 
 Retorne SOMENTE um JSON estrito no formato:
 {
@@ -1456,7 +1457,8 @@ export async function startVideoGenerationJob(data: {
       `Camera direction: ${data.cameraMotion || direction.cameraMotion}.`,
       `Lighting scheme: ${data.lighting || direction.lighting}.`,
       `Atmosphere & color grading: ${data.mood || direction.mood}.`,
-      `Target format: ${aspectRatio}. Technical parameters: Ultra high definition commercial rendering, authentic physical textures, realistic lighting and reflections, natural fluid motion, no morphing artifacts, no anatomical distortions.`
+      `Target format: ${aspectRatio}. Technical parameters: Ultra high definition commercial rendering, authentic physical textures, realistic lighting and reflections, natural fluid motion, no morphing artifacts, no anatomical distortions.`,
+      `ABSOLUTE VISUAL RULE: no visible text, no words, no letters, no numbers, no captions, no subtitles, no signs, no labels, no user-interface text, no watermarks and no logos anywhere in any frame. Use only purely visual scenes. Written titles and captions are added outside the video by the publishing system.`
     ].filter(Boolean).join('\n');
 
     const providerStartedAt = nowIso();
@@ -2497,7 +2499,18 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal; 
       const providerStartedAt = new Date(queuedJob.providerStartedAt || queuedJob.updatedAt || queuedJob.createdAt).getTime();
       return Number.isFinite(providerStartedAt) && Date.now() - providerStartedAt >= VIDEO_PROVIDER_START_TIMEOUT_MS;
     });
-    const docs = [...processingSnap.docs, ...finalizingSnap.docs, ...staleQueuedDocs].slice(0, 8);
+    // Ordena globalmente pelo job menos recentemente atendido. Sem esta
+    // alternância, os primeiros documentos retornados pelo Firestore podem
+    // monopolizar todos os ciclos e deixar os demais projetos sem conclusão.
+    const docs = [...processingSnap.docs, ...finalizingSnap.docs, ...staleQueuedDocs]
+      .sort((left: any, right: any) => {
+        const leftData = left.data() as VideoJobData;
+        const rightData = right.data() as VideoJobData;
+        const leftTime = new Date(leftData.updatedAt || leftData.createdAt || 0).getTime();
+        const rightTime = new Date(rightData.updatedAt || rightData.createdAt || 0).getTime();
+        return leftTime - rightTime;
+      })
+      .slice(0, 8);
 
     for (const doc of docs) {
       if (options?.signal?.aborted) break;

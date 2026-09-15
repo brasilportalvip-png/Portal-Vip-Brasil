@@ -16,7 +16,7 @@ jobs:
   run-video-retries:
     name: Trigger Video Retries Worker
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
 
     steps:
       - name: Trigger Video Retries Endpoint
@@ -31,7 +31,7 @@ jobs:
           echo "Disparando worker de retentativas de vídeo no domínio oficial de produção..."
 
           RESPONSE=$(curl -sS --fail-with-body \
-            --max-time 25 \
+            --max-time 270 \
             -X POST "https://portal-vip-brasil.vercel.app/api/cron/video-retries" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "User-Agent: GitHubActions-VideoRetryWorker/1.0" \

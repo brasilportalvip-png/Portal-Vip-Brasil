@@ -120,3 +120,20 @@ test('Envio ao YouTube configura unlisted e persiste resposta sanitizada', () =>
   assert.match(scheduledSource, /youtubeVideoId:\s*youtubeResult\.externalId/);
   assert.match(scheduledSource, /youtubeUrl:/);
 });
+
+test('Veo recebe proibição absoluta de texto visível nas cenas', () => {
+  const aiSource = source('server/production/ai.ts');
+
+  assert.match(aiSource, /ABSOLUTE VISUAL RULE: no visible text/i);
+  assert.match(aiSource, /no captions, no subtitles, no signs/i);
+  assert.match(aiSource, /Toda comunicação escrita será adicionada posteriormente pelo sistema/i);
+});
+
+test('Worker de vídeos possui tempo para finalizar todos os projetos', () => {
+  const workerSource = source('server/production/videoRetryWorker.ts');
+  const workflowSource = source('.github/workflows/video-retries.yml');
+
+  assert.match(workerSource, /timeoutMs \|\| 240_000/);
+  assert.match(workerSource, /timeoutMs \+ 30_000/);
+  assert.match(workflowSource, /--max-time 270/);
+});
