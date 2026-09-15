@@ -615,8 +615,11 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
   if (!lease) return { skipped: true, reason: 'Outro ciclo já está em execução.' };
 
   const startTime = Date.now();
-  const maxExecutionMs = options.timeoutMs || 45_000;
-  const FINALLY_RESERVED_MS = 6_000;
+  // A execução diária pode atender até oito projetos. O limite anterior de
+  // 45s/15s abortava o Autopilot durante chamadas legítimas de texto e imagem.
+  // Mantemos 50s reservados abaixo do maxDuration de 300s da Vercel.
+  const maxExecutionMs = options.timeoutMs || 240_000;
+  const FINALLY_RESERVED_MS = Math.min(10_000, Math.max(1_000, Math.floor(maxExecutionMs * 0.15)));
   const getRemainingBudgetMs = () => Math.max(0, maxExecutionMs - FINALLY_RESERVED_MS - (Date.now() - startTime));
   const hasTimeRemaining = (minRequiredMs = 1_500) => getRemainingBudgetMs() >= minRequiredMs;
 
@@ -669,7 +672,7 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     // Executado ANTES de gerações pesadas para garantir publicação pontual às 10h
     if (hasTimeRemaining(1_500)) {
       try {
-        const t3 = Math.min(15_000, getRemainingBudgetMs());
+        const t3 = Math.min(120_000, getRemainingBudgetMs());
         autopilot = await withControlledTimeout(
           (signal) => processAutopilot({ signal, lease: leaseContext }),
           t3,
@@ -685,7 +688,7 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     // Fase 2.1: Publica imediatamente os novos agendamentos gerados pelo Autopilot para este ciclo
     if (hasTimeRemaining(1_000)) {
       try {
-        const t4 = Math.min(8_000, getRemainingBudgetMs());
+        const t4 = Math.min(20_000, getRemainingBudgetMs());
         scheduledPostsAfterGeneration = await withControlledTimeout(
           (signal) => processScheduledPosts({ signal, lease: leaseContext }),
           t4,
@@ -702,7 +705,7 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     // Fase 3: SEO orgânico primeiro: cria os artigos antes das tarefas pesadas de vídeo/marketing.
     if (hasTimeRemaining(2_000)) {
       try {
-        const t5 = Math.min(12_000, getRemainingBudgetMs());
+        const t5 = Math.min(60_000, getRemainingBudgetMs());
         const blogCycleRes = await withControlledTimeout(
           (signal) => (signal ? runDailyBlogCycle({ signal }) : runDailyBlogCycle()),
           t5,
@@ -723,7 +726,7 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
 
     if (hasTimeRemaining(2_000)) {
       try {
-        const t6 = Math.min(8_000, getRemainingBudgetMs());
+        const t6 = Math.min(30_000, getRemainingBudgetMs());
         const pmRes = await withControlledTimeout(
           (signal) => runDailyPortalMarketingCycle({ signal }),
           t6,
@@ -745,7 +748,7 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     // Process pending video jobs (async AI/Veo processing)
     if (hasTimeRemaining(2_000)) {
       try {
-        const t7 = Math.min(8_000, getRemainingBudgetMs());
+        const t7 = Math.min(30_000, getRemainingBudgetMs());
         videoJobs = await withControlledTimeout(
           (signal) => processPendingVideoJobs({ signal }),
           t7,
