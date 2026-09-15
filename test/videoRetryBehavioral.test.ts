@@ -523,3 +523,51 @@ test('16. Reconciliação recupera vídeo concluído do Autopilot sem duplicar a
   const secondRun = await processPendingVideoJobs();
   assert.equal(secondRun.schedulesRecovered, 0, 'Segunda execução não pode criar agendamento duplicado');
 });
+
+test('17. Reconciliação cancela ciclos recuperados excedentes e mantém somente o mais recente por projeto', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const companyId = 'project_single_latest';
+  const older = new Date(Date.now() - 60_000).toISOString();
+  const newer = new Date().toISOString();
+
+  for (const [id, createdAt] of [['old', older], ['new', newer]] as const) {
+    const jobId = `job_${id}`;
+    const contentItemId = `content_${id}`;
+    await createTestVideoJob({
+      id: jobId,
+      companyId,
+      status: 'completed',
+      pipelineState: 'completed',
+      contentItemId,
+      videoUrl: `https://storage.googleapis.com/example/${id}.mp4`,
+      completedAt: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+      autoPublishPlatforms: ['YouTube']
+    });
+    await db.collection(COLLECTIONS.contentItems).doc(contentItemId).set({
+      id: contentItemId,
+      userId: 'test_user_alpha',
+      companyId,
+      type: 'video',
+      videoUrl: `https://storage.googleapis.com/example/${id}.mp4`,
+      status: 'scheduled'
+    });
+    await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).set({
+      id: `sched-video-${jobId}`,
+      userId: 'test_user_alpha',
+      companyId,
+      contentItemId,
+      platforms: ['YouTube'],
+      status: 'scheduled',
+      recoveredFromCompletedVideo: true,
+      createdAt,
+      updatedAt: createdAt
+    });
+  }
+
+  await processPendingVideoJobs();
+  assert.equal((await db.collection(COLLECTIONS.scheduledPosts).doc('sched-video-job_old').get()).data()?.status, 'cancelled');
+  assert.equal((await db.collection(COLLECTIONS.scheduledPosts).doc('sched-video-job_new').get()).data()?.status, 'scheduled');
+});

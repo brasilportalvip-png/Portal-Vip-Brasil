@@ -147,6 +147,10 @@ test('Worker recupera agendamentos ausentes de vídeos concluídos sem duplicar 
   assert.match(aiSource, /recoveredFromCompletedVideo:\s*true/);
   assert.match(aiSource, /schedulesRecovered/);
   assert.match(aiSource, /autopilotJob\?\.mode === 'automatic'/);
+  assert.match(aiSource, /recoveredByCompany/);
+  assert.match(aiSource, /group\.slice\(1\)/);
+  assert.match(aiSource, /status:\s*'cancelled'/);
+  assert.match(aiSource, /newestByCompany/);
 });
 
 test('Worker retenta somente falhas recentes e transitórias do Veo', () => {
