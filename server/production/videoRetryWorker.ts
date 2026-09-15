@@ -206,12 +206,15 @@ export async function runVideoRetryWorker(options: {
 } = {}): Promise<RunWorkerResult> {
   const trigger = options.trigger || 'cron';
   const workerId = options.workerId || `worker_cron_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const timeoutMs = options.timeoutMs || 18_000; // Limite seguro para execução serverless (Vercel) com folga para curl
+  // A finalização pode envolver consulta ao Veo, download do MP4, gravação no
+  // Storage e agendamento em várias redes. Dezoito segundos permitiam que só
+  // o primeiro job avançasse antes do aborto do worker.
+  const timeoutMs = options.timeoutMs || 240_000;
   const startTime = Date.now();
   const startTimeIso = new Date(startTime).toISOString();
 
   // 1. Aquisição atômica da trava distribuída
-  const lock = await acquireVideoRetryCronLock(workerId);
+  const lock = await acquireVideoRetryCronLock(workerId, timeoutMs + 30_000);
   if (!lock.acquired) {
     const elapsed = Date.now() - startTime;
     // Registra tentativa concorrente na telemetria sem sobrescrever contadores de jobs

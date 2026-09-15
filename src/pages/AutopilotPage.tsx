@@ -396,11 +396,11 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
         </div>
       </header>
 
-      {/* Grade de Status dos 7 Projetos Ativos */}
+      {/* Grade de status usa a quantidade real retornada pela API. */}
       <section className="froc-panel">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="froc-section-title">Status dos 7 Projetos Ativos</h3>
+            <h3 className="froc-section-title">Status dos {overview.length || companies.length} Projetos Ativos</h3>
             <p className="text-[11px] text-slate-400">
               Acompanhe o estado de cada projeto no Motor Global e no Autopilot Multimídia.
             </p>
@@ -843,4 +843,3 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
     </div>
   );
 };
-
