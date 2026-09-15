@@ -460,3 +460,66 @@ test('15. Gatilho automático de retry ocorrendo no mesmo dia via daemon', async
   assert.equal(getActiveTimerCount(), 0, 'Timer do daemon deve ser limpo após execução');
   stopVideoRetryDaemon();
 });
+
+test('16. Reconciliação recupera vídeo concluído do Autopilot sem duplicar agendamento', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const userId = 'user_reconcile_video';
+  const companyId = 'project_reconcile_video';
+  const jobId = 'job_reconcile_completed';
+  const contentItemId = 'content_reconcile_completed';
+  const timestamp = new Date().toISOString();
+
+  await createTestVideoJob({
+    id: jobId,
+    userId,
+    companyId,
+    status: 'completed',
+    pipelineState: 'completed',
+    contentItemId,
+    videoUrl: 'https://storage.googleapis.com/example/video.mp4',
+    completedAt: timestamp,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    autoPublishPlatforms: []
+  });
+  await db.collection(COLLECTIONS.contentItems).doc(contentItemId).set({
+    id: contentItemId,
+    userId,
+    companyId,
+    type: 'video',
+    videoUrl: 'https://storage.googleapis.com/example/video.mp4',
+    status: 'saved',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  });
+  await db.collection(COLLECTIONS.autopilotJobs).doc('autopilot_reconcile').set({
+    id: 'autopilot_reconcile',
+    userId,
+    companyId,
+    videoJobId: jobId,
+    mode: 'automatic',
+    status: 'video_processing',
+    createdAt: timestamp,
+    updatedAt: timestamp
+  });
+  await db.collection(COLLECTIONS.autopilotConfigs).doc(`${userId}_${companyId}`).set({
+    id: `${userId}_${companyId}`,
+    userId,
+    companyId,
+    enabled: true,
+    mode: 'automatic',
+    targetPlatforms: ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LinkedIn']
+  });
+
+  const firstRun = await processPendingVideoJobs();
+  assert.equal(firstRun.schedulesRecovered, 1);
+  const schedule = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).get();
+  assert.equal(schedule.exists, true);
+  assert.deepEqual(schedule.data()?.platforms, ['Facebook', 'Instagram', 'TikTok', 'YouTube']);
+  assert.equal((await db.collection(COLLECTIONS.contentItems).doc(contentItemId).get()).data()?.status, 'scheduled');
+  assert.equal((await db.collection(COLLECTIONS.autopilotJobs).doc('autopilot_reconcile').get()).data()?.status, 'completed');
+
+  const secondRun = await processPendingVideoJobs();
+  assert.equal(secondRun.schedulesRecovered, 0, 'Segunda execução não pode criar agendamento duplicado');
+});

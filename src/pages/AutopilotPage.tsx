@@ -619,7 +619,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
           <Bot size={38} className="mx-auto text-cyan-400" />
           <h2 className="mt-3 text-lg font-bold text-white">Escolha um projeto para configurar</h2>
           <p className="mt-1 text-xs text-slate-400">
-            Selecione qualquer um dos 7 projetos acima para configurar os canais sociais e horário de postagem.
+            Selecione qualquer um dos {companies.length} projetos acima para configurar os canais sociais e horário de postagem.
           </p>
         </div>
       ) : (
@@ -631,7 +631,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                   Configuração Multimídia · {activeProjectName}
                 </h2>
                 <p className="mt-1 text-xs text-slate-400">
-                  Controla a geração e publicação multimídia (fotos, vídeos Veo e redes) deste projeto. Não interfere nos outros 6 projetos.
+                  Controla a geração e publicação multimídia (fotos, vídeos Veo e redes) deste projeto. Não interfere nos outros {Math.max(0, companies.length - 1)} projetos.
                 </p>
               </div>
               {cfg && (
