@@ -35,6 +35,10 @@
       "continue": true
     },
     {
+      "src": "^/(?:server(?:\\.cjs)?|.*\\.map)$",
+      "status": 404
+    },
+    {
       "src": "^/sw\\.js$",
       "headers": {
         "Cache-Control": "no-cache, no-store, must-revalidate",

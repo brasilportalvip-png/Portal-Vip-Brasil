@@ -869,6 +869,19 @@ router.delete('/content/:id', requireAuth, asyncRoute(async (req: AuthenticatedR
   const ref = firestore().collection(COLLECTIONS.contentItems).doc(req.params.id);
   const snap = await ref.get();
   if (!snap.exists || snap.data()?.userId !== req.user!.id) return res.status(404).json({ error: 'Conteúdo não encontrado.' });
+  const scheduleSnapshot = await firestore()
+    .collection(COLLECTIONS.scheduledPosts)
+    .where('userId', '==', req.user!.id)
+    .get();
+  const activeSchedule = queryData<any>(scheduleSnapshot).find((scheduled) =>
+    scheduled.contentItemId === req.params.id &&
+    ['scheduled', 'planned', 'processing', 'requires_review'].includes(String(scheduled.status))
+  );
+  if (activeSchedule) {
+    return res.status(409).json({
+      error: 'Cancele a publicação agendada deste conteúdo antes de removê-lo.'
+    });
+  }
   const item = snap.data() as any;
   if (item?.metadata?.storagePath) await getAdminStorage().bucket().file(String(item.metadata.storagePath)).delete({ ignoreNotFound: true }).catch(() => undefined);
   await ref.delete();
@@ -1276,7 +1289,9 @@ router.post('/social/tiktok/init-upload', requireAuth, asyncRoute(async (req: Au
   const companyId = safeString(req.body?.companyId, 200);
   const videoSize = Number(req.body?.videoSize || 0);
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório.' });
-  if (videoSize <= 0) return res.status(400).json({ error: 'videoSize deve ser maior que 0.' });
+  if (!Number.isSafeInteger(videoSize) || videoSize <= 0 || videoSize > 4_000_000_000) {
+    return res.status(400).json({ error: 'videoSize deve ser um número inteiro entre 1 e 4 GB.' });
+  }
   await requireOwnedCompany(req.user!.id, companyId);
   await requireSocialPublishingAccess(req.user!.id, req.user?.role);
 
@@ -1293,7 +1308,13 @@ router.post('/social/tiktok/init-upload', requireAuth, asyncRoute(async (req: Au
 router.post('/social/youtube/init-upload', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const companyId = safeString(req.body?.companyId, 200);
   const title = safeString(req.body?.title, 100);
+  const videoSize = req.body?.videoSize === undefined || req.body?.videoSize === null
+    ? undefined
+    : Number(req.body.videoSize);
   if (!companyId || !title) return res.status(400).json({ error: 'companyId e title são obrigatórios.' });
+  if (videoSize !== undefined && (!Number.isSafeInteger(videoSize) || videoSize <= 0 || videoSize > 256_000_000_000)) {
+    return res.status(400).json({ error: 'videoSize deve ser um número inteiro válido de até 256 GB.' });
+  }
   await requireOwnedCompany(req.user!.id, companyId);
   await requireSocialPublishingAccess(req.user!.id, req.user?.role);
 
@@ -1303,7 +1324,7 @@ router.post('/social/youtube/init-upload', requireAuth, asyncRoute(async (req: A
     title,
     description: safeString(req.body?.description, 5000),
     privacyStatus: ['private', 'unlisted', 'public'].includes(req.body?.privacyStatus) ? req.body.privacyStatus : 'unlisted',
-    videoSize: req.body?.videoSize ? Number(req.body.videoSize) : undefined,
+    videoSize,
     mimeType: safeString(req.body?.mimeType, 100) || 'video/mp4'
   });
 
@@ -1980,6 +2001,10 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
   const status = 'published';
   const limit = req.query.limit ? Number(req.query.limit) : 50;
   const offset = req.query.offset ? Number(req.query.offset) : 0;
+
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(offset) || offset < 0) {
+    return res.status(400).json({ error: 'Paginação inválida. Use limit entre 1 e 100 e offset inteiro não negativo.' });
+  }
 
   const result = await listBlogArticles({ category, projectId, query, status, limit, offset });
   const projectMap = new Map((await listAllPortalProjectsFromDb()).map((project) => [project.id, project]));

@@ -97,7 +97,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
       {/* Top Header Navigation */}
       <header className="sticky top-0 z-40 w-full bg-[#070B14]/90 backdrop-blur-xl border-b border-white/[0.08]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => onNavigate?.('home')}>
+          <div className="flex items-center gap-3 cursor-pointer" role="button" tabIndex={0} aria-label="Voltar ao início" onClick={() => onNavigate?.('home')} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') onNavigate?.('home'); }}>
             <div className="w-9 h-9 rounded-xl bg-slate-900 border border-amber-500/30 p-1 flex items-center justify-center">
               <img
                 src={PORTAL_VIP_BRAND.logoUrl}
@@ -199,6 +199,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
+                aria-label="Buscar projeto ou aplicativo"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Buscar projeto, palavra-chave ou app..."
@@ -424,9 +425,10 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
       {/* Modal de Detalhes do Projeto */}
       {activeProjectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="relative w-full max-w-2xl bg-slate-900 border border-cyan-500/40 rounded-2xl p-6 sm:p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
+          <div role="dialog" aria-modal="true" aria-labelledby="project-modal-title" className="relative w-full max-w-2xl bg-slate-900 border border-cyan-500/40 rounded-2xl p-6 sm:p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
             <button
               onClick={closeProject}
+              aria-label="Fechar detalhes do projeto"
               className="absolute top-4 right-4 text-slate-400 hover:text-white p-2 rounded-lg bg-slate-800"
             >
               ✕
@@ -444,7 +446,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
                   {activeProjectModal.category}
                 </span>
-                <h3 className="text-2xl font-black text-white mt-1">{activeProjectModal.name}</h3>
+                <h3 id="project-modal-title" className="text-2xl font-black text-white mt-1">{activeProjectModal.name}</h3>
                 <p className="text-xs text-slate-400">{activeProjectModal.segment}</p>
               </div>
             </div>
@@ -565,8 +567,8 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                 </button>
               </li>
               <li>
-                <button onClick={() => onNavigate('planos')} className="hover:text-cyan-400 transition-colors">
-                  Planos & Assinaturas
+                <button onClick={() => onNavigate('vitrine')} className="hover:text-cyan-400 transition-colors">
+                  Vitrine de Aplicativos
                 </button>
               </li>
               <li>

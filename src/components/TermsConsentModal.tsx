@@ -44,13 +44,13 @@ export function TermsConsentModal({ isOpen, onConsentSuccess, onLogout }: TermsC
 
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/95 p-4 backdrop-blur-2xl">
-      <div className="relative w-full max-w-lg rounded-3xl border border-cyan-500/30 bg-[#0F172A] p-6 shadow-2xl md:p-8">
+      <div role="dialog" aria-modal="true" aria-labelledby="terms-consent-title" className="relative w-full max-w-lg rounded-3xl border border-cyan-500/30 bg-[#0F172A] p-6 shadow-2xl md:p-8">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
             <ShieldCheck className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Atualização de Termos de Uso</h2>
+            <h2 id="terms-consent-title" className="text-xl font-bold text-white tracking-tight">Atualização de Termos de Uso</h2>
             <p className="text-xs text-slate-400">Versão 2026.1 • Portal Vip Brasil Governança & Privacidade</p>
           </div>
         </div>
