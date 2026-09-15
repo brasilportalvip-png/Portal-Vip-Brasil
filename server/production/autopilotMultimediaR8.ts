@@ -234,10 +234,13 @@ export function isDue(ap: AutopilotRecord, referenceDate: Date): boolean {
   if (!ap.enabled) return false;
   const timezone = ap.timezone || 'America/Sao_Paulo';
   const current = localSlot(referenceDate, timezone);
-  const days = (ap.frequency === 'daily' || !ap.frequency)
-    ? [0, 1, 2, 3, 4, 5, 6]
-    : Array.isArray(ap.preferredDays) && ap.preferredDays.length
-      ? ap.preferredDays
+  const configuredDays = Array.isArray(ap.preferredDays)
+    ? ap.preferredDays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    : [];
+  const days = configuredDays.length
+    ? configuredDays
+    : (ap.frequency === 'daily' || !ap.frequency)
+      ? [0, 1, 2, 3, 4, 5, 6]
       : ap.frequency === '3_times_week'
         ? [1, 3, 5]
         : [1];

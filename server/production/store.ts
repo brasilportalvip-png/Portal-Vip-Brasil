@@ -401,8 +401,9 @@ export function firestore(): any {
 
   if (isLocalMemoryStoreAllowed()) return localMemoryStore;
 
-  console.warn('[Portal Vip Brasil] Firestore Admin não conectado — utilizando armazenamento em memória.');
-  return localMemoryStore;
+  throw new Error(
+    '[Portal Vip Brasil] Firestore Admin não conectado. O armazenamento em memória é proibido em produção.'
+  );
 }
 
 export const COLLECTIONS = {

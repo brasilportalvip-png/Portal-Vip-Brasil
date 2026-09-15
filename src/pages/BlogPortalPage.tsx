@@ -552,10 +552,16 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-18 flex items-center justify-between">
           <div
             className="flex items-center gap-4 cursor-pointer"
+            role="button"
+            tabIndex={0}
+            aria-label="Voltar ao início do blog"
             onClick={() => {
               setSelectedCategory('Todos');
               setSelectedProjectId('todos');
               setSearchQuery('');
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') event.currentTarget.click();
             }}
           >
             <div className="w-11 h-11 rounded-xl bg-slate-900 border border-amber-500/30 p-1 flex items-center justify-center shadow-lg shadow-amber-500/10">
@@ -669,6 +675,12 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
               {/* Featured Article Card */}
               <div
                 onClick={() => openArticle(featuredArticle)}
+                role="button"
+                tabIndex={0}
+                aria-label={`Ler artigo em destaque: ${featuredArticle.title}`}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') openArticle(featuredArticle);
+                }}
                 className="lg:col-span-8 cursor-pointer group rounded-3xl bg-slate-900/80 border border-slate-800 hover:border-cyan-500/50 p-6 sm:p-8 transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 backdrop-blur-md"
               >
                 <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -788,6 +800,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
               type="text"
+              aria-label="Buscar artigos"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por orações, guias, oráculos, Exu, Maria Padilha, Santo Expedito, marketing..."
@@ -1174,10 +1187,11 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       {/* ========================================== */}
       {readingArticle && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-4xl bg-slate-900 border border-cyan-500/40 rounded-3xl p-5 sm:p-10 shadow-2xl my-6 max-h-[92vh] overflow-y-auto">
+          <div role="dialog" aria-modal="true" aria-labelledby="article-reader-title" className="relative w-full max-w-4xl bg-slate-900 border border-cyan-500/40 rounded-3xl p-5 sm:p-10 shadow-2xl my-6 max-h-[92vh] overflow-y-auto">
             {/* Close Button */}
             <button
               onClick={closeArticle}
+              aria-label="Fechar artigo"
               className="sticky top-0 float-right z-10 text-slate-400 hover:text-white p-2 rounded-xl bg-slate-800/90 border border-slate-700 transition-colors shadow-lg"
             >
               ✕
@@ -1195,7 +1209,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
             </div>
 
             {/* Title */}
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-tight mb-3">
+            <h1 id="article-reader-title" className="text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-tight mb-3">
               {readingArticle.title}
             </h1>
 
@@ -1887,8 +1901,8 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                   </button>
                 </li>
                 <li>
-                  <button onClick={() => onNavigate('planos')} className="hover:text-cyan-400 transition-colors">
-                    Planos & Preços
+                  <button onClick={() => onNavigate('vitrine')} className="hover:text-cyan-400 transition-colors">
+                    Vitrine de Aplicativos
                   </button>
                 </li>
                 <li>
