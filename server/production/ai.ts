@@ -2446,6 +2446,51 @@ function recoverableVideoPlatforms(values: unknown): string[] {
   return [...recovered];
 }
 
+function resultProvider(result: any): string {
+  return normalizeProvider(String(result?.provider || result?.platform || ''));
+}
+
+function isMissingConnectionFailure(result: any): boolean {
+  if (result?.success) return false;
+  const message = String(result?.error || result?.errorMessage || '').toLowerCase();
+  return (
+    message.includes('não conectad') ||
+    message.includes('nao conectad') ||
+    message.includes('sem conexão') ||
+    message.includes('sem conexao') ||
+    message.includes('not connected') ||
+    message.includes('connection not found')
+  );
+}
+
+function canSafelyRecoverProvider(provider: string, results: any[]): boolean {
+  const providerResults = results.filter((result: any) => resultProvider(result) === provider);
+  if (providerResults.some((result: any) => result?.success === true)) return false;
+  if (providerResults.some((result: any) =>
+    result?.externalState === 'unknown' || result?.requiresUserAction === true || result?.deliveryMode === 'draft'
+  )) return false;
+  if (providerResults.length === 0) return true;
+  return providerResults.some((result: any) => result?.retrySafe !== false || isMissingConnectionFailure(result));
+}
+
+async function configuredVideoPlatforms(job: VideoJobData, schedule?: any): Promise<string[]> {
+  const configured = new Set<string>([
+    ...recoverableVideoPlatforms(job.autoPublishPlatforms),
+    ...recoverableVideoPlatforms(schedule?.platforms)
+  ]);
+  const db = firestore();
+  const configId = `${job.userId}_${job.companyId}`;
+  let configSnap = await db.collection(COLLECTIONS.autopilotConfigs).doc(configId).get();
+  if (!configSnap.exists) configSnap = await db.collection(COLLECTIONS.autopilotConfigs).doc(job.companyId).get();
+  if (configSnap.exists) {
+    const autopilotConfig = configSnap.data() as any;
+    if (autopilotConfig?.mode === 'automatic' && autopilotConfig?.enabled !== false) {
+      for (const platform of recoverableVideoPlatforms(autopilotConfig.targetPlatforms)) configured.add(platform);
+    }
+  }
+  return [...configured];
+}
+
 async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<number> {
   if (signal?.aborted) return 0;
   const db = firestore();
@@ -2524,19 +2569,6 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
         const hasUnsafeResult = publicationResults.some((result: any) =>
           result?.externalState === 'unknown' || result?.requiresUserAction === true || result?.deliveryMode === 'draft'
         );
-        let hasRetryableFailure = publicationResults.some((result: any) =>
-          !result?.success && result?.retrySafe !== false && result?.externalState !== 'unknown'
-        );
-        if (!hasUnsafeResult && !hasRetryableFailure) {
-          for (const result of publicationResults) {
-            if (result?.success) continue;
-            const provider = normalizeProvider(String(result?.provider || result?.platform || ''));
-            if (provider && await checkUniversalConnectionReady(job.userId, job.companyId, provider)) {
-              hasRetryableFailure = true;
-              break;
-            }
-          }
-        }
         if (hasUnsafeResult) {
           await scheduleRef.set({
             status: 'requires_review',
@@ -2544,20 +2576,54 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
             updatedAt: nowIso()
           }, { merge: true });
           await contentRef.set({ status: 'requires_review', updatedAt: nowIso() }, { merge: true });
-        } else if (hasRetryableFailure) {
-          const timestamp = nowIso();
-          await scheduleRef.set({
-            status: 'scheduled',
-            scheduledFor: timestamp,
-            processingAt: null,
-            errorMessage: null,
-            recoveredTransientFailureAt: timestamp,
-            updatedAt: timestamp
-          }, { merge: true });
-          await contentRef.set({ status: 'scheduled', updatedAt: timestamp }, { merge: true });
-          recovered++;
         } else {
           await contentRef.set({ status: 'failed', updatedAt: nowIso() }, { merge: true });
+        }
+      }
+
+      // Nunca reabre o agendamento original: ele contém resultados terminais que
+      // fariam o publicador pular as chamadas externas. Cria uma fila limpa e
+      // determinística apenas para redes ainda não entregues e agora conectadas.
+      if (['failed', 'requires_review'].includes(scheduleStatus)) {
+        const recoveryId = `sched-video-${job.id}-connection-recovery`;
+        const recoveryRef = db.collection(COLLECTIONS.scheduledPosts).doc(recoveryId);
+        const desiredPlatforms = await configuredVideoPlatforms(job, schedule);
+        const eligiblePlatforms: string[] = [];
+        for (const platform of desiredPlatforms) {
+          const provider = normalizeProvider(platform);
+          if (!provider || !canSafelyRecoverProvider(provider, publicationResults)) continue;
+          if (await checkUniversalConnectionReady(job.userId, job.companyId, provider)) {
+            eligiblePlatforms.push(platform);
+          }
+        }
+        if (eligiblePlatforms.length > 0) {
+          const didRecover = await db.runTransaction(async (tx: any) => {
+            const [freshRecovery, contentSnap] = await Promise.all([tx.get(recoveryRef), tx.get(contentRef)]);
+            if (freshRecovery.exists || !contentSnap.exists) return false;
+            const content = contentSnap.data() as any;
+            if (!content.videoUrl || content.userId !== job.userId || content.companyId !== job.companyId) return false;
+            const timestamp = nowIso();
+            tx.set(recoveryRef, {
+              id: recoveryId,
+              userId: job.userId,
+              companyId: job.companyId,
+              contentItemId: job.contentItemId,
+              platforms: eligiblePlatforms,
+              publicationResults: [],
+              scheduledFor: timestamp,
+              status: 'scheduled',
+              isPlanning: false,
+              autopilotGenerated: true,
+              recoveredAfterSharedConnections: true,
+              sourceScheduleId: scheduleRef.id,
+              providerOptions: schedule?.providerOptions || job.autoPublishProviderOptions || { youtubePrivacyStatus: 'unlisted' },
+              createdAt: timestamp,
+              updatedAt: timestamp
+            });
+            tx.set(contentRef, { status: 'scheduled', updatedAt: timestamp }, { merge: true });
+            return true;
+          });
+          if (didRecover) recovered++;
         }
       }
       const autopilotSnap = await db.collection(COLLECTIONS.autopilotJobs).where('videoJobId', '==', job.id).limit(1).get();
