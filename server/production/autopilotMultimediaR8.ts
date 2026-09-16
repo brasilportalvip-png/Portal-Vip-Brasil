@@ -408,10 +408,9 @@ export async function executeAutopilotJob(
       goal: ap.primaryGoal || 'Atrair clientes e gerar autoridade'
     });
 
-    // O MP4 vertical é reaproveitado nas redes adequadas para vídeo curto.
-    // LinkedIn e X permanecem no criativo editorial próprio para evitar
-    // cross-post indiscriminado e custos/limites adicionais de upload.
-    const videoProviders = new Set<SocialProvider>(['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest']);
+    // O mesmo MP4 vertical é distribuído a todas as redes selecionadas que
+    // possuem publicação de vídeo implementada no publicador universal.
+    const videoProviders = new Set<SocialProvider>(['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest', 'linkedin', 'x']);
     const videoTargets = targets.filter((target) => videoProviders.has(target.provider));
     const youtubeSelected = videoTargets.some((target) => target.provider === 'youtube');
     const pinterestVideoSelected = videoTargets.some((target) => target.provider === 'pinterest');

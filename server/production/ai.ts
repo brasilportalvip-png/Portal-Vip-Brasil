@@ -2430,6 +2430,8 @@ export interface VideoJobWorkerTelemetry {
 const VIDEO_AUTOPUBLISH_PROVIDERS = new Map<string, string>([
   ['facebook', 'Facebook'],
   ['instagram', 'Instagram'],
+  ['linkedin', 'LinkedIn'],
+  ['x', 'X'],
   ['tiktok', 'TikTok'],
   ['youtube', 'YouTube'],
   ['pinterest', 'Pinterest']
@@ -2585,13 +2587,21 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
       // fariam o publicador pular as chamadas externas. Cria uma fila limpa e
       // determinística apenas para redes ainda não entregues e agora conectadas.
       if (['failed', 'requires_review'].includes(scheduleStatus)) {
-        const recoveryId = `sched-video-${job.id}-connection-recovery`;
+        const previousRecoveryRef = db.collection(COLLECTIONS.scheduledPosts)
+          .doc(`sched-video-${job.id}-connection-recovery`);
+        const previousRecoverySnap = await previousRecoveryRef.get();
+        const previousRecovery = previousRecoverySnap.exists ? previousRecoverySnap.data() as any : null;
+        const historicalResults = [
+          ...publicationResults,
+          ...(Array.isArray(previousRecovery?.publicationResults) ? previousRecovery.publicationResults : [])
+        ];
+        const recoveryId = `sched-video-${job.id}-all-networks-recovery-v1`;
         const recoveryRef = db.collection(COLLECTIONS.scheduledPosts).doc(recoveryId);
         const desiredPlatforms = await configuredVideoPlatforms(job, schedule);
         const eligiblePlatforms: string[] = [];
         for (const platform of desiredPlatforms) {
           const provider = normalizeProvider(platform);
-          if (!provider || !canSafelyRecoverProvider(provider, publicationResults)) continue;
+          if (!provider || !canSafelyRecoverProvider(provider, historicalResults)) continue;
           if (await checkUniversalConnectionReady(job.userId, job.companyId, provider)) {
             eligiblePlatforms.push(platform);
           }
