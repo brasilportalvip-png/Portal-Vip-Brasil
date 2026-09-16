@@ -517,7 +517,7 @@ test('16. Reconciliação recupera vídeo concluído do Autopilot sem duplicar a
   assert.equal(firstRun.schedulesRecovered, 1);
   const schedule = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).get();
   assert.equal(schedule.exists, true);
-  assert.deepEqual(schedule.data()?.platforms, ['Facebook', 'Instagram', 'TikTok', 'YouTube']);
+  assert.deepEqual(schedule.data()?.platforms, ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'LinkedIn']);
   assert.equal((await db.collection(COLLECTIONS.contentItems).doc(contentItemId).get()).data()?.status, 'scheduled');
   assert.equal((await db.collection(COLLECTIONS.autopilotJobs).doc('autopilot_reconcile').get()).data()?.status, 'completed');
 
@@ -613,7 +613,7 @@ test('18. Reconciliação cria fila limpa para conexão herdada sem reabrir resu
   assert.equal(firstRun.schedulesRecovered, 1);
   const original = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).get();
   assert.equal(original.data()?.status, 'failed', 'Histórico original deve permanecer terminal');
-  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-connection-recovery`).get();
+  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-all-networks-recovery-v1`).get();
   assert.equal(recovery.exists, true);
   assert.deepEqual(recovery.data()?.platforms, ['Facebook', 'YouTube']);
   assert.deepEqual(recovery.data()?.publicationResults, []);
@@ -655,6 +655,49 @@ test('19. Reconciliação não duplica sucesso nem resposta externa incerta', as
   }
   const run = await processPendingVideoJobs();
   assert.equal(run.schedulesRecovered, 1);
-  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-connection-recovery`).get();
+  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-all-networks-recovery-v1`).get();
   assert.deepEqual(recovery.data()?.platforms, ['Instagram'], 'Só rede sem resultado deve entrar na recuperação');
+});
+
+test('20. Nova cobertura não repete redes publicadas pela recuperação anterior', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const userId = 'user_all_networks';
+  const companyId = 'project_all_networks';
+  const jobId = 'job_all_networks';
+  const contentItemId = 'content_all_networks';
+  const timestamp = new Date().toISOString();
+  await createTestVideoJob({
+    id: jobId, userId, companyId, status: 'completed', pipelineState: 'completed', contentItemId,
+    videoUrl: 'https://storage.googleapis.com/example/all.mp4', completedAt: timestamp,
+    createdAt: timestamp, updatedAt: timestamp, autoPublishPlatforms: ['YouTube']
+  });
+  await db.collection(COLLECTIONS.contentItems).doc(contentItemId).set({
+    id: contentItemId, userId, companyId, videoUrl: 'https://storage.googleapis.com/example/all.mp4', status: 'failed'
+  });
+  await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).set({
+    id: `sched-video-${jobId}`, userId, companyId, contentItemId, platforms: ['YouTube'], status: 'failed',
+    publicationResults: [{ provider: 'youtube', success: false, retrySafe: false, error: 'Conta não conectada' }],
+    createdAt: timestamp, updatedAt: timestamp
+  });
+  await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-connection-recovery`).set({
+    id: `sched-video-${jobId}-connection-recovery`, userId, companyId, contentItemId,
+    platforms: ['YouTube'], status: 'published',
+    publicationResults: [{ provider: 'youtube', success: true, externalId: 'youtube_already_sent', externalState: 'confirmed' }],
+    createdAt: timestamp, updatedAt: timestamp
+  });
+  await db.collection(COLLECTIONS.autopilotConfigs).doc(`${userId}_${companyId}`).set({
+    userId, companyId, enabled: true, mode: 'automatic', targetPlatforms: ['YouTube', 'LinkedIn', 'X']
+  });
+  for (const provider of ['youtube', 'linkedin', 'x']) {
+    await db.collection(COLLECTIONS.socialConnections).doc(`all_${provider}`).set({
+      id: `all_${provider}`, userId, companyId: 'shared_project', provider,
+      status: 'connected', encryptedAccessToken: encrypt('test_token'),
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+  }
+  const run = await processPendingVideoJobs();
+  assert.equal(run.schedulesRecovered, 1);
+  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-all-networks-recovery-v1`).get();
+  assert.deepEqual(recovery.data()?.platforms, ['LinkedIn', 'X']);
 });
