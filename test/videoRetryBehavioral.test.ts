@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { resetMemoryDb, firestore, COLLECTIONS } from '../server/production/store.js';
 import {
   acquireVideoOperationLease,
@@ -570,4 +572,13 @@ test('17. Reconciliação cancela ciclos recuperados excedentes e mantém soment
   await processPendingVideoJobs();
   assert.equal((await db.collection(COLLECTIONS.scheduledPosts).doc('sched-video-job_old').get()).data()?.status, 'cancelled');
   assert.equal((await db.collection(COLLECTIONS.scheduledPosts).doc('sched-video-job_new').get()).data()?.status, 'scheduled');
+});
+
+test('18. Reconciliação retenta somente falha social segura e sincroniza estados terminais', () => {
+  const source = fs.readFileSync(path.join(process.cwd(), 'server/production/ai.ts'), 'utf8');
+  assert.match(source, /hasRetryableFailure/);
+  assert.match(source, /result\?\.retrySafe !== false/);
+  assert.match(source, /recoveredTransientFailureAt/);
+  assert.match(source, /status: 'requires_review'/);
+  assert.match(source, /status: 'failed'/);
 });

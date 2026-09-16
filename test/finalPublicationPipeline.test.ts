@@ -26,10 +26,16 @@ test('Worker social possui endpoint protegido e workflow frequente', () => {
   assert.match(read('.github/workflows/social-publications.yml'), /--max-time 270/);
 
   const worker = read('server/production/socialPublicationWorker.ts');
-  assert.match(worker, /options\.timeoutMs \|\| 240_000/);
+  assert.match(worker, /options\.timeoutMs \|\| 70_000/);
+  assert.match(worker, /published: 0/);
+  assert.match(worker, /requiresReview: 0/);
+  assert.match(worker, /remaining: 0/);
 
   const publisher = read('server/production/scheduledPublisherR8.ts');
   assert.match(publisher, /publicationResults,\s*processingHeartbeatAt: nowIso\(\)/);
+  assert.match(publisher, /Publicação adiada com segurança para o próximo ciclo/);
+  assert.match(publisher, /allRequestedHaveResult/);
+  assert.match(publisher, /status: finalStatus/);
 });
 
 test('Vercel nao mistura functions com builds legados', () => {
