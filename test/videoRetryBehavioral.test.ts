@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 import { resetMemoryDb, firestore, COLLECTIONS } from '../server/production/store.js';
+import { encrypt } from '../server/production/social.js';
 import {
   acquireVideoOperationLease,
   startOrRetryVideoOperation,
@@ -574,11 +573,88 @@ test('17. Reconciliação cancela ciclos recuperados excedentes e mantém soment
   assert.equal((await db.collection(COLLECTIONS.scheduledPosts).doc('sched-video-job_new').get()).data()?.status, 'scheduled');
 });
 
-test('18. Reconciliação retenta somente falha social segura e sincroniza estados terminais', () => {
-  const source = fs.readFileSync(path.join(process.cwd(), 'server/production/ai.ts'), 'utf8');
-  assert.match(source, /hasRetryableFailure/);
-  assert.match(source, /result\?\.retrySafe !== false/);
-  assert.match(source, /recoveredTransientFailureAt/);
-  assert.match(source, /status: 'requires_review'/);
-  assert.match(source, /status: 'failed'/);
+test('18. Reconciliação cria fila limpa para conexão herdada sem reabrir resultados antigos', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const userId = 'user_connection_recovery';
+  const companyId = 'project_connection_recovery';
+  const jobId = 'job_connection_recovery';
+  const contentItemId = 'content_connection_recovery';
+  const timestamp = new Date().toISOString();
+
+  await createTestVideoJob({
+    id: jobId, userId, companyId, status: 'completed', pipelineState: 'completed',
+    contentItemId, videoUrl: 'https://storage.googleapis.com/example/recovery.mp4',
+    completedAt: timestamp, createdAt: timestamp, updatedAt: timestamp,
+    autoPublishPlatforms: ['Facebook']
+  });
+  await db.collection(COLLECTIONS.contentItems).doc(contentItemId).set({
+    id: contentItemId, userId, companyId, type: 'video',
+    videoUrl: 'https://storage.googleapis.com/example/recovery.mp4', status: 'failed'
+  });
+  await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).set({
+    id: `sched-video-${jobId}`, userId, companyId, contentItemId,
+    platforms: ['Facebook'], status: 'failed',
+    publicationResults: [{ provider: 'facebook', success: false, retrySafe: false, error: 'Conta Facebook não conectada para este projeto.' }],
+    createdAt: timestamp, updatedAt: timestamp
+  });
+  await db.collection(COLLECTIONS.autopilotConfigs).doc(`${userId}_${companyId}`).set({
+    userId, companyId, enabled: true, mode: 'automatic', targetPlatforms: ['Facebook', 'YouTube']
+  });
+  for (const provider of ['facebook', 'youtube']) {
+    await db.collection(COLLECTIONS.socialConnections).doc(`shared_${provider}`).set({
+      id: `shared_${provider}`, userId, companyId: 'another_project', provider,
+      status: 'connected', encryptedAccessToken: encrypt('test_token'),
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+  }
+
+  const firstRun = await processPendingVideoJobs();
+  assert.equal(firstRun.schedulesRecovered, 1);
+  const original = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).get();
+  assert.equal(original.data()?.status, 'failed', 'Histórico original deve permanecer terminal');
+  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-connection-recovery`).get();
+  assert.equal(recovery.exists, true);
+  assert.deepEqual(recovery.data()?.platforms, ['Facebook', 'YouTube']);
+  assert.deepEqual(recovery.data()?.publicationResults, []);
+
+  const secondRun = await processPendingVideoJobs();
+  assert.equal(secondRun.schedulesRecovered, 0, 'Fila determinística não pode ser duplicada');
+});
+
+test('19. Reconciliação não duplica sucesso nem resposta externa incerta', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const userId = 'user_safe_recovery';
+  const companyId = 'project_safe_recovery';
+  const jobId = 'job_safe_recovery';
+  const contentItemId = 'content_safe_recovery';
+  const timestamp = new Date().toISOString();
+  await createTestVideoJob({
+    id: jobId, userId, companyId, status: 'completed', pipelineState: 'completed', contentItemId,
+    videoUrl: 'https://storage.googleapis.com/example/safe.mp4', completedAt: timestamp,
+    createdAt: timestamp, updatedAt: timestamp, autoPublishPlatforms: ['YouTube', 'Facebook', 'Instagram']
+  });
+  await db.collection(COLLECTIONS.contentItems).doc(contentItemId).set({
+    id: contentItemId, userId, companyId, videoUrl: 'https://storage.googleapis.com/example/safe.mp4', status: 'requires_review'
+  });
+  await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).set({
+    id: `sched-video-${jobId}`, userId, companyId, contentItemId,
+    platforms: ['YouTube', 'Facebook', 'Instagram'], status: 'requires_review',
+    publicationResults: [
+      { provider: 'youtube', success: true, externalState: 'confirmed' },
+      { provider: 'facebook', success: false, externalState: 'unknown', retrySafe: false }
+    ], createdAt: timestamp, updatedAt: timestamp
+  });
+  for (const provider of ['youtube', 'facebook', 'instagram']) {
+    await db.collection(COLLECTIONS.socialConnections).doc(`ready_${provider}`).set({
+      id: `ready_${provider}`, userId, companyId: 'shared_project', provider,
+      status: 'connected', encryptedAccessToken: encrypt('test_token'),
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+  }
+  const run = await processPendingVideoJobs();
+  assert.equal(run.schedulesRecovered, 1);
+  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-connection-recovery`).get();
+  assert.deepEqual(recovery.data()?.platforms, ['Instagram'], 'Só rede sem resultado deve entrar na recuperação');
 });
