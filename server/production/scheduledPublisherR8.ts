@@ -123,6 +123,9 @@ async function isLeaseStillValid(db: any, lease?: { owner: string; fencingToken:
 export async function processScheduledPostsR8(options?: {
   signal?: AbortSignal;
   lease?: { owner: string; fencingToken: number };
+  deadlineAt?: number;
+  onClaimed?: () => void;
+  onFinalized?: (status: 'published' | 'requires_review' | 'failed' | 'deferred') => void;
 }): Promise<number> {
   const db = firestore();
   const snap = await db.collection(COLLECTIONS.scheduledPosts)
@@ -132,9 +135,13 @@ export async function processScheduledPostsR8(options?: {
     .get();
 
   let processed = 0;
+  const deadlineReached = () => Boolean(
+    options?.signal?.aborted ||
+    (options?.deadlineAt && Date.now() >= options.deadlineAt)
+  );
 
   for (const doc of snap.docs) {
-    if (options?.signal?.aborted) break;
+    if (deadlineReached()) break;
     if (options?.lease && !(await isLeaseStillValid(db, options.lease))) {
       console.warn('[Scheduler] Lease expirou ou foi substituído; cancelando publicações remanescentes.');
       break;
@@ -148,9 +155,15 @@ export async function processScheduledPostsR8(options?: {
       return true;
     });
     if (!claimed) continue;
+    options?.onClaimed?.();
+    let verifiedContentRef: any = null;
 
     try {
-      if (options?.signal?.aborted) break;
+      if (deadlineReached()) {
+        await doc.ref.update({ status: 'scheduled', processingAt: null, updatedAt: nowIso() });
+        options?.onFinalized?.('deferred');
+        break;
+      }
       const userSnap = await db.collection(COLLECTIONS.users).doc(post.userId).get();
       if (!userSnap.exists) throw new Error('Inconsistência de segurança: Usuário associado ao agendamento não encontrado.');
 
@@ -166,6 +179,7 @@ export async function processScheduledPostsR8(options?: {
       if (content.userId !== post.userId || content.companyId !== post.companyId) {
         throw new Error('Violação de isolamento multi-tenant: Conteúdo não pertence ao usuário ou empresa do agendamento.');
       }
+      verifiedContentRef = contentSnap.ref;
 
       const platforms = Array.isArray(post.platforms) ? post.platforms : [];
       if (!platforms.length) throw new Error('Nenhuma rede social selecionada para publicação.');
@@ -174,7 +188,7 @@ export async function processScheduledPostsR8(options?: {
       const publicationResults: any[] = [];
 
       for (const platform of platforms) {
-        if (options?.signal?.aborted) break;
+        if (deadlineReached()) break;
         const provider = normalizeProvider(String(platform));
         if (!provider) {
           publicationResults.push({
@@ -200,7 +214,7 @@ export async function processScheduledPostsR8(options?: {
           continue;
         }
 
-        if (options?.signal?.aborted) break;
+        if (deadlineReached()) break;
         if (options?.lease && !(await isLeaseStillValid(db, options.lease))) {
           console.warn('[Scheduler] Lease expirou antes do envio à rede social; cancelando.');
           break;
@@ -239,8 +253,33 @@ export async function processScheduledPostsR8(options?: {
         });
       }
 
-      if (options?.signal?.aborted) {
-        console.warn('[Scheduler] Processamento de post cancelado cooperativamente por timeout.');
+      const allRequestedHaveResult = platforms.every((platform: string) => {
+        const provider = normalizeProvider(String(platform));
+        return publicationResults.some((result: any) => sameProvider(result, platform, provider));
+      });
+
+      if (deadlineReached() && !allRequestedHaveResult) {
+        const requiresReview = publicationResults.some((item) =>
+          item.externalState === 'unknown' || item.requiresUserAction === true || item.deliveryMode === 'draft'
+        );
+        const deferredStatus = requiresReview ? 'requires_review' : 'scheduled';
+        await doc.ref.update({
+          status: deferredStatus,
+          publicationResults,
+          processingAt: null,
+          errorMessage: requiresReview
+            ? 'A execução terminou após uma resposta indefinida; confira a rede antes de tentar novamente.'
+            : 'Publicação adiada com segurança para o próximo ciclo; redes já confirmadas não serão reenviadas.',
+          updatedAt: nowIso()
+        });
+        if (post.contentItemId && requiresReview) {
+          await db.collection(COLLECTIONS.contentItems).doc(post.contentItemId).set({
+            status: 'requires_review',
+            updatedAt: nowIso()
+          }, { merge: true });
+        }
+        options?.onFinalized?.(requiresReview ? 'requires_review' : 'deferred');
+        console.warn('[Scheduler] Item interrompido no limite seguro e persistido sem risco de reenvio confirmado.');
         break;
       }
       if (options?.lease && !(await isLeaseStillValid(db, options.lease))) {
@@ -297,9 +336,9 @@ export async function processScheduledPostsR8(options?: {
         updatedAt: nowIso()
       });
 
-      if (finalStatus === 'published' && !options?.signal?.aborted) {
+      if (!options?.signal?.aborted) {
         await contentSnap.ref.update({
-          status: 'published',
+          status: finalStatus,
           ...youtubeMetadata,
           updatedAt: nowIso()
         });
@@ -321,14 +360,26 @@ export async function processScheduledPostsR8(options?: {
       }
 
       processed += 1;
+      options?.onFinalized?.(finalStatus);
     } catch (error) {
-      if (options?.signal?.aborted) {
-        console.warn('[Scheduler] Processamento de post cancelado cooperativamente pelo sinal de abort.');
+      if (deadlineReached()) {
+        await doc.ref.update({
+          status: 'scheduled',
+          processingAt: null,
+          errorMessage: 'Publicação adiada com segurança após o limite de execução.',
+          updatedAt: nowIso()
+        }).catch(() => undefined);
+        options?.onFinalized?.('deferred');
+        console.warn('[Scheduler] Processamento adiado cooperativamente pelo limite de execução.');
         break;
       }
       const errorMsg = error instanceof Error ? error.message : String(error);
       await doc.ref.update({ status: 'failed', errorMessage: errorMsg.slice(0, 1000), processedAt: nowIso(), updatedAt: nowIso() });
+      if (verifiedContentRef) {
+        await verifiedContentRef.set({ status: 'failed', updatedAt: nowIso() }, { merge: true }).catch(() => undefined);
+      }
       processed += 1;
+      options?.onFinalized?.('failed');
     }
   }
 

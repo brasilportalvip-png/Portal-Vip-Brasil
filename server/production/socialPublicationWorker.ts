@@ -4,7 +4,13 @@ import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 
 export interface SocialPublicationTelemetry {
   recovered: number;
+  attempted: number;
   processed: number;
+  published: number;
+  failed: number;
+  requiresReview: number;
+  deferred: number;
+  remaining: number;
 }
 
 export interface SocialPublicationWorkerResult {
@@ -45,10 +51,21 @@ async function releaseLock(owner: string, fencingToken: number) {
 
 export async function runSocialPublicationWorker(options: { timeoutMs?: number; workerId?: string } = {}): Promise<SocialPublicationWorkerResult> {
   const startedAt = Date.now();
-  const timeoutMs = options.timeoutMs || 240_000;
+  // A plataforma pode encerrar a função perto de 90s. Encerramos antes disso
+  // para persistir o item atual e permitir continuação idempotente no ciclo seguinte.
+  const timeoutMs = options.timeoutMs || 70_000;
   const workerId = options.workerId || `social_worker_${startedAt}_${Math.random().toString(36).slice(2, 8)}`;
   const lock = await acquireLock(workerId, timeoutMs + 15_000);
-  const telemetry: SocialPublicationTelemetry = { recovered: 0, processed: 0 };
+  const telemetry: SocialPublicationTelemetry = {
+    recovered: 0,
+    attempted: 0,
+    processed: 0,
+    published: 0,
+    failed: 0,
+    requiresReview: 0,
+    deferred: 0,
+    remaining: 0
+  };
   if (!lock.acquired) return { success: false, status: 'skipped_concurrent', durationMs: Date.now() - startedAt, telemetry };
 
   const controller = new AbortController();
@@ -58,7 +75,23 @@ export async function runSocialPublicationWorker(options: { timeoutMs?: number; 
   let error: string | undefined;
   try {
     telemetry.recovered = await recoverStalePublishingPostsR8(15, controller.signal);
-    telemetry.processed = await processScheduledPostsR8({ signal: controller.signal });
+    telemetry.processed = await processScheduledPostsR8({
+      signal: controller.signal,
+      deadlineAt: startedAt + timeoutMs - 5_000,
+      onClaimed: () => { telemetry.attempted += 1; },
+      onFinalized: (finalStatus) => {
+        if (finalStatus === 'published') telemetry.published += 1;
+        else if (finalStatus === 'failed') telemetry.failed += 1;
+        else if (finalStatus === 'requires_review') telemetry.requiresReview += 1;
+        else telemetry.deferred += 1;
+      }
+    });
+    const remainingSnap = await firestore().collection(COLLECTIONS.scheduledPosts)
+      .where('status', '==', 'scheduled')
+      .where('scheduledFor', '<=', nowIso())
+      .limit(100)
+      .get();
+    telemetry.remaining = remainingSnap.size;
     if (controller.signal.aborted) {
       status = 'timeout';
       error = 'Tempo limite controlado atingido; os itens restantes continuarão no próximo ciclo.';

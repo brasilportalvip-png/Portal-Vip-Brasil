@@ -2504,6 +2504,50 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
     const scheduleRef = db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${job.id}`);
     const existingSchedule = await scheduleRef.get();
     if (existingSchedule.exists) {
+      const schedule = existingSchedule.data() as any;
+      const scheduleStatus = String(schedule?.status || '');
+      const contentRef = db.collection(COLLECTIONS.contentItems).doc(String(job.contentItemId));
+      const publicationResults = Array.isArray(schedule?.publicationResults) ? schedule.publicationResults : [];
+
+      if (scheduleStatus === 'published') {
+        await contentRef.set({
+          status: 'published',
+          ...(schedule.youtubeVideoId ? { youtubeVideoId: schedule.youtubeVideoId } : {}),
+          ...(schedule.youtubeUrl ? { youtubeUrl: schedule.youtubeUrl } : {}),
+          updatedAt: nowIso()
+        }, { merge: true });
+      } else if (scheduleStatus === 'requires_review') {
+        await contentRef.set({ status: 'requires_review', updatedAt: nowIso() }, { merge: true });
+      } else if (scheduleStatus === 'failed') {
+        const hasUnsafeResult = publicationResults.some((result: any) =>
+          result?.externalState === 'unknown' || result?.requiresUserAction === true || result?.deliveryMode === 'draft'
+        );
+        const hasRetryableFailure = publicationResults.some((result: any) =>
+          !result?.success && result?.retrySafe !== false && result?.externalState !== 'unknown'
+        );
+        if (hasUnsafeResult) {
+          await scheduleRef.set({
+            status: 'requires_review',
+            errorMessage: 'Há uma resposta externa indefinida; confira a rede antes de tentar novamente.',
+            updatedAt: nowIso()
+          }, { merge: true });
+          await contentRef.set({ status: 'requires_review', updatedAt: nowIso() }, { merge: true });
+        } else if (hasRetryableFailure) {
+          const timestamp = nowIso();
+          await scheduleRef.set({
+            status: 'scheduled',
+            scheduledFor: timestamp,
+            processingAt: null,
+            errorMessage: null,
+            recoveredTransientFailureAt: timestamp,
+            updatedAt: timestamp
+          }, { merge: true });
+          await contentRef.set({ status: 'scheduled', updatedAt: timestamp }, { merge: true });
+          recovered++;
+        } else {
+          await contentRef.set({ status: 'failed', updatedAt: nowIso() }, { merge: true });
+        }
+      }
       const autopilotSnap = await db.collection(COLLECTIONS.autopilotJobs).where('videoJobId', '==', job.id).limit(1).get();
       if (!autopilotSnap.empty && String(autopilotSnap.docs[0].data()?.status || '') === 'video_processing') {
         await autopilotSnap.docs[0].ref.set({
