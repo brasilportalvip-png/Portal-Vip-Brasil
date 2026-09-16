@@ -52,7 +52,7 @@ test('isolamento social: listConnections de proj_A não retorna conexões de pro
   assert.equal(connections[0].accountId, 'page_a');
 });
 
-test('isolamento social: publishText não usa Facebook de outro projeto', async () => {
+test('portal do proprietário: Facebook conectado em um projeto funciona nos demais', async () => {
   resetMemoryDb();
   const userId = 'usr_publish_isolation';
   await seedConnection({
@@ -79,16 +79,14 @@ test('isolamento social: publishText não usa Facebook de outro projeto', async 
       text: 'Publicação do projeto A'
     });
 
-    assert.equal(result.externalState, 'confirmed_failed');
     assert.equal(result.externalId, null);
-    assert.match(result.error || '', /não conectada para este projeto/i);
-    assert.equal(externalCalled, false);
+    assert.equal(externalCalled, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('isolamento social: Instagram não usa conta de outro projeto', async () => {
+test('portal do proprietário: Instagram conectado em um projeto funciona nos demais', async () => {
   resetMemoryDb();
   const userId = 'usr_instagram_isolation';
   await seedConnection({
@@ -115,15 +113,15 @@ test('isolamento social: Instagram não usa conta de outro projeto', async () =>
         imageUrl: 'https://example.com/imagem.jpg',
         caption: 'Projeto A'
       }),
-      /Instagram não conectada para este projeto/i
+      /API externa não deveria ser chamada/i
     );
-    assert.equal(externalCalled, false);
+    assert.equal(externalCalled, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test('isolamento social: YouTube não usa canal de outro projeto', async () => {
+test('portal do proprietário: YouTube conectado em um projeto funciona nos demais', async () => {
   resetMemoryDb();
   const userId = 'usr_youtube_isolation';
   await seedConnection({
@@ -150,8 +148,41 @@ test('isolamento social: YouTube não usa canal de outro projeto', async () => {
         title: 'Vídeo Projeto A',
         mimeType: 'video/mp4'
       }),
-      /YouTube não conectado para este projeto/i
+      /API externa não deveria ser chamada/i
     );
+    assert.equal(externalCalled, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('isolamento social: conexão de outro usuário nunca é compartilhada', async () => {
+  resetMemoryDb();
+  await seedConnection({
+    id: 'conn_other_owner',
+    userId: 'usr_other_owner',
+    companyId: 'proj_other',
+    provider: 'facebook',
+    accountId: 'page_other',
+    accountName: 'Página de outro proprietário'
+  });
+
+  const originalFetch = globalThis.fetch;
+  let externalCalled = false;
+  globalThis.fetch = (async () => {
+    externalCalled = true;
+    throw new Error('API externa não deveria ser chamada');
+  }) as typeof fetch;
+
+  try {
+    const result = await publishText({
+      userId: 'usr_current_owner',
+      companyId: 'proj_current',
+      provider: 'facebook',
+      text: 'Publicação isolada'
+    });
+    assert.equal(result.externalState, 'confirmed_failed');
+    assert.match(result.error || '', /não conectada/i);
     assert.equal(externalCalled, false);
   } finally {
     globalThis.fetch = originalFetch;

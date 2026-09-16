@@ -799,23 +799,42 @@ export async function findSocialConnection(
         return { docId: doc.id, data: { id: doc.id, ...data } };
       }
     }
-    // Isolamento estrito de projetos: não herdar conexões de outros projetos
-    return null;
+    // Se o projeto ainda não possui conexão própria, reutiliza a conta social
+    // conectada pelo mesmo proprietário. Isso permite que projetos novos do
+    // mesmo Portal publiquem sem repetir sete fluxos OAuth.
   }
 
-  // 2. Herança inteligente: busca conexão ativa do mesmo usuário em outros projetos do portal
+  // 2. Herança do proprietário: nunca cruza userId/tenant.
   const userSnap = await db.collection(COLLECTIONS.socialConnections)
     .where('userId', '==', userId)
     .where('provider', '==', prov)
     .get();
 
-  const connectedDoc = userSnap.docs.find((d: any) => {
-    const data = d.data();
-    return data.status === 'connected' || !data.status;
-  }) || userSnap.docs[0];
+  let connectedDoc: any = null;
+  for (const candidate of userSnap.docs) {
+    try {
+      await ensureValidSocialAccessToken(candidate.id);
+    } catch {}
+    const refreshed = await candidate.ref.get().catch(() => null);
+    const effective = refreshed?.exists ? refreshed : candidate;
+    const data = effective.data() as any;
+    if (data.status === 'connected' || !data.status) {
+      connectedDoc = effective;
+      break;
+    }
+  }
 
   if (connectedDoc) {
-    return { docId: connectedDoc.id, data: { id: connectedDoc.id, ...connectedDoc.data() } };
+    const data = connectedDoc.data() as any;
+    return {
+      docId: connectedDoc.id,
+      data: {
+        id: connectedDoc.id,
+        ...data,
+        inherited: Boolean(companyId && companyId !== 'all' && data.companyId !== companyId),
+        originalCompanyId: data.companyId
+      }
+    };
   }
 
   return null;

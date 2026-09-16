@@ -7,7 +7,7 @@ import { analyzeSeo } from './seo.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
 import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
-import { getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors, isLegacyUnsplashImage } from './autopilotMultimediaR8.js';
+import { DEFAULT_AUTOPILOT_TARGET_PLATFORMS, getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors, isLegacyUnsplashImage } from './autopilotMultimediaR8.js';
 
 function annotateLegacyImageRecord<T extends { imageUrl?: string; metadata?: any }>(item: T): T {
   const isLegacy = isLegacyUnsplashImage(item.imageUrl) || item.metadata?.imageDuplicateDetected === true;
@@ -957,7 +957,7 @@ router.get('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticate
         timezone: 'America/Sao_Paulo',
         preferredDays: [0, 1, 2, 3, 4, 5, 6],
         preferredHours: [10],
-        targetPlatforms: ['Instagram', 'Facebook'],
+        targetPlatforms: [...DEFAULT_AUTOPILOT_TARGET_PLATFORMS],
         primaryGoal: 'Atrair clientes e gerar autoridade',
       },
       persisted: false
