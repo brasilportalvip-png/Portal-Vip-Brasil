@@ -61,3 +61,13 @@ test('Autopilot reaproveita o vídeo vertical nas redes adequadas sem incluir Li
   assert.match(ai, /imageUrl: workingJob\.coverImageUrl \|\| ''/);
   assert.match(ai, /coverImageUrl: data\.coverImageUrl/);
 });
+
+test('Projetos novos herdam todas as sete redes conectadas do proprietário', () => {
+  const autopilot = read('server/production/autopilotMultimediaR8.ts');
+  for (const provider of ['Facebook', 'Instagram', 'LinkedIn', 'X', 'TikTok', 'YouTube', 'Pinterest']) {
+    assert.match(autopilot, new RegExp(`['\"]${provider}['\"]`));
+  }
+  assert.match(autopilot, /DEFAULT_AUTOPILOT_TARGET_PLATFORMS/);
+  assert.match(read('server/production/router.ts'), /\.\.\.DEFAULT_AUTOPILOT_TARGET_PLATFORMS/);
+  assert.match(read('src\/pages\/AutopilotPage.tsx'), /defaultTargetPlatforms = channels\.map/);
+});

@@ -4,6 +4,10 @@ import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './sto
 import { normalizeProvider, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported } from './socialMediaPublisher.js';
 
+export const DEFAULT_AUTOPILOT_TARGET_PLATFORMS = [
+  'Facebook', 'Instagram', 'LinkedIn', 'X', 'TikTok', 'YouTube', 'Pinterest'
+];
+
 export type AutopilotJobStatus = 'pending' | 'processing' | 'video_processing' | 'completed' | 'failed';
 
 export interface AutopilotJob {
@@ -852,7 +856,7 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
           timezone: 'America/Sao_Paulo',
           preferredDays: [0, 1, 2, 3, 4, 5, 6],
           preferredHours: [10],
-          targetPlatforms: ['Instagram', 'Facebook'],
+          targetPlatforms: [...DEFAULT_AUTOPILOT_TARGET_PLATFORMS],
           primaryGoal: 'Atrair clientes e gerar autoridade'
         };
 
@@ -998,7 +1002,7 @@ export async function triggerAllActiveAutopilotMultimediaR8(userId: string): Pro
       timezone: 'America/Sao_Paulo',
       preferredDays: [0, 1, 2, 3, 4, 5, 6],
       preferredHours: [10],
-      targetPlatforms: ['Instagram', 'Facebook'],
+      targetPlatforms: [...DEFAULT_AUTOPILOT_TARGET_PLATFORMS],
       primaryGoal: 'Atrair clientes e gerar autoridade'
     } as AutopilotRecord);
 
@@ -1134,7 +1138,7 @@ export async function getAutopilotProjectsOverview(userId: string): Promise<Arra
       timezone: 'America/Sao_Paulo',
       preferredDays: [0, 1, 2, 3, 4, 5, 6],
       preferredHours: [10],
-      targetPlatforms: ['Instagram', 'Facebook'],
+      targetPlatforms: [...DEFAULT_AUTOPILOT_TARGET_PLATFORMS],
       primaryGoal: 'Atrair clientes e gerar autoridade',
       lastRunAt: null,
       lastRunSlot: null,
@@ -1169,7 +1173,7 @@ export async function getAutopilotProjectsOverview(userId: string): Promise<Arra
         frequency: ap.frequency || 'daily',
         preferredHours: Array.isArray(ap.preferredHours) && ap.preferredHours.length > 0 ? ap.preferredHours : [10],
         preferredDays: Array.isArray(ap.preferredDays) && ap.preferredDays.length > 0 ? ap.preferredDays : [0, 1, 2, 3, 4, 5, 6],
-        targetPlatforms: Array.isArray(ap.targetPlatforms) ? ap.targetPlatforms : ['Instagram', 'Facebook'],
+        targetPlatforms: Array.isArray(ap.targetPlatforms) ? ap.targetPlatforms : [...DEFAULT_AUTOPILOT_TARGET_PLATFORMS],
         primaryGoal: ap.primaryGoal || 'Atrair clientes e gerar autoridade',
         lastRunAt: ap.lastRunAt || null,
         lastRunSlot: ap.lastRunSlot || null,

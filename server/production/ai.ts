@@ -7,6 +7,8 @@ import { getAdminStorage } from '../providers/firebaseAdmin.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso, queryData } from './store.js';
 import { serverDetectNicheForVideo, SERVER_NICHE_VIDEO_TEMPLATES } from './videoCatalog.js';
 import { diagnoseAiError, calculateNextAttemptAt, sanitizeSecretText } from './aiErrorDiagnostic.js';
+import { normalizeProvider } from './social.js';
+import { checkUniversalConnectionReady } from './socialMediaPublisher.js';
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_FINALIZATION_LEASE_MS = 10 * 60 * 1000;
@@ -2522,9 +2524,19 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
         const hasUnsafeResult = publicationResults.some((result: any) =>
           result?.externalState === 'unknown' || result?.requiresUserAction === true || result?.deliveryMode === 'draft'
         );
-        const hasRetryableFailure = publicationResults.some((result: any) =>
+        let hasRetryableFailure = publicationResults.some((result: any) =>
           !result?.success && result?.retrySafe !== false && result?.externalState !== 'unknown'
         );
+        if (!hasUnsafeResult && !hasRetryableFailure) {
+          for (const result of publicationResults) {
+            if (result?.success) continue;
+            const provider = normalizeProvider(String(result?.provider || result?.platform || ''));
+            if (provider && await checkUniversalConnectionReady(job.userId, job.companyId, provider)) {
+              hasRetryableFailure = true;
+              break;
+            }
+          }
+        }
         if (hasUnsafeResult) {
           await scheduleRef.set({
             status: 'requires_review',

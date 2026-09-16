@@ -73,6 +73,8 @@ const channels = [
   { name: 'Pinterest', key: 'pinterest', direct: true }
 ];
 
+const defaultTargetPlatforms = channels.map((channel) => channel.name);
+
 const availableHours = [
   { hour: 8, label: '08:00' },
   { hour: 9, label: '09:00' },
@@ -445,7 +447,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
               frequency: 'daily',
               preferredHours: [10],
               preferredDays: [0, 1, 2, 3, 4, 5, 6],
-              targetPlatforms: ['Instagram', 'Facebook'],
+              targetPlatforms: [...defaultTargetPlatforms],
               primaryGoal: '',
               lastRunAt: null,
               lastRunSlot: null,
