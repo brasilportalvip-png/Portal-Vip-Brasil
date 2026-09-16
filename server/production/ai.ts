@@ -2586,7 +2586,7 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
       // Nunca reabre o agendamento original: ele contém resultados terminais que
       // fariam o publicador pular as chamadas externas. Cria uma fila limpa e
       // determinística apenas para redes ainda não entregues e agora conectadas.
-      if (['failed', 'requires_review'].includes(scheduleStatus)) {
+      if (['published', 'failed', 'requires_review'].includes(scheduleStatus)) {
         const previousRecoveryRef = db.collection(COLLECTIONS.scheduledPosts)
           .doc(`sched-video-${job.id}-connection-recovery`);
         const previousRecoverySnap = await previousRecoveryRef.get();
