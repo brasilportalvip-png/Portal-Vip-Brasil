@@ -701,3 +701,41 @@ test('20. Nova cobertura não repete redes publicadas pela recuperação anterio
   const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-all-networks-recovery-v1`).get();
   assert.deepEqual(recovery.data()?.platforms, ['LinkedIn', 'X']);
 });
+
+test('21. Agendamento publicado também recupera redes que não existiam na fila antiga', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const userId = 'user_published_expansion';
+  const companyId = 'project_published_expansion';
+  const jobId = 'job_published_expansion';
+  const contentItemId = 'content_published_expansion';
+  const timestamp = new Date().toISOString();
+  await createTestVideoJob({
+    id: jobId, userId, companyId, status: 'completed', pipelineState: 'completed', contentItemId,
+    videoUrl: 'https://storage.googleapis.com/example/published.mp4', completedAt: timestamp,
+    createdAt: timestamp, updatedAt: timestamp, autoPublishPlatforms: ['YouTube']
+  });
+  await db.collection(COLLECTIONS.contentItems).doc(contentItemId).set({
+    id: contentItemId, userId, companyId, videoUrl: 'https://storage.googleapis.com/example/published.mp4', status: 'published'
+  });
+  await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}`).set({
+    id: `sched-video-${jobId}`, userId, companyId, contentItemId,
+    platforms: ['YouTube'], status: 'published',
+    publicationResults: [{ provider: 'youtube', success: true, externalId: 'youtube_existing', externalState: 'confirmed' }],
+    createdAt: timestamp, updatedAt: timestamp
+  });
+  await db.collection(COLLECTIONS.autopilotConfigs).doc(`${userId}_${companyId}`).set({
+    userId, companyId, enabled: true, mode: 'automatic', targetPlatforms: ['YouTube', 'LinkedIn', 'X']
+  });
+  for (const provider of ['youtube', 'linkedin', 'x']) {
+    await db.collection(COLLECTIONS.socialConnections).doc(`published_${provider}`).set({
+      id: `published_${provider}`, userId, companyId: 'shared_project', provider,
+      status: 'connected', encryptedAccessToken: encrypt('test_token'),
+      expiresAt: new Date(Date.now() + 60_000).toISOString()
+    });
+  }
+  const run = await processPendingVideoJobs();
+  assert.equal(run.schedulesRecovered, 1);
+  const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-all-networks-recovery-v1`).get();
+  assert.deepEqual(recovery.data()?.platforms, ['LinkedIn', 'X']);
+});
