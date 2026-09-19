@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { timingSafeEqual } from 'node:crypto';
 import { getAdminAuth, getAdminStorage } from '../providers/firebaseAdmin.js';
 import { config } from '../config/index.js';
 import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, ensureUserProfile, hasAcceptedLatestTerms, requireAdmin, requireAuth } from './auth.js';
@@ -330,7 +331,12 @@ router.post('/auth/bootstrap-admin', requireAuth, asyncRoute(async (req: Authent
   if (!config.adminBootstrap.enabled || !config.adminBootstrap.key) {
     return res.status(403).json({ error: 'Recurso de bootstrap de administrador desabilitado.' });
   }
-  if (safeString(req.body?.secretKey, 500) !== config.adminBootstrap.key) {
+  if (req.firebaseUser?.email_verified !== true) {
+    return res.status(403).json({ error: 'Confirme o e-mail da conta antes de configurar o administrador.' });
+  }
+  const suppliedKey = Buffer.from(safeString(req.body?.secretKey, 500));
+  const configuredKey = Buffer.from(config.adminBootstrap.key);
+  if (suppliedKey.length !== configuredKey.length || !timingSafeEqual(suppliedKey, configuredKey)) {
     return res.status(403).json({ error: 'Chave de bootstrap inválida.' });
   }
   await getAdminAuth().setCustomUserClaims(req.user!.id, { role: 'admin', frocRole: 'admin' });

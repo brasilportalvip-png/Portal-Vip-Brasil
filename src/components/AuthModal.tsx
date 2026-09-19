@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff, Lock, Mail, ShieldCheck, X } from 'lucide-react';
 import { sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth } from '../lib/firebase';
@@ -17,6 +17,33 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    emailInputRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus?.focus();
+    };
+  }, [isOpen, onClose]);
   if (!isOpen) return null;
 
   const friendlyError = (err:any) => {
@@ -44,5 +71,5 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
     finally { setLoading(false); }
   };
 
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 p-3 backdrop-blur-xl" role="dialog" aria-modal="true"><div className="relative w-full max-w-md rounded-[28px] border border-slate-700/80 bg-[#0F172A] p-6 shadow-2xl md:p-8"><button onClick={onClose} aria-label="Fechar" className="absolute right-4 top-4 rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><X size={18}/></button><div className="mb-6 text-center"><div className="mb-3 flex justify-center"><BrandLogo size="lg" showText={false}/></div><h2 className="text-xl font-extrabold text-white">{mode === 'forgot' ? 'Recuperar acesso' : 'Acesso administrativo'}</h2><p className="mt-1 text-xs text-slate-400">Portal Vip Brasil é uma central privada. Não há cadastro público.</p></div>{success&&<div className="mb-4 flex gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300"><CheckCircle2 size={16}/>{success}</div>}{error&&<div className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">⚠️ {error}</div>}<form onSubmit={submit} className="space-y-4"><label className="block text-xs font-semibold text-slate-300">E-mail<div className="relative mt-1.5"><Mail className="absolute left-3.5 top-3 text-slate-500" size={16}/><input type="email" value={email} onChange={(e)=>setEmail(e.target.value)} autoComplete="email" className="froc-input pl-10" required/></div></label>{mode==='login'&&<label className="block text-xs font-semibold text-slate-300">Senha<div className="relative mt-1.5"><Lock className="absolute left-3.5 top-3 text-slate-500" size={16}/><input type={showPassword?'text':'password'} value={password} onChange={(e)=>setPassword(e.target.value)} autoComplete="current-password" className="froc-input pl-10 pr-11" required/><button type="button" onClick={()=>setShowPassword(!showPassword)} className="absolute right-3 top-2.5 p-1 text-slate-400">{showPassword?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></label>}<button disabled={loading} className="froc-primary w-full">{loading?'Processando…':mode==='forgot'?'Enviar link seguro':'Entrar'}</button></form><div className="mt-5 flex items-center justify-between text-xs">{mode==='login'?<><span className="text-slate-500">Acesso somente autorizado</span><button onClick={()=>{setMode('forgot');setError('');setSuccess('')}} className="text-slate-400 hover:text-white">Esqueci minha senha</button></>:<button onClick={()=>{setMode('login');setError('');setSuccess('')}} className="flex items-center gap-1 text-slate-400"><ArrowLeft size={13}/>Voltar ao login</button>}</div><div className="mt-5 flex items-center justify-center gap-1 text-[10px] text-slate-500"><ShieldCheck size={12}/>Firebase Authentication + API restrita a administrador</div></div></div>;
+  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/90 p-3 backdrop-blur-xl" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title"><div ref={dialogRef} className="relative w-full max-w-md rounded-[28px] border border-slate-700/80 bg-[#0F172A] p-6 shadow-2xl md:p-8"><button onClick={onClose} aria-label="Fechar" className="absolute right-4 top-4 rounded-full p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><X size={18}/></button><div className="mb-6 text-center"><div className="mb-3 flex justify-center"><BrandLogo size="lg" showText={false}/></div><h2 id="auth-modal-title" className="text-xl font-extrabold text-white">{mode === 'forgot' ? 'Recuperar acesso' : 'Acesso administrativo'}</h2><p className="mt-1 text-xs text-slate-400">Portal Vip Brasil é uma central privada. Não há cadastro público.</p></div>{success&&<div role="status" className="mb-4 flex gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300"><CheckCircle2 size={16}/>{success}</div>}{error&&<div role="alert" className="mb-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300">⚠️ {error}</div>}<form onSubmit={submit} className="space-y-4"><label className="block text-xs font-semibold text-slate-300">E-mail<div className="relative mt-1.5"><Mail className="absolute left-3.5 top-3 text-slate-500" size={16}/><input ref={emailInputRef} type="email" value={email} onChange={(e)=>setEmail(e.target.value)} autoComplete="email" className="froc-input pl-10" required/></div></label>{mode==='login'&&<label className="block text-xs font-semibold text-slate-300">Senha<div className="relative mt-1.5"><Lock className="absolute left-3.5 top-3 text-slate-500" size={16}/><input type={showPassword?'text':'password'} value={password} onChange={(e)=>setPassword(e.target.value)} autoComplete="current-password" className="froc-input pl-10 pr-11" required/><button type="button" onClick={()=>setShowPassword(!showPassword)} aria-label={showPassword?'Ocultar senha':'Mostrar senha'} className="absolute right-3 top-2.5 p-1 text-slate-400">{showPassword?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></label>}<button disabled={loading} className="froc-primary w-full">{loading?'Processando…':mode==='forgot'?'Enviar link seguro':'Entrar'}</button></form><div className="mt-5 flex items-center justify-between text-xs">{mode==='login'?<><span className="text-slate-500">Acesso somente autorizado</span><button onClick={()=>{setMode('forgot');setError('');setSuccess('')}} className="text-slate-400 hover:text-white">Esqueci minha senha</button></>:<button onClick={()=>{setMode('login');setError('');setSuccess('')}} className="flex items-center gap-1 text-slate-400"><ArrowLeft size={13}/>Voltar ao login</button>}</div><div className="mt-5 flex items-center justify-center gap-1 text-[10px] text-slate-500"><ShieldCheck size={12}/>Firebase Authentication + API restrita a administrador</div></div></div>;
 };
