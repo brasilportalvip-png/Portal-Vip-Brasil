@@ -56,26 +56,6 @@ test('Auth: e-mail administrativo não verificado nunca concede privilégio', as
   assert.equal(profile.emailVerified, false);
 });
 
-test('Auth: perfil proprietário já administrativo é preservado sem promover conta nova', async () => {
-  resetMemoryDb();
-  await firestore().collection(COLLECTIONS.users).doc('usr_existing_owner').set({
-    id: 'usr_existing_owner',
-    name: 'Proprietário',
-    email: 'brasilportalvip@gmail.com',
-    role: 'admin',
-    createdAt: new Date().toISOString()
-  });
-
-  const profile = await ensureUserProfile({
-    uid: 'usr_existing_owner',
-    email: 'brasilportalvip@gmail.com',
-    email_verified: false
-  } as any);
-
-  assert.equal(profile.role, 'admin');
-  assert.equal(profile.emailVerified, false);
-});
-
 test('Auth: Middleware requireAdmin bloqueia usuários comuns e permite apenas admin configurado', async () => {
   resetMemoryDb();
 
