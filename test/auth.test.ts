@@ -96,6 +96,16 @@ test('Auth: Middleware requireAdmin bloqueia usuários comuns e permite apenas a
   });
 
   assert.equal(adminNextCalled, true);
+
+  // Uma conta existente com claim administrativa continua autorizada mesmo
+  // antes de concluir a verificação do e-mail; a allowlist isolada não promove.
+  let claimedAdminNextCalled = false;
+  const mockReqClaimedAdmin: any = {
+    firebaseUser: { uid: 'usr_admin_claimed', email_verified: false, role: 'admin', frocRole: 'admin' },
+    user: { id: 'usr_admin_claimed', email: 'owner@example.com', role: 'admin', emailVerified: false }
+  };
+  requireAdmin(mockReqClaimedAdmin, mockRes, () => { claimedAdminNextCalled = true; });
+  assert.equal(claimedAdminNextCalled, true);
 });
 
 test('Auth: Validação rigorosa e determinística de versões de consentimento (hasAcceptedLatestTerms)', () => {

@@ -308,10 +308,14 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 export async function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const checkRole = () => {
     const tokenRole = req.firebaseUser ? roleFromToken(req.firebaseUser) : req.user?.role;
+    const hasExistingAdminClaim = req.firebaseUser ? tokenHasAdminClaim(req.firebaseUser) : false;
     const emailVerified = req.firebaseUser
       ? req.firebaseUser.email_verified === true
       : req.user?.emailVerified === true;
-    if (!req.user || !emailVerified || req.user.role !== 'admin' || tokenRole !== 'admin') {
+    // A verificação de e-mail é obrigatória para promoção por allowlist. Uma
+    // claim admin já emitida pelo Firebase continua sendo autoridade válida e
+    // evita bloquear o proprietário existente durante a migração.
+    if (!req.user || (!emailVerified && !hasExistingAdminClaim) || req.user.role !== 'admin' || tokenRole !== 'admin') {
       res.status(403).json({ error: 'Acesso restrito a administradores.' });
       return;
     }
