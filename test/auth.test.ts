@@ -44,6 +44,18 @@ test('Auth: Criação de perfil com role "user" padrão e imutabilidade de privi
   assert.equal(profileReauth.role, 'user');
 });
 
+test('Auth: e-mail administrativo não verificado nunca concede privilégio', async () => {
+  resetMemoryDb();
+  const profile = await ensureUserProfile({
+    uid: 'usr_unverified_owner',
+    email: 'brasilportalvip@gmail.com',
+    email_verified: false
+  } as any);
+
+  assert.equal(profile.role, 'user');
+  assert.equal(profile.emailVerified, false);
+});
+
 test('Auth: Middleware requireAdmin bloqueia usuários comuns e permite apenas admin configurado', async () => {
   resetMemoryDb();
 
@@ -76,7 +88,7 @@ test('Auth: Middleware requireAdmin bloqueia usuários comuns e permite apenas a
   // Usuário admin
   let adminNextCalled = false;
   const mockReqAdmin: any = {
-    user: { id: 'usr_admin_999', email: 'admin@froc.ia', role: 'admin' }
+    user: { id: 'usr_admin_999', email: 'admin@froc.ia', role: 'admin', emailVerified: true }
   };
 
   requireAdmin(mockReqAdmin, mockRes, () => {
@@ -341,4 +353,3 @@ test('Auth: Login não promove consentimento legado; exigência de consentimento
   assert.equal(profileAfterConsent.privacyVersion, '2026.1');
   assert.equal(hasAcceptedLatestTerms(profileAfterConsent), true);
 });
-

@@ -90,7 +90,10 @@ function tokenHasAdminClaim(token: DecodedIdToken): boolean {
 
 function isConfiguredPortalAdmin(token: DecodedIdToken): boolean {
   const email = normalizeEmail(token.email);
-  return Boolean(email && config.privateAdminEmails.includes(email));
+  // Um endereço presente na allowlist só pode conceder privilégio depois de
+  // ter sido verificado pelo provedor de identidade. Sem isso, um token com
+  // e-mail ainda não confirmado poderia receber acesso administrativo.
+  return Boolean(token.email_verified === true && email && config.privateAdminEmails.includes(email));
 }
 
 /**
@@ -305,7 +308,10 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 export async function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const checkRole = () => {
     const tokenRole = req.firebaseUser ? roleFromToken(req.firebaseUser) : req.user?.role;
-    if (!req.user || req.user.role !== 'admin' || tokenRole !== 'admin') {
+    const emailVerified = req.firebaseUser
+      ? req.firebaseUser.email_verified === true
+      : req.user?.emailVerified === true;
+    if (!req.user || !emailVerified || req.user.role !== 'admin' || tokenRole !== 'admin') {
       res.status(403).json({ error: 'Acesso restrito a administradores.' });
       return;
     }

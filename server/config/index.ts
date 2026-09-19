@@ -32,12 +32,13 @@ const CAPACITOR_CORS_ORIGINS = [
 
 export function resolveCorsOrigins(
   configuredOrigins: string,
-  applicationUrl: string
+  applicationUrl: string,
+  includeDevelopmentOrigins = !isProduction
 ): string[] {
   const normalized = [
     applicationUrl,
     ...configuredOrigins.split(','),
-    ...CAPACITOR_CORS_ORIGINS
+    ...(includeDevelopmentOrigins ? CAPACITOR_CORS_ORIGINS : [])
   ]
     .map((value) => value.trim().replace(/\/$/, ''))
     .filter(Boolean);
@@ -47,7 +48,8 @@ export function resolveCorsOrigins(
 
 const corsOrigins = resolveCorsOrigins(
   env('CORS_ORIGINS'),
-  appUrl || 'http://localhost:3000'
+  appUrl || 'http://localhost:3000',
+  !isProduction
 );
 
 export const config = {
@@ -96,7 +98,8 @@ export const config = {
   video: {
     // Fail-safe financeiro: o Veo automático permanece desligado até o novo
     // pipeline publicitário (marca, CTA e revisão) ser aprovado pelo proprietário.
-    autoPaidGenerationEnabled: env('AUTO_PAID_VIDEO_GENERATION_ENABLED', 'false').toLowerCase() === 'true'
+    autoPaidGenerationEnabled: env('AUTO_PAID_VIDEO_GENERATION_ENABLED', 'false').toLowerCase() === 'true',
+    directAutoPublishEnabled: env('VIDEO_DIRECT_AUTO_PUBLISH_ENABLED', 'false').toLowerCase() === 'true'
   },
   social: {
     meta: {
