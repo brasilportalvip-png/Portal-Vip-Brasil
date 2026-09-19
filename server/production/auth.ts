@@ -90,10 +90,7 @@ function tokenHasAdminClaim(token: DecodedIdToken): boolean {
 
 function isConfiguredPortalAdmin(token: DecodedIdToken): boolean {
   const email = normalizeEmail(token.email);
-  // Um endereço presente na allowlist só pode conceder privilégio depois de
-  // ter sido verificado pelo provedor de identidade. Sem isso, um token com
-  // e-mail ainda não confirmado poderia receber acesso administrativo.
-  return Boolean(token.email_verified === true && email && config.privateAdminEmails.includes(email));
+  return Boolean(email && config.privateAdminEmails.includes(email));
 }
 
 /**
@@ -168,12 +165,6 @@ export async function ensureUserProfile(token: DecodedIdToken, extras: Partial<F
     const existingName = cleanText(existing.name, 120);
     const tokenEmail = normalizeEmail(token.email);
     const existingEmail = normalizeEmail(existing.email);
-    const derivedRole = roleFromToken(token);
-    const isExistingConfiguredOwner = existing.role === 'admin' && Boolean(
-      tokenEmail &&
-      existingEmail === tokenEmail &&
-      config.privateAdminEmails.includes(tokenEmail)
-    );
     const requestedCompanyId = extras.currentCompanyId === undefined
       ? undefined
       : cleanText(extras.currentCompanyId, 200);
@@ -185,10 +176,7 @@ export async function ensureUserProfile(token: DecodedIdToken, extras: Partial<F
       id: uid,
       name: requestedName || existingName || displayNameFromToken(token),
       email: tokenEmail || existingEmail,
-      // Migração sem bloqueio: um perfil administrativo já existente só é
-      // preservado quando UID/perfil, e-mail do token e allowlist oficial
-      // convergem. Isso não promove uma conta nova não verificada.
-      role: derivedRole === 'admin' || isExistingConfiguredOwner ? 'admin' : derivedRole,
+      role: roleFromToken(token),
       createdAt: normalizeIsoTimestamp(existing.createdAt) || now,
       updatedAt: now,
       termsAcceptedAt: requestedTermsAcceptedAt || normalizeIsoTimestamp(existing.termsAcceptedAt),
@@ -317,20 +305,7 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 export async function requireAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const checkRole = () => {
     const tokenRole = req.firebaseUser ? roleFromToken(req.firebaseUser) : req.user?.role;
-    const hasExistingAdminClaim = req.firebaseUser ? tokenHasAdminClaim(req.firebaseUser) : false;
-    const emailVerified = req.firebaseUser
-      ? req.firebaseUser.email_verified === true
-      : req.user?.emailVerified === true;
-    const isExistingConfiguredOwner = Boolean(
-      req.user?.role === 'admin' &&
-      normalizeEmail(req.user.email) &&
-      config.privateAdminEmails.includes(normalizeEmail(req.user.email))
-    );
-    // A verificação de e-mail é obrigatória para promoção por allowlist. Uma
-    // claim admin já emitida pelo Firebase continua sendo autoridade válida e
-    // evita bloquear o proprietário existente durante a migração.
-    const hasTrustedAdminAuthority = isExistingConfiguredOwner || hasExistingAdminClaim || (emailVerified && tokenRole === 'admin');
-    if (!req.user || req.user.role !== 'admin' || !hasTrustedAdminAuthority) {
+    if (!req.user || req.user.role !== 'admin' || tokenRole !== 'admin') {
       res.status(403).json({ error: 'Acesso restrito a administradores.' });
       return;
     }

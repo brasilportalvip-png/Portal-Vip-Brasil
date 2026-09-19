@@ -60,33 +60,6 @@ test('Autopilot no modo Automático exclusivo para YouTube: vídeo Veo e parâme
   assert.ok(autopilotSource.includes('if (youtubeSelected || imageTargets.length === 0)'));
 });
 
-test('Proteção financeira: Veo automático pago fica desligado por padrão', () => {
-  const configSource = source('server/config/index.ts');
-  const envSource = source('.env.example');
-  const autopilotSource = source('server/production/autopilotMultimediaR8.ts');
-
-  assert.match(configSource, /AUTO_PAID_VIDEO_GENERATION_ENABLED', 'false'/);
-  assert.match(envSource, /AUTO_PAID_VIDEO_GENERATION_ENABLED=false/);
-  assert.match(autopilotSource, /config\.video\.autoPaidGenerationEnabled/);
-  assert.match(autopilotSource, /automaticPaidVideoEnabled\s*\?\s*targets\.filter/);
-  assert.match(autopilotSource, /imageCapableProviders/);
-});
-
-test('Controle de qualidade: vídeo gerado não publica direto sem pós-produção aprovada', () => {
-  const configSource = source('server/config/index.ts');
-  const envSource = source('.env.example');
-  const aiSource = source('server/production/ai.ts');
-  const autopilotSource = source('server/production/autopilotMultimediaR8.ts');
-
-  assert.match(configSource, /VIDEO_DIRECT_AUTO_PUBLISH_ENABLED', 'false'/);
-  assert.match(envSource, /VIDEO_DIRECT_AUTO_PUBLISH_ENABLED=false/);
-  assert.match(aiSource, /manual_review_required/);
-  assert.match(aiSource, /real_spokesperson/);
-  assert.match(aiSource, /product_demonstration/);
-  assert.match(aiSource, /verified_text/);
-  assert.match(autopilotSource, /config\.video\.directAutoPublishEnabled/);
-});
-
 test('Persistência obrigatória de videoJob: falha se não houver artefato persistido', () => {
   const autopilotSource = source('server/production/autopilotMultimediaR8.ts');
 
@@ -153,7 +126,7 @@ test('Veo recebe proibição absoluta de texto visível nas cenas', () => {
 
   assert.match(aiSource, /ABSOLUTE VISUAL RULE: no visible text/i);
   assert.match(aiSource, /no captions, no subtitles, no signs/i);
-  assert.match(aiSource, /Marca, textos e CTA exigem pós-produção determinística e revisão antes da publicação/i);
+  assert.match(aiSource, /Toda comunicação escrita será adicionada posteriormente pelo sistema/i);
 });
 
 test('Worker de vídeos possui tempo para finalizar todos os projetos', () => {

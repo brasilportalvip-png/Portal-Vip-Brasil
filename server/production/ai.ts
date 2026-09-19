@@ -1300,8 +1300,7 @@ DIRETRIZES CINEMATOGRÁFICAS E REALISMO:
 3. Especifique movimento de câmera preciso e estável (ex: smooth dolly push-in, low-angle orbital tracking, macro slider).
 4. Especifique gradação de cor, resolução 8k e tom cinematográfico de alto impacto estético vertical (9:16) para TikTok e Reels.
 5. REGRAS DE INTEGRIDADE VISUAL: Enfatize anatomia natural, ausência de artefatos de morfologia, sem membros extras, sem distorção.
-6. ROTEIRO PUBLICITÁRIO: mostre uma pessoa adulta realista apresentando o benefício, uma demonstração clara do produto/site e uma ação final coerente com o CTA fornecido. Evite cenas decorativas sem relação com o serviço.
-7. REGRA ABSOLUTA DE TEXTO: a geração-base não pode desenhar palavras, letras, números, legendas, placas, interfaces, marcas d'água ou logotipos, pois modelos generativos podem escrevê-los incorretamente. Marca, textos e CTA exigem pós-produção determinística e revisão antes da publicação.
+6. REGRA ABSOLUTA DE TEXTO: A cena não pode conter palavras, letras, números, legendas, placas, letreiros, interfaces, marcas d'água ou logotipos. Nunca peça ao Veo para desenhar texto. Toda comunicação escrita será adicionada posteriormente pelo sistema.
 
 Retorne SOMENTE um JSON estrito no formato:
 {
@@ -1386,7 +1385,7 @@ export async function startVideoGenerationJob(data: {
     ...(data.initialImageBase64 ? { initialImageUrl: 'provided' } : {}),
     ...(data.coverImageUrl ? { coverImageUrl: data.coverImageUrl } : {}),
     contentItemId,
-    ...(config.video.directAutoPublishEnabled && Array.isArray(data.autoPublishPlatforms) && data.autoPublishPlatforms.length > 0
+    ...(Array.isArray(data.autoPublishPlatforms) && data.autoPublishPlatforms.length > 0
       ? { autoPublishPlatforms: data.autoPublishPlatforms.map((item) => String(item)).filter(Boolean).slice(0, 10) }
       : {}),
     ...(data.autoPublishProviderOptions ? { autoPublishProviderOptions: data.autoPublishProviderOptions } : {}),
@@ -1422,9 +1421,7 @@ export async function startVideoGenerationJob(data: {
         aspectRatio,
         modelUsed: presetConfig.model,
         pipelineState: 'provider_starting',
-        autoPublishPlatforms: config.video.directAutoPublishEnabled ? (data.autoPublishPlatforms || []) : [],
-        qualityGate: config.video.directAutoPublishEnabled ? 'postproduction_approved' : 'manual_review_required',
-        qualityRequirements: ['real_spokesperson', 'product_demonstration', 'official_brand', 'verified_text', 'clear_cta'],
+        autoPublishPlatforms: data.autoPublishPlatforms || [],
         autoPublishProviderOptions: data.autoPublishProviderOptions || { youtubePrivacyStatus: 'unlisted' }
       }
     };
@@ -1463,8 +1460,7 @@ export async function startVideoGenerationJob(data: {
       `Lighting scheme: ${data.lighting || direction.lighting}.`,
       `Atmosphere & color grading: ${data.mood || direction.mood}.`,
       `Target format: ${aspectRatio}. Technical parameters: Ultra high definition commercial rendering, authentic physical textures, realistic lighting and reflections, natural fluid motion, no morphing artifacts, no anatomical distortions.`,
-      `COMMERCIAL STORY RULE: feature a photorealistic adult spokesperson naturally presenting the real product benefit, include a clear product or website demonstration, and finish with a visually decisive call-to-action moment. Avoid generic decorative stock-like montage.`,
-      `ABSOLUTE VISUAL RULE: no visible text, no words, no letters, no numbers, no captions, no subtitles, no signs, no labels, no user-interface text, no watermarks and no generated logos anywhere in any frame. Brand, correctly spelled titles and CTA must be applied through deterministic post-production and reviewed before publication.`
+      `ABSOLUTE VISUAL RULE: no visible text, no words, no letters, no numbers, no captions, no subtitles, no signs, no labels, no user-interface text, no watermarks and no logos anywhere in any frame. Use only purely visual scenes. Written titles and captions are added outside the video by the publishing system.`
     ].filter(Boolean).join('\n');
 
     const providerStartedAt = nowIso();

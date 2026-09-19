@@ -50,11 +50,10 @@ test('Estúdio exibe o job mais recente encerrado e sua mensagem real de erro', 
   assert.match(source, /activeJob\.lastErrorMessage \|\| activeJob\.errorMessage \|\| activeJob\.error/);
 });
 
-test('Autopilot só reutiliza vídeo nas sete redes quando a geração paga automática estiver autorizada', () => {
+test('Autopilot reaproveita o vídeo vertical em todas as sete redes selecionadas', () => {
   const autopilot = read('server/production/autopilotMultimediaR8.ts');
   assert.match(autopilot, /\['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest', 'linkedin', 'x'\]/);
-  assert.match(autopilot, /automaticPaidVideoEnabled\s*\?\s*targets\.filter/);
-  assert.match(autopilot, /imageCapableProviders/);
+  assert.match(autopilot, /imageTargets = targets\.filter\(\(target\) => !videoProviders\.has\(target\.provider\)\)/);
   assert.match(autopilot, /target\.provider !== 'pinterest' \|\| Boolean\(videoCoverImageUrl\)/);
   assert.match(autopilot, /imageTargets\.length > 0 \|\| pinterestVideoSelected \|\| mode !== 'automatic'/);
 

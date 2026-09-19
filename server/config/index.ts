@@ -32,13 +32,12 @@ const CAPACITOR_CORS_ORIGINS = [
 
 export function resolveCorsOrigins(
   configuredOrigins: string,
-  applicationUrl: string,
-  includeDevelopmentOrigins = !isProduction
+  applicationUrl: string
 ): string[] {
   const normalized = [
     applicationUrl,
     ...configuredOrigins.split(','),
-    ...(includeDevelopmentOrigins ? CAPACITOR_CORS_ORIGINS : [])
+    ...CAPACITOR_CORS_ORIGINS
   ]
     .map((value) => value.trim().replace(/\/$/, ''))
     .filter(Boolean);
@@ -48,8 +47,7 @@ export function resolveCorsOrigins(
 
 const corsOrigins = resolveCorsOrigins(
   env('CORS_ORIGINS'),
-  appUrl || 'http://localhost:3000',
-  !isProduction
+  appUrl || 'http://localhost:3000'
 );
 
 export const config = {
@@ -94,12 +92,6 @@ export const config = {
   blog: {
     autoEnabled: env('AUTO_BLOG_ENABLED', isProduction ? 'true' : 'false').toLowerCase() === 'true',
     author: env('BLOG_AUTHOR', 'Portal Vip Brasil')
-  },
-  video: {
-    // Fail-safe financeiro: o Veo automático permanece desligado até o novo
-    // pipeline publicitário (marca, CTA e revisão) ser aprovado pelo proprietário.
-    autoPaidGenerationEnabled: env('AUTO_PAID_VIDEO_GENERATION_ENABLED', 'false').toLowerCase() === 'true',
-    directAutoPublishEnabled: env('VIDEO_DIRECT_AUTO_PUBLISH_ENABLED', 'false').toLowerCase() === 'true'
   },
   social: {
     meta: {

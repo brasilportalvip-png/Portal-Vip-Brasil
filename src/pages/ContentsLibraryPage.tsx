@@ -23,25 +23,12 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const safeAssetUrl = (value: string | undefined, fallback = '/icons/logo.png') => {
-    const raw = String(value || '').trim();
-    if (!raw) return fallback;
-    if (raw.startsWith('/')) return raw;
-    try {
-      const parsed = new URL(raw);
-      if (!['http:', 'https:'].includes(parsed.protocol) || !parsed.hostname.includes('.')) return fallback;
-      return parsed.toString();
-    } catch {
-      return fallback;
-    }
-  };
-
   const projectNames = useMemo(() => new Map(companies.map((project) => [project.id, project.name])), [companies]);
   const brandAssets = useMemo(() => companies.flatMap((project) => {
     if (projectFilter !== 'all' && project.id !== projectFilter) return [];
     const assets: Array<{ id: string; projectId: string; projectName: string; label: string; url: string }> = [];
-    if (project.logoUrl) assets.push({ id: `${project.id}:logo`, projectId: project.id, projectName: project.name, label: 'Logo', url: safeAssetUrl(project.logoUrl) });
-    if (project.bannerUrl && project.bannerUrl !== project.logoUrl) assets.push({ id: `${project.id}:banner`, projectId: project.id, projectName: project.name, label: 'Capa / Banner', url: safeAssetUrl(project.bannerUrl, safeAssetUrl(project.logoUrl)) });
+    if (project.logoUrl) assets.push({ id: `${project.id}:logo`, projectId: project.id, projectName: project.name, label: 'Logo', url: project.logoUrl });
+    if (project.bannerUrl && project.bannerUrl !== project.logoUrl) assets.push({ id: `${project.id}:banner`, projectId: project.id, projectName: project.name, label: 'Capa / Banner', url: project.bannerUrl });
     return assets;
   }), [companies, projectFilter]);
 

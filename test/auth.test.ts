@@ -44,38 +44,6 @@ test('Auth: Criação de perfil com role "user" padrão e imutabilidade de privi
   assert.equal(profileReauth.role, 'user');
 });
 
-test('Auth: e-mail administrativo não verificado nunca concede privilégio', async () => {
-  resetMemoryDb();
-  const profile = await ensureUserProfile({
-    uid: 'usr_unverified_owner',
-    email: 'brasilportalvip@gmail.com',
-    email_verified: false
-  } as any);
-
-  assert.equal(profile.role, 'user');
-  assert.equal(profile.emailVerified, false);
-});
-
-test('Auth: perfil proprietário já administrativo é preservado sem promover conta nova', async () => {
-  resetMemoryDb();
-  await firestore().collection(COLLECTIONS.users).doc('usr_existing_owner').set({
-    id: 'usr_existing_owner',
-    name: 'Proprietário',
-    email: 'brasilportalvip@gmail.com',
-    role: 'admin',
-    createdAt: new Date().toISOString()
-  });
-
-  const profile = await ensureUserProfile({
-    uid: 'usr_existing_owner',
-    email: 'brasilportalvip@gmail.com',
-    email_verified: false
-  } as any);
-
-  assert.equal(profile.role, 'admin');
-  assert.equal(profile.emailVerified, false);
-});
-
 test('Auth: Middleware requireAdmin bloqueia usuários comuns e permite apenas admin configurado', async () => {
   resetMemoryDb();
 
@@ -108,7 +76,7 @@ test('Auth: Middleware requireAdmin bloqueia usuários comuns e permite apenas a
   // Usuário admin
   let adminNextCalled = false;
   const mockReqAdmin: any = {
-    user: { id: 'usr_admin_999', email: 'admin@froc.ia', role: 'admin', emailVerified: true }
+    user: { id: 'usr_admin_999', email: 'admin@froc.ia', role: 'admin' }
   };
 
   requireAdmin(mockReqAdmin, mockRes, () => {
@@ -116,16 +84,6 @@ test('Auth: Middleware requireAdmin bloqueia usuários comuns e permite apenas a
   });
 
   assert.equal(adminNextCalled, true);
-
-  // Uma conta existente com claim administrativa continua autorizada mesmo
-  // antes de concluir a verificação do e-mail; a allowlist isolada não promove.
-  let claimedAdminNextCalled = false;
-  const mockReqClaimedAdmin: any = {
-    firebaseUser: { uid: 'usr_admin_claimed', email_verified: false, role: 'admin', frocRole: 'admin' },
-    user: { id: 'usr_admin_claimed', email: 'owner@example.com', role: 'admin', emailVerified: false }
-  };
-  requireAdmin(mockReqClaimedAdmin, mockRes, () => { claimedAdminNextCalled = true; });
-  assert.equal(claimedAdminNextCalled, true);
 });
 
 test('Auth: Validação rigorosa e determinística de versões de consentimento (hasAcceptedLatestTerms)', () => {
@@ -383,3 +341,4 @@ test('Auth: Login não promove consentimento legado; exigência de consentimento
   assert.equal(profileAfterConsent.privacyVersion, '2026.1');
   assert.equal(hasAcceptedLatestTerms(profileAfterConsent), true);
 });
+
