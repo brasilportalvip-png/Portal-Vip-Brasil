@@ -267,14 +267,7 @@ function safeWebUrl(value: unknown): string {
   if (!raw) return '';
   try {
     const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
-    if (!['http:', 'https:'].includes(url.protocol)) return '';
-    const hostname = url.hostname.toLowerCase();
-    // Em produção, valores acidentais como "icons/logo.png" viravam
-    // https://icons/logo.png. Hosts públicos precisam ter domínio completo;
-    // localhost continua disponível somente para desenvolvimento/testes.
-    const isLocal = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-    if (!isLocal && !hostname.includes('.')) return '';
-    return url.toString();
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : '';
   } catch {
     return '';
   }

@@ -588,7 +588,7 @@ export async function executeAutopilotJob(
           preset: 'pro_1080p',
           aspectRatio: '9:16',
           coverImageUrl: videoCoverImageUrl,
-          autoPublishPlatforms: effectiveMode === 'automatic' && config.video.directAutoPublishEnabled ? readyVideoTargets.map((item) => item.label) : [],
+          autoPublishPlatforms: effectiveMode === 'automatic' ? readyVideoTargets.map((item) => item.label) : [],
           autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' }
         });
 
