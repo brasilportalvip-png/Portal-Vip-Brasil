@@ -168,6 +168,12 @@ export async function ensureUserProfile(token: DecodedIdToken, extras: Partial<F
     const existingName = cleanText(existing.name, 120);
     const tokenEmail = normalizeEmail(token.email);
     const existingEmail = normalizeEmail(existing.email);
+    const derivedRole = roleFromToken(token);
+    const isExistingConfiguredOwner = existing.role === 'admin' && Boolean(
+      tokenEmail &&
+      existingEmail === tokenEmail &&
+      config.privateAdminEmails.includes(tokenEmail)
+    );
     const requestedCompanyId = extras.currentCompanyId === undefined
       ? undefined
       : cleanText(extras.currentCompanyId, 200);
@@ -179,7 +185,10 @@ export async function ensureUserProfile(token: DecodedIdToken, extras: Partial<F
       id: uid,
       name: requestedName || existingName || displayNameFromToken(token),
       email: tokenEmail || existingEmail,
-      role: roleFromToken(token),
+      // Migração sem bloqueio: um perfil administrativo já existente só é
+      // preservado quando UID/perfil, e-mail do token e allowlist oficial
+      // convergem. Isso não promove uma conta nova não verificada.
+      role: derivedRole === 'admin' || isExistingConfiguredOwner ? 'admin' : derivedRole,
       createdAt: normalizeIsoTimestamp(existing.createdAt) || now,
       updatedAt: now,
       termsAcceptedAt: requestedTermsAcceptedAt || normalizeIsoTimestamp(existing.termsAcceptedAt),
@@ -312,10 +321,16 @@ export async function requireAdmin(req: AuthenticatedRequest, res: Response, nex
     const emailVerified = req.firebaseUser
       ? req.firebaseUser.email_verified === true
       : req.user?.emailVerified === true;
+    const isExistingConfiguredOwner = Boolean(
+      req.user?.role === 'admin' &&
+      normalizeEmail(req.user.email) &&
+      config.privateAdminEmails.includes(normalizeEmail(req.user.email))
+    );
     // A verificação de e-mail é obrigatória para promoção por allowlist. Uma
     // claim admin já emitida pelo Firebase continua sendo autoridade válida e
     // evita bloquear o proprietário existente durante a migração.
-    if (!req.user || (!emailVerified && !hasExistingAdminClaim) || req.user.role !== 'admin' || tokenRole !== 'admin') {
+    const hasTrustedAdminAuthority = isExistingConfiguredOwner || hasExistingAdminClaim || (emailVerified && tokenRole === 'admin');
+    if (!req.user || req.user.role !== 'admin' || !hasTrustedAdminAuthority) {
       res.status(403).json({ error: 'Acesso restrito a administradores.' });
       return;
     }
