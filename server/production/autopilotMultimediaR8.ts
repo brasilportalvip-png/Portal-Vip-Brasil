@@ -1,4 +1,5 @@
 import { generateAutopilotPost, generateMarketingImage, startVideoGenerationJob } from './ai.js';
+import { config } from '../config/index.js';
 import { getPortalProjectFromDb, listAllPortalProjectsFromDb } from './almaPortfolio.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
 import { normalizeProvider, type SocialProvider } from './social.js';
@@ -408,13 +409,21 @@ export async function executeAutopilotJob(
       goal: ap.primaryGoal || 'Atrair clientes e gerar autoridade'
     });
 
-    // O mesmo MP4 vertical é distribuído a todas as redes selecionadas que
-    // possuem publicação de vídeo implementada no publicador universal.
+    // O mesmo MP4 vertical seria distribuído às redes de vídeo. A geração paga
+    // automática é fail-closed para proteger o orçamento até o novo pipeline
+    // publicitário com marca/CTA/revisão ser aprovado. A geração manual continua
+    // disponível no Estúdio de Vídeo.
     const videoProviders = new Set<SocialProvider>(['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest', 'linkedin', 'x']);
-    const videoTargets = targets.filter((target) => videoProviders.has(target.provider));
+    const imageCapableProviders = new Set<SocialProvider>(['facebook', 'instagram', 'pinterest', 'linkedin', 'x']);
+    const automaticPaidVideoEnabled = config.video.autoPaidGenerationEnabled;
+    const videoTargets = automaticPaidVideoEnabled
+      ? targets.filter((target) => videoProviders.has(target.provider))
+      : [];
     const youtubeSelected = videoTargets.some((target) => target.provider === 'youtube');
     const pinterestVideoSelected = videoTargets.some((target) => target.provider === 'pinterest');
-    const imageTargets = targets.filter((target) => !videoProviders.has(target.provider));
+    const imageTargets = automaticPaidVideoEnabled
+      ? targets.filter((target) => !videoProviders.has(target.provider))
+      : targets.filter((target) => imageCapableProviders.has(target.provider));
     let contentId: string | undefined;
     let scheduleId: string | undefined;
     let videoJobId: string | undefined;
