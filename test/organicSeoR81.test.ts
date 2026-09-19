@@ -45,6 +45,23 @@ test('R8.1 SEO: deep-link retorna somente versão publicada com consulta simples
   assert.equal(article?.status, 'published');
 });
 
+test('R8.1 SEO: listagem pública consolida registros legados com o mesmo slug', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  await db.collection(COLLECTIONS.blogArticles).doc('legacy-old').set({
+    id: 'legacy-old', slug: 'artigo-canonico-r81', title: 'Versão antiga', excerpt: 'Antiga',
+    status: 'published', publishedAt: '2026-09-01T10:00:00.000Z'
+  });
+  await db.collection(COLLECTIONS.blogArticles).doc('legacy-new').set({
+    id: 'legacy-new', slug: 'artigo-canonico-r81', title: 'Versão mais recente', excerpt: 'Nova',
+    status: 'published', publishedAt: '2026-09-05T10:00:00.000Z'
+  });
+
+  const result = await listBlogArticles({ status: 'published', limit: 20 });
+  assert.equal(result.total, 1);
+  assert.equal(result.articles[0]?.id, 'legacy-new');
+});
+
 test('R8.1 SEO: contratos de crescimento orgânico permanecem ativos no código', () => {
   const blog = source('server/production/blogEngine.ts');
   assert.match(blog, /generateMarketingImage/);
@@ -77,4 +94,5 @@ test('R8.1 SEO: contratos de crescimento orgânico permanecem ativos no código'
   const router = source('server/production/router.ts');
   assert.match(router, /collection\(COLLECTIONS\.blogArticles\)\.where\('status', '==', 'published'\)/);
   assert.match(router, /\/sitemap\.xml/);
+  assert.match(router, /s-maxage=300, stale-while-revalidate=3600/);
 });

@@ -1587,6 +1587,15 @@ export async function listBlogArticles(filters: {
     }
 
     items.sort((a, b) => String(b.publishedAt || b.createdAt || '').localeCompare(String(a.publishedAt || a.createdAt || '')));
+    // Registros legados podem compartilhar o mesmo slug. Para SEO, um slug representa
+    // uma única página canônica; mantenha somente a versão publicada mais recente.
+    const seenSlugs = new Set<string>();
+    items = items.filter((article) => {
+      const normalizedSlug = slugify(article.slug || article.title || article.id);
+      if (!normalizedSlug || seenSlugs.has(normalizedSlug)) return false;
+      seenSlugs.add(normalizedSlug);
+      return true;
+    });
     const total = items.length;
     const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
     const offset = Math.max(Number(filters.offset || 0), 0);
@@ -1617,6 +1626,13 @@ export async function listBlogArticles(filters: {
       );
     }
     items.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
+    const seenSlugs = new Set<string>();
+    items = items.filter((article) => {
+      const normalizedSlug = slugify(article.slug || article.title || article.id);
+      if (!normalizedSlug || seenSlugs.has(normalizedSlug)) return false;
+      seenSlugs.add(normalizedSlug);
+      return true;
+    });
     const total = items.length;
     const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
     const offset = Math.max(Number(filters.offset || 0), 0);
