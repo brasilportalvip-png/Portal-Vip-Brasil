@@ -1782,14 +1782,8 @@ router.delete('/alma/memories/:id', requireAuth, asyncRoute(async (req: Authenti
 }));
 
 // Technical SEO endpoints
-router.get('/sitemap.xml', asyncRoute(async (_req, res) => {
-  res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=3600');
-  res.type('application/xml').send(await buildSitemapXml());
-}));
-router.get('/robots.txt', (_req, res) => {
-  res.set('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
-  res.type('text/plain').send(buildRobotsTxt());
-});
+router.get('/sitemap.xml', asyncRoute(async (_req, res) => res.type('application/xml').send(await buildSitemapXml())));
+router.get('/robots.txt', (_req, res) => res.type('text/plain').send(buildRobotsTxt()));
 
 export async function buildSitemapXml(): Promise<string> {
   const base = config.appUrl.replace(/\/$/, '');

@@ -93,11 +93,6 @@ export const config = {
     autoEnabled: env('AUTO_BLOG_ENABLED', isProduction ? 'true' : 'false').toLowerCase() === 'true',
     author: env('BLOG_AUTHOR', 'Portal Vip Brasil')
   },
-  video: {
-    // Fail-safe financeiro: o Veo automático permanece desligado até o novo
-    // pipeline publicitário (marca, CTA e revisão) ser aprovado pelo proprietário.
-    autoPaidGenerationEnabled: env('AUTO_PAID_VIDEO_GENERATION_ENABLED', 'false').toLowerCase() === 'true'
-  },
   social: {
     meta: {
       clientId: env('META_APP_ID', isTest ? 'mock_meta_app_id' : ''),

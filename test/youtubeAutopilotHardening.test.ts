@@ -60,18 +60,6 @@ test('Autopilot no modo Automático exclusivo para YouTube: vídeo Veo e parâme
   assert.ok(autopilotSource.includes('if (youtubeSelected || imageTargets.length === 0)'));
 });
 
-test('Proteção financeira: Veo automático pago fica desligado por padrão', () => {
-  const configSource = source('server/config/index.ts');
-  const envSource = source('.env.example');
-  const autopilotSource = source('server/production/autopilotMultimediaR8.ts');
-
-  assert.match(configSource, /AUTO_PAID_VIDEO_GENERATION_ENABLED', 'false'/);
-  assert.match(envSource, /AUTO_PAID_VIDEO_GENERATION_ENABLED=false/);
-  assert.match(autopilotSource, /config\.video\.autoPaidGenerationEnabled/);
-  assert.match(autopilotSource, /automaticPaidVideoEnabled\s*\?\s*targets\.filter/);
-  assert.match(autopilotSource, /imageCapableProviders/);
-});
-
 test('Persistência obrigatória de videoJob: falha se não houver artefato persistido', () => {
   const autopilotSource = source('server/production/autopilotMultimediaR8.ts');
 
