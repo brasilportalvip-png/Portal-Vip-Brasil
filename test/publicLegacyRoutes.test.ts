@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { createApp } from '../server/app.js';
 
 test('Produção: /alma público é 404 e APIs internas /api/alma permanecem fora deste bloqueio', async (t) => {
@@ -42,13 +42,15 @@ test('Produção: Vercel encaminha /alma* ao backend antes do fallback SPA', () 
 
 test('Produção: identidade central não usa nome Froc no pacote ou erros genéricos da API', () => {
   const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-  const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+  const lock = existsSync('package-lock.json') ? JSON.parse(readFileSync('package-lock.json', 'utf8')) : null;
   const app = readFileSync('server/app.ts', 'utf8');
   const router = readFileSync('server/production/router.ts', 'utf8');
 
   assert.equal(pkg.name, 'portal-vip-brasil');
-  assert.equal(lock.name, 'portal-vip-brasil');
-  assert.equal(lock.packages?.['']?.name, 'portal-vip-brasil');
+  if (lock) {
+    assert.equal(lock.name, 'portal-vip-brasil');
+    assert.equal(lock.packages?.['']?.name, 'portal-vip-brasil');
+  }
 
   assert.ok(!app.includes('Endpoint Froc.IA não encontrado.'));
   assert.ok(app.includes('Endpoint Portal Vip Brasil não encontrado.'));

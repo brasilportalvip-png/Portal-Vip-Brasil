@@ -32,6 +32,9 @@ function createMockMp4Buffer(byteLength = 1024): Buffer {
 // ==========================================
 test('TikTok OAuth: Escopos cirúrgicos aprovados (user.info.basic, video.upload; sem video.publish)', async () => {
   resetMemoryDb();
+  if (!process.env.TIKTOK_CLIENT_KEY) {
+    process.env.TIKTOK_CLIENT_KEY = 'mock_tiktok_client_id';
+  }
   const oauth = await createOAuthUrl({
     provider: 'tiktok',
     userId: 'usr_test_tiktok_1',

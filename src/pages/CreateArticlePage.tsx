@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { Company } from '../types';
 import { apiRequest } from '../lib/api';
+import { YoastSeoAuditor } from '../components/YoastSeoAuditor';
 
 interface CreateArticlePageProps {
   selectedCompany: Company | null;
@@ -294,6 +295,20 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
           )}
         </div>
       </div>
+
+      {/* Auditoria Yoast SEO & Legibilidade Completa */}
+      {generatedArticle && (
+        <YoastSeoAuditor
+          target={{
+            title: generatedArticle.title,
+            metaDescription: generatedArticle.metaDescription,
+            slug: generatedArticle.suggestedSlug || primaryKeyword.toLowerCase().replace(/\s+/g, '-'),
+            focusKeyword: primaryKeyword || topic,
+            content: getFullArticleText(),
+            faqCount: generatedArticle.faqSection?.length || 0
+          }}
+        />
+      )}
     </div>
   );
 };

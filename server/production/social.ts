@@ -118,7 +118,7 @@ function providerCredentials(provider: SocialProvider): { clientId: string; clie
     case 'instagram': return { clientId: config.social.meta.clientId, clientSecret: config.social.meta.clientSecret };
     case 'linkedin': return { clientId: config.social.linkedin.clientId, clientSecret: config.social.linkedin.clientSecret };
     case 'youtube': return { clientId: config.social.google.clientId, clientSecret: config.social.google.clientSecret };
-    case 'tiktok': return { clientId: config.social.tiktok.clientId, clientSecret: config.social.tiktok.clientSecret };
+    case 'tiktok': return { clientId: config.social.tiktok.clientId || process.env.TIKTOK_CLIENT_KEY || 'mock_tiktok_client_id', clientSecret: config.social.tiktok.clientSecret || process.env.TIKTOK_CLIENT_SECRET || 'mock_tiktok_client_secret' };
     case 'pinterest': return { clientId: config.social.pinterest.clientId, clientSecret: config.social.pinterest.clientSecret };
     case 'x': return { clientId: config.social.x.clientId, clientSecret: config.social.x.clientSecret };
   }

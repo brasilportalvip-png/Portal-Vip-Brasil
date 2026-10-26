@@ -4,6 +4,7 @@ import https from 'node:https';
 import net from 'net';
 import { COLLECTIONS, firestore, newId, nowIso } from './store.js';
 import { executeAi, parseAiJson } from './ai.js';
+import { config } from '../config/index.js';
 
 const MAX_HTML_BYTES = 2 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
@@ -323,4 +324,163 @@ Responda SOMENTE em JSON válido no formato: {"recommendations":[""],"generatedO
   };
   await firestore().collection(COLLECTIONS.seoReports).doc(id).set(report);
   return report;
+}
+
+export interface SearchEnginePingResult {
+  engine: 'Google' | 'Bing' | 'IndexNow' | 'Yandex';
+  success: boolean;
+  statusCode?: number;
+  message: string;
+  durationMs: number;
+  timestamp: string;
+}
+
+export async function pingAllSearchEngines(customSitemapUrl?: string): Promise<{
+  sitemapUrl: string;
+  results: SearchEnginePingResult[];
+  overallSuccess: boolean;
+  timestamp: string;
+}> {
+  const base = config.appUrl.replace(/\/$/, '');
+  const sitemapUrl = customSitemapUrl || `${base}/sitemap.xml`;
+  const timestamp = nowIso();
+
+  const pingTargets = [
+    {
+      engine: 'Google' as const,
+      url: `https://www.google.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`,
+      method: 'GET'
+    },
+    {
+      engine: 'Bing' as const,
+      url: `https://www.bing.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`,
+      method: 'GET'
+    },
+    {
+      engine: 'Yandex' as const,
+      url: `https://webmaster.yandex.ru/ping?sitemap=${encodeURIComponent(sitemapUrl)}`,
+      method: 'GET'
+    }
+  ];
+
+  const results: SearchEnginePingResult[] = [];
+
+  // Pings convencionais de Sitemap via HTTP GET
+  await Promise.all(
+    pingTargets.map(async (target) => {
+      const start = Date.now();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+
+      try {
+        const res = await fetch(target.url, {
+          method: 'GET',
+          headers: { 'User-Agent': 'PortalVipBrasil-SitemapPinger/2.0' },
+          signal: controller.signal
+        });
+        const durationMs = Date.now() - start;
+        const success = res.status >= 200 && res.status < 400;
+        results.push({
+          engine: target.engine,
+          success,
+          statusCode: res.status,
+          message: success
+            ? `Ping recebido com sucesso (HTTP ${res.status})`
+            : `Mecanismo respondeu com código ${res.status}`,
+          durationMs,
+          timestamp
+        });
+      } catch (err: any) {
+        const durationMs = Date.now() - start;
+        results.push({
+          engine: target.engine,
+          success: false,
+          message: `Falha na conexão: ${err?.name === 'AbortError' ? 'Timeout de 6s excedido' : err?.message || 'Falha de rede'}`,
+          durationMs,
+          timestamp
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    })
+  );
+
+  // Submissão ao IndexNow (Microsoft Bing, Seznam, Naver, Yandex)
+  const indexNowKey = config.indexNowKey || 'portalvipbrasil2026';
+  const startIn = Date.now();
+  const inController = new AbortController();
+  const inTimeout = setTimeout(() => inController.abort(), 6000);
+
+  try {
+    const host = new URL(base).host;
+    const payload = {
+      host,
+      key: indexNowKey,
+      keyLocation: `${base}/indexnow-key.txt`,
+      urlList: [
+        `${base}/`,
+        `${base}/vitrine`,
+        `${base}/blog`,
+        sitemapUrl
+      ]
+    };
+
+    const res = await fetch('https://api.indexnow.org/indexnow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=utf-8' },
+      body: JSON.stringify(payload),
+      signal: inController.signal
+    });
+
+    const durationMs = Date.now() - startIn;
+    const success = res.status === 200 || res.status === 202;
+    results.push({
+      engine: 'IndexNow',
+      success,
+      statusCode: res.status,
+      message: success
+        ? `IndexNow aceitou o lote de URLs (HTTP ${res.status})`
+        : `IndexNow retornou código ${res.status}`,
+      durationMs,
+      timestamp
+    });
+  } catch (err: any) {
+    results.push({
+      engine: 'IndexNow',
+      success: false,
+      message: `Falha de transporte IndexNow: ${err?.message || 'Erro'}`,
+      durationMs: Date.now() - startIn,
+      timestamp
+    });
+  } finally {
+    clearTimeout(inTimeout);
+  }
+
+  // Persiste histórico de pings para auditoria
+  try {
+    const db = firestore();
+    await db.collection(COLLECTIONS.systemSettings).doc('latest_sitemap_ping').set({
+      sitemapUrl,
+      results,
+      overallSuccess: results.some((r) => r.success),
+      timestamp
+    }, { merge: true });
+  } catch {
+    // Gravação best-effort
+  }
+
+  return {
+    sitemapUrl,
+    results,
+    overallSuccess: results.some((r) => r.success),
+    timestamp
+  };
+}
+
+export async function getSearchEnginePingStatus(): Promise<any> {
+  try {
+    const doc = await firestore().collection(COLLECTIONS.systemSettings).doc('latest_sitemap_ping').get();
+    if (doc.exists) return doc.data();
+  } catch {}
+  return null;
 }

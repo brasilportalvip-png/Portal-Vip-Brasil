@@ -1,5 +1,22 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Bot, CheckCircle2, Rocket, ShieldCheck, Zap, RefreshCw, AlertTriangle, Clock, Film, Globe, Sparkles } from 'lucide-react';
+import {
+  Bot,
+  CheckCircle2,
+  Rocket,
+  ShieldCheck,
+  Zap,
+  RefreshCw,
+  AlertTriangle,
+  Clock,
+  Film,
+  Globe,
+  Sparkles,
+  Power,
+  DollarSign,
+  Sliders,
+  ShieldAlert,
+  Coins
+} from 'lucide-react';
 import type { Company } from '../types';
 import { apiRequest } from '../lib/api';
 
@@ -8,6 +25,34 @@ interface Props {
   selectedCompany: Company | null;
   onRefreshContents: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
+}
+
+interface MasterAutomationControl {
+  globalEnabled: boolean;
+  requireManualApproval: boolean;
+  maxDailyVideos: number;
+  maxDailyImages: number;
+  maxDailyArticles: number;
+  monthlyBudgetCapBrl: number;
+  pauseAllExternalApis: boolean;
+  projectToggles: Record<string, boolean>;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+interface CostSummary {
+  estimatedDailyCostBrl: number;
+  estimatedMonthlyCostBrl: number;
+  todayVideoCount: number;
+  todayImageCount: number;
+  todayArticleCount: number;
+  activeProjectsCount: number;
+  totalProjectsCount: number;
+  breakdown: {
+    videosBrl: number;
+    imagesBrl: number;
+    articlesBrl: number;
+  };
 }
 
 interface AutopilotConfig {
@@ -100,13 +145,42 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
   const isRunningRef = useRef(false);
 
-  useEffect(() => {
-    if (selectedCompany?.id) {
-      setActiveCompanyId(selectedCompany.id);
-    } else if (companies.length > 0 && !activeCompanyId) {
-      setActiveCompanyId(companies[0].id);
+  // Controle Mestre da Automação (Ligar/Desligar Global e Guardião de Custos)
+  const [masterControl, setMasterControl] = useState<MasterAutomationControl>({
+    globalEnabled: true,
+    requireManualApproval: false,
+    maxDailyVideos: 4,
+    maxDailyImages: 10,
+    maxDailyArticles: 10,
+    monthlyBudgetCapBrl: 150,
+    pauseAllExternalApis: false,
+    projectToggles: {}
+  });
+  const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
+  const [loadingMaster, setLoadingMaster] = useState(false);
+  const [savingMaster, setSavingMaster] = useState(false);
+
+  const loadMasterControl = async () => {
+    try {
+      const data = await apiRequest<{ control: MasterAutomationControl }>('/api/autopilot/master-control');
+      if (data.control) {
+        setMasterControl(data.control);
+      }
+    } catch {
+      // Ignora erro
     }
-  }, [selectedCompany?.id, companies]);
+  };
+
+  const loadCostSummary = async () => {
+    try {
+      const data = await apiRequest<{ summary: CostSummary }>('/api/autopilot/cost-summary');
+      if (data.summary) {
+        setCostSummary(data.summary);
+      }
+    } catch {
+      // Ignora erro
+    }
+  };
 
   const loadOverview = async () => {
     setLoadingOverview(true);
@@ -123,7 +197,77 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   };
 
   useEffect(() => {
+    if (selectedCompany?.id) {
+      setActiveCompanyId(selectedCompany.id);
+    } else if (companies.length > 0 && !activeCompanyId) {
+      setActiveCompanyId(companies[0].id);
+    }
+  }, [selectedCompany?.id, companies]);
+
+  useEffect(() => {
     loadOverview();
+  }, []);
+
+  const toggleGlobalMaster = async () => {
+    const nextState = !masterControl.globalEnabled;
+    setSavingMaster(true);
+    try {
+      const data = await apiRequest<{ control: MasterAutomationControl; message: string }>('/api/autopilot/master-control', {
+        method: 'POST',
+        body: { globalEnabled: nextState }
+      });
+      setMasterControl(data.control);
+      setMessage(data.message || (nextState ? 'Automação Global LIGADA.' : 'Automação Global PAUSADA com sucesso!'));
+      await loadCostSummary();
+    } catch (err: any) {
+      setMessage(`Erro ao alternar chave geral: ${err.message}`);
+    } finally {
+      setSavingMaster(false);
+    }
+  };
+
+  const updateMasterControlSettings = async (patchObj: Partial<MasterAutomationControl>) => {
+    setSavingMaster(true);
+    try {
+      const data = await apiRequest<{ control: MasterAutomationControl; message: string }>('/api/autopilot/master-control', {
+        method: 'POST',
+        body: patchObj
+      });
+      setMasterControl(data.control);
+      setMessage(data.message || 'Configurações de controle de custos salvas.');
+      await loadCostSummary();
+    } catch (err: any) {
+      setMessage(`Erro ao salvar limites: ${err.message}`);
+    } finally {
+      setSavingMaster(false);
+    }
+  };
+
+  const toggleSingleProject = async (projectId: string, currentEnabled: boolean) => {
+    try {
+      const nextVal = !currentEnabled;
+      const data = await apiRequest<{ success: boolean; enabled: boolean; message: string }>('/api/autopilot/project-toggle', {
+        method: 'POST',
+        body: { projectId, enabled: nextVal }
+      });
+      setMasterControl((prev) => ({
+        ...prev,
+        projectToggles: {
+          ...prev.projectToggles,
+          [projectId]: data.enabled
+        }
+      }));
+      await loadOverview();
+      await loadCostSummary();
+      setMessage(data.message);
+    } catch (err: any) {
+      setMessage(`Erro ao alterar projeto: ${err.message}`);
+    }
+  };
+
+  useEffect(() => {
+    loadMasterControl();
+    loadCostSummary();
   }, []);
 
   useEffect(() => {
@@ -351,7 +495,184 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 animate-fadeIn">
-      {/* Header Principal */}
+      {/* ======================================================== */}
+      {/* PAINEL MESTRE DE CONTROLE DE CUSTOS & LIGA/DESLIGA GERAL */}
+      {/* ======================================================== */}
+      <section
+        className={`rounded-3xl border p-6 md:p-8 shadow-2xl transition-all ${
+          masterControl.globalEnabled
+            ? 'border-emerald-500/40 bg-gradient-to-br from-[#061d15] via-[#09151e] to-[#080d1a]'
+            : 'border-rose-500/40 bg-gradient-to-br from-[#24080e] via-[#1a0a14] to-[#080d1a]'
+        }`}
+      >
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 border-b border-white/[0.08] pb-6">
+          <div className="flex items-start gap-4">
+            <div
+              className={`grid h-16 w-16 shrink-0 place-items-center rounded-2xl border transition-all ${
+                masterControl.globalEnabled
+                  ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-300 shadow-lg shadow-emerald-500/20'
+                  : 'border-rose-400/50 bg-rose-500/20 text-rose-300 shadow-lg shadow-rose-500/20'
+              }`}
+            >
+              <Power size={32} className={masterControl.globalEnabled ? 'animate-pulse' : ''} />
+            </div>
+            <div>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider ${
+                    masterControl.globalEnabled
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/50'
+                  }`}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${masterControl.globalEnabled ? 'bg-emerald-400 animate-ping' : 'bg-rose-400'}`} />
+                  {masterControl.globalEnabled ? 'AUTOMAÇÃO LIGADA' : 'AUTOMAÇÃO DESLIGADA / PAUSADA'}
+                </span>
+                {masterControl.requireManualApproval && (
+                  <span className="rounded-full border border-amber-500/40 bg-amber-500/20 px-2.5 py-0.5 text-[10px] font-bold text-amber-300">
+                    Aprovação Manual Ativa
+                  </span>
+                )}
+              </div>
+              <h2 className="mt-2 text-xl md:text-2xl font-black text-white">
+                {masterControl.globalEnabled
+                  ? 'Sistema Operando Normalmente'
+                  : 'Todos os Gastos & Disparos Estão Pausados'}
+              </h2>
+              <p className="mt-1 text-xs text-slate-300 max-w-xl leading-relaxed">
+                {masterControl.globalEnabled
+                  ? 'O Portal Vip Brasil gera conteúdos automáticos diários respeitando seu teto de gastos configurado abaixo.'
+                  : 'Zero custos automáticos. Nenhum vídeo Veo, imagem ou post em redes sociais será disparado sem você autorizar.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Botão Mestre Ligar / Desligar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={toggleGlobalMaster}
+              disabled={savingMaster}
+              className={`flex items-center justify-center gap-3 rounded-2xl px-6 py-4 text-sm font-black transition-all shadow-xl disabled:opacity-50 ${
+                masterControl.globalEnabled
+                  ? 'border border-rose-500/60 bg-rose-600/20 text-rose-200 hover:bg-rose-600/40 hover:border-rose-400'
+                  : 'border border-emerald-500/60 bg-emerald-600/30 text-emerald-200 hover:bg-emerald-600/50 hover:border-emerald-300 shadow-emerald-500/20'
+              }`}
+            >
+              <Power size={20} className={savingMaster ? 'animate-spin' : ''} />
+              {savingMaster
+                ? 'Atualizando...'
+                : masterControl.globalEnabled
+                ? 'DESLIGAR AUTOMAÇÃO GERAL'
+                : 'LIGAR AUTOMAÇÃO GERAL'}
+            </button>
+          </div>
+        </div>
+
+        {/* Centro de Controle de Custos e Guardião de Orçamento */}
+        <div className="mt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+              <DollarSign size={15} className="text-amber-400" /> Guardião Financeiro & Limites Diários de IA
+            </h3>
+            <span className="text-[11px] text-slate-400">
+              Valores calculados em tempo real
+            </span>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Card 1: Gasto Estimado Hoje */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Gasto Estimado Hoje</span>
+              <div className="text-xl font-black text-amber-300">
+                R$ {(costSummary?.estimatedDailyCostBrl || 0).toFixed(2)}
+              </div>
+              <p className="text-[10px] text-slate-400">
+                {costSummary?.todayVideoCount || 0} vídeos Veo · {costSummary?.todayImageCount || 0} imagens 1K
+              </p>
+            </div>
+
+            {/* Card 2: Projeção Mensal vs Teto */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Projeção Mensal</span>
+              <div className="text-xl font-black text-white">
+                R$ {(costSummary?.estimatedMonthlyCostBrl || 0).toFixed(2)}{' '}
+                <span className="text-xs font-normal text-slate-400">
+                  / R$ {masterControl.monthlyBudgetCapBrl}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Teto máximo seguro por mês
+              </p>
+            </div>
+
+            {/* Card 3: Limite de Vídeos Diários */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Limite Máximo de Vídeos</span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={masterControl.maxDailyVideos}
+                  onChange={(e) => updateMasterControlSettings({ maxDailyVideos: Number(e.target.value) })}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-white focus:outline-none focus:border-cyan-400"
+                >
+                  <option value={0}>0 (Zero vídeos)</option>
+                  <option value={1}>1 vídeo/dia</option>
+                  <option value={2}>2 vídeos/dia</option>
+                  <option value={4}>4 vídeos/dia (Padrão)</option>
+                  <option value={8}>8 vídeos/dia</option>
+                  <option value={15}>15 vídeos/dia</option>
+                </select>
+                <Film size={14} className="text-cyan-400" />
+              </div>
+              <p className="text-[10px] text-slate-400">Evita sobrecusto com Veo 3.1</p>
+            </div>
+
+            {/* Card 4: Teto de Orçamento Mensal */}
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Teto Orçamentário (R$)</span>
+              <div className="flex items-center gap-2">
+                <select
+                  value={masterControl.monthlyBudgetCapBrl}
+                  onChange={(e) => updateMasterControlSettings({ monthlyBudgetCapBrl: Number(e.target.value) })}
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-white focus:outline-none focus:border-cyan-400"
+                >
+                  <option value={30}>R$ 30 / mês (Econômico)</option>
+                  <option value={50}>R$ 50 / mês</option>
+                  <option value={100}>R$ 100 / mês</option>
+                  <option value={150}>R$ 150 / mês (Recomendado)</option>
+                  <option value={300}>R$ 300 / mês</option>
+                  <option value={500}>R$ 500 / mês (Ilimitado)</option>
+                </select>
+                <Coins size={14} className="text-amber-400" />
+              </div>
+              <p className="text-[10px] text-slate-400">Bloqueio automático ao atingir</p>
+            </div>
+          </div>
+
+          {/* Opção de Trava de Aprovação Manual Obrigatória */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-3.5 text-xs">
+            <div className="flex items-center gap-2 text-slate-300">
+              <ShieldCheck size={16} className="text-cyan-400" />
+              <span>
+                <strong>Trava de Segurança:</strong> Exigir aprovação manual para cada post antes de debitar ou publicar?
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => updateMasterControlSettings({ requireManualApproval: !masterControl.requireManualApproval })}
+              className={`rounded-xl px-4 py-1.5 text-xs font-bold transition-all ${
+                masterControl.requireManualApproval
+                  ? 'border border-amber-500/50 bg-amber-500/20 text-amber-300'
+                  : 'border border-slate-700 bg-slate-900 text-slate-400 hover:text-white'
+              }`}
+            >
+              {masterControl.requireManualApproval ? 'Aprovação Manual ATIVA' : 'Disparo Automático Direto'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Header Secundário & Motores */}
       <header className="rounded-3xl border border-emerald-500/25 bg-emerald-500/5 p-6 md:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
@@ -368,7 +689,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
           <div className="flex items-center gap-2">
             <button
               onClick={runAllActiveNow}
-              disabled={runningAll || loading}
+              disabled={runningAll || loading || !masterControl.globalEnabled}
               className="flex items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-500/20 px-4 py-3 text-xs font-bold text-emerald-200 transition-all hover:bg-emerald-500/30 disabled:opacity-50"
             >
               <Sparkles size={16} className={runningAll ? 'animate-spin' : ''} />
@@ -481,15 +802,22 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                         </span>
                       )}
                     </div>
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSingleProject(item.project.id, item.autopilot.enabled);
+                      }}
+                      title={item.autopilot.enabled ? 'Clique para pausar este projeto' : 'Clique para ligar este projeto'}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black cursor-pointer transition-all hover:scale-105 ${
                         item.autopilot.enabled
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                          : 'bg-slate-800/80 text-slate-400 border border-slate-700'
+                          ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/50 shadow-sm shadow-emerald-500/20'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
                       }`}
                     >
-                      {item.autopilot.enabled ? 'Autopilot ON' : 'Autopilot OFF'}
-                    </span>
+                      <span className={`h-1.5 w-1.5 rounded-full ${item.autopilot.enabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                      {item.autopilot.enabled ? 'LIGADO' : 'PAUSADO'}
+                    </button>
                   </div>
 
                   {/* Status das duas camadas */}

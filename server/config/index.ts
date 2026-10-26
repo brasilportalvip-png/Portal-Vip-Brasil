@@ -4,7 +4,7 @@ dotenv.config();
 
 const nodeEnv = process.env.NODE_ENV || 'development';
 const isProduction = nodeEnv === 'production';
-const isTest = nodeEnv === 'test' || process.env.NODE_ENV === 'test';
+const isTest = nodeEnv === 'test' || process.env.NODE_ENV === 'test' || process.env.npm_lifecycle_event === 'test' || process.argv.includes('--test') || process.execArgv.includes('--test');
 
 function env(name: string, fallback = ''): string {
   const val = (process.env[name] ?? '').trim();

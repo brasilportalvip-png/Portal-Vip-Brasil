@@ -32,6 +32,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SupportPage } from './pages/SupportPage';
 import { LegalPage } from './pages/LegalPage';
 import { AdminPage } from './pages/AdminPage';
+import { AlmaAgentsPage } from './pages/AlmaAgentsPage';
 
 import type { Campaign, Company, ContentItem, ScheduledPost, User } from './types';
 import { ApiRequestError, apiRequest, isApiAbortError } from './lib/api';
@@ -50,6 +51,7 @@ const TAB_PATH: Record<string, string> = {
   'criar-imagem': '/criar-imagem',
   'criar-video': '/criar-video',
   'criar-artigo': '/criar-artigo',
+  agentes: '/agentes',
   seo: '/seo',
   campanhas: '/campanhas',
   calendario: '/calendario',
@@ -71,6 +73,8 @@ const TAB_PATH: Record<string, string> = {
 const TAB_ALIASES: Record<string, string> = {
   artigos: 'home',
   posts: 'home',
+  agents: 'agentes',
+  ia: 'agentes',
   estrategia: 'froc-ia',
   configuracoes: 'perfil',
   redes: 'redes-sociais',
@@ -443,6 +447,8 @@ export function App() {
             onNavigate={navigate}
           />
         );
+      case 'agentes':
+        return <AlmaAgentsPage />;
       case 'seo':
         return (
           <SeoPage

@@ -3,11 +3,11 @@ import { getAdminAuth, getAdminStorage } from '../providers/firebaseAdmin.js';
 import { config } from '../config/index.js';
 import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, ensureUserProfile, hasAcceptedLatestTerms, requireAdmin, requireAuth } from './auth.js';
 import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, manualRetryVideoJob, processPendingVideoJobs, listUserVideoJobs, textAiClient } from './ai.js';
-import { analyzeSeo } from './seo.js';
+import { analyzeSeo, pingAllSearchEngines, getSearchEnginePingStatus } from './seo.js';
 import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
 import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
-import { DEFAULT_AUTOPILOT_TARGET_PLATFORMS, getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors, isLegacyUnsplashImage } from './autopilotMultimediaR8.js';
+import { DEFAULT_AUTOPILOT_TARGET_PLATFORMS, getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors, isLegacyUnsplashImage, getMasterAutomationControl, updateMasterAutomationControl, calculateAutopilotCostSummary } from './autopilotMultimediaR8.js';
 
 function annotateLegacyImageRecord<T extends { imageUrl?: string; metadata?: any }>(item: T): T {
   const isLegacy = isLegacyUnsplashImage(item.imageUrl) || item.metadata?.imageDuplicateDetected === true;
@@ -667,6 +667,114 @@ router.post('/seo/analyze', requireAuth, asyncRoute(async (req: AuthenticatedReq
   res.json({ report: await analyzeSeo({ userId: req.user!.id, rawUrl: url, company }) });
 }));
 
+router.post('/seo/ping-all', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const customUrl = safeString(req.body?.sitemapUrl, 1000) || undefined;
+  const result = await pingAllSearchEngines(customUrl);
+  res.json(result);
+}));
+
+router.get('/seo/ping-status', requireAuth, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  const status = await getSearchEnginePingStatus();
+  res.json({ status });
+}));
+
+// Central de 30 Agentes Especialistas Portal Vip Brasil
+router.post('/ai/agent-chat', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const agentId = safeString(req.body?.agentId, 100);
+  const prompt = safeString(req.body?.prompt, 10000);
+  const companyId = safeString(req.body?.companyId, 200);
+
+  if (!agentId || !prompt) {
+    return res.status(400).json({ error: 'agentId e prompt são obrigatórios.' });
+  }
+
+  const project = companyId ? await getPortalProjectFromDb(companyId).catch(() => null) : null;
+  const projectContextInfo = project
+    ? `PROJETO ATIVO SELECIONADO:
+- Nome: ${project.name}
+- Categoria: ${project.category}
+- Segmento: ${project.segment}
+- Website Oficial: ${project.websiteUrl}
+- Google Play Store: ${project.playStoreUrl || 'Sem aplicativo cadastrado'}
+- Público-Alvo: ${project.targetAudience}
+- Diferenciais Principais: ${project.highlights?.join(', ') || ''}
+- Palavras-Chave de Foco: ${project.keywords?.join(', ')}`
+    : `CONTEXTO GERAL: Portal Vip Brasil — Ecossistema de Marketing, Vitrine Digital e Divulgação Automática.`;
+
+  const agentSpecializations: Record<string, { name: string; instruction: string }> = {
+    TECH_ARCHITECT: { name: 'Agente 01 · Tecnologia & Arquitetura Web', instruction: 'Especialista em desenvolvimento web, APIs escaláveis, PWA e performance técnica sem bugs.' },
+    AI_ENGINEER: { name: 'Agente 02 · Inteligência Artificial & LLMs', instruction: 'Especialista em IA generativa, modelos Google Gemini 3.x/Flash, fine-tuning e engenharia de contexto.' },
+    PORTUGUESE_COPYWRITER: { name: 'Agente 03 · Redação & Copywriting Nativo (PT-BR)', instruction: 'Copywriter mestre em português do Brasil, storytelling magnético, ganchos persuasivos e gramática impecável.' },
+    YOAST_SEO: { name: 'Agente 04 · SEO Técnico On-Page (Padrão Yoast & RankMath)', instruction: 'Auditor e estrategista de SEO On-Page. Avalia palavras-chave em H1-H3, densidade ideal (1.5%), Flesch-Kincaid e meta descriptions de 150 caracteres.' },
+    SITEMAP_ARCHITECT: { name: 'Agente 05 · XML Sitemaps & Arquitetura de Indexação', instruction: 'Especialista em Sitemaps XML completos com tags de imagem (<image:image>), lastmod ISO-8601, prioridades e changefreq.' },
+    SEARCH_PING_MASTER: { name: 'Agente 06 · Ping & Notificação Global de Motores de Busca', instruction: 'Orquestrador de ping para Google, Bing, IndexNow e Yandex, garantindo indexação ultrarrápida de URLs novas.' },
+    GOOGLE_ADS: { name: 'Agente 07 · Google Ads Search & Performance Max', instruction: 'Gestor de tráfego pago em Google Ads com foco em alto CTR, palavras-chave negativas, títulos atraentes e conversões.' },
+    META_ADS: { name: 'Agente 08 · Meta Ads (Instagram & Facebook)', instruction: 'Especialista em criativos visuais, carrosséis, stories e copies de alta conversão para o público do Meta.' },
+    TIKTOK_ADS: { name: 'Agente 09 · TikTok Ads & Criativos Virais', instruction: 'Estrategista de vídeos no TikTok. Domina a quebra de padrão nos 3 primeiros segundos (hook), legendas na tela e áudios virais.' },
+    PINTEREST_ADS: { name: 'Agente 10 · Pinterest Ads & Tráfego Visual Orgânico', instruction: 'Especialista em pins verticais 2:3, SEO de imagens no Pinterest, palavras-chave visuais e tráfego orgânico perene.' },
+    LINKEDIN_ADS: { name: 'Agente 11 · LinkedIn Ads & B2B Growth', instruction: 'Redator executivo e gestor de autoridade corporativa no LinkedIn, focado em parcerias e decisores.' },
+    YOUTUBE_STRATEGIST: { name: 'Agente 12 · YouTube Ads & Shorts Veo', instruction: 'Roteirista de YouTube Shorts e vídeos de retenção máxima de 15s a 60s com ganchos fortes e CTAs estratégicos.' },
+    VEO_VIDEO_DIRECTOR: { name: 'Agente 13 · Diretor de Prompts de Vídeo Veo 3.1', instruction: 'Diretor cinematográfico para Veo 3.1 da Google. Cria prompts com movimentos de câmera precisos, iluminação e sem texto poluído na tela.' },
+    IMAGE_DIRECTOR_ANTI_COLLISION: { name: 'Agente 14 · Diretor de Imagens & Design (Anti-Repetição)', instruction: 'Diretor de arte e fotografia publicitária. Cria prompts fotorrealistas hiper-relevantes ao nicho do projeto, com regras negativas contra fotos genéricas de escritório.' },
+    PROMPT_ENGINEERING: { name: 'Agente 15 · Engenheiro de Prompts Profissionais', instruction: 'Engenheiro de prompt avançado, refinando briefings em instruções precisas para extrair o melhor resultado de qualquer IA.' },
+    EDITORIAL_STRATEGIST: { name: 'Agente 16 · Estrategista de Conteúdo & Calendário Editorial', instruction: 'Planejador de 30 dias de pautas editoriais conectadas às dores reais da audiência e sazonalidade.' },
+    GROWTH_HACKING: { name: 'Agente 17 · Growth Hacking & Loops Virais', instruction: 'Estrategista de crescimento exponencial, táticas de compartilhamento, bônus de indicação e retenção de usuários.' },
+    CRO_CONVERSION: { name: 'Agente 18 · Otimização de Conversão (CRO & Landing Pages)', instruction: 'Especialista em páginas de pouso que convertem cliques em clientes, provas sociais e redução de atrito.' },
+    ASO_PLAY_STORE: { name: 'Agente 19 · Otimização na Play Store (ASO) & Downloads', instruction: 'Especialista em escalar downloads na Google Play Store com títulos otimizados, palavras-chave de busca e descrição irresistível.' },
+    ANALYTICS_ROI: { name: 'Agente 20 · Analytics, Métricas & Retorno sobre Investimento (ROI)', instruction: 'Analista de dados focado em custo por aquisição (CPA), retorno sobre investimento em mídia (ROAS) e métricas vitais.' },
+    EMAIL_MARKETING: { name: 'Agente 21 · Email Marketing & Automação de Nutrição', instruction: 'Criador de newsletters e sequências de e-mails acolhedoras e de alta abertura que convertem leitores em clientes fiéis.' },
+    BRANDING_VOICE: { name: 'Agente 22 · Branding, Identidade & Tom de Voz', instruction: 'Defensor da identidade de marca, consistência de mensagem e arquétipos de comunicação autênticos.' },
+    BACKLINKS_OUTREACH: { name: 'Agente 23 · Tráfego Orgânico & Construção de Backlinks', instruction: 'Estrategista de autoridade de domínio, parcerias editoriais e menções naturais na web.' },
+    KEYWORD_RESEARCH: { name: 'Agente 24 · Caçador de Palavras-Chave & Intenção de Busca', instruction: 'Pesquisador de palavras-chave cauda longa com alto potencial de tráfego e baixa concorrência.' },
+    NEWS_JOURNALISM: { name: 'Agente 25 · Artigos Noticiosos & Padrão Google News', instruction: 'Jornalista digital com escrita factual, informativa, sem fabricação de dados e com alta autoridade no Google Notícias.' },
+    COMMUNITY_MANAGER: { name: 'Agente 26 · Gestão de Comunidade & Relacionamento', instruction: 'Especialista em responder comentários, transformar seguidores em defensores da marca e moderar conversas.' },
+    ADS_POLICY_COMPLIANCE: { name: 'Agente 27 · Compliance & Políticas de Anúncios Google/Meta', instruction: 'Auditor de conformidade publicitária, garantindo anúncios que passam direto sem risco de bloqueio de contas.' },
+    RETARGETING_MASTER: { name: 'Agente 28 · Remarketing & Retargeting Multi-Canal', instruction: 'Especialista em recapturar visitantes que não compraram na primeira visita, criando jornadas de conversão contínua.' },
+    ANTI_FALL_DIAGNOSTIC: { name: 'Agente 29 · Engenheiro Anti-Queda & Auto-Cura', instruction: 'Especialista em resiliência de sistemas, diagnóstico de erros 429, fallbacks elegantes e alta disponibilidade operacional.' },
+    CMO_MASTER: { name: 'Agente 30 · Diretor Geral de Marketing (CMO Alma Master)', instruction: 'Diretor Supremo de Estratégia de Marketing do Portal Vip Brasil. Coordena e sintetiza a visão de todos os outros 29 agentes.' }
+  };
+
+  const agentConfig = agentSpecializations[agentId] || {
+    name: `Agente Especialista (${agentId})`,
+    instruction: 'Especialista sênior do Portal Vip Brasil.'
+  };
+
+  const systemInstruction = `Você é o ${agentConfig.name} da plataforma Portal Vip Brasil.
+Atribuição: ${agentConfig.instruction}
+
+DIRETRIZES FUNDAMENTAIS:
+1. Idioma: Escreva EXCLUSIVAMENTE em português do Brasil nativo, claro, elegante e direto.
+2. Seja prático e acionável: Forneça soluções prontas para uso (textos completos, prompts finais, listas estruturadas, tags ou instruções precisas).
+3. Nunca invente dados falsos ou promessas irreais; mantenha rigor técnico e foco em resultados comprovados.
+4. Se o usuário estiver solicitando prompts para Veo ou Imagem, inclua a descrição visual exata pronta para copiar.
+5. Se for SEO ou Sitemaps, use a nomenclatura técnica precisa (canonical, schema.org, focus keyword, lastmod, etc.).
+
+${projectContextInfo}`;
+
+  try {
+    const ai = textAiClient();
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: prompt,
+      config: {
+        systemInstruction,
+        maxOutputTokens: 3500
+      }
+    });
+
+    res.json({
+      agentId,
+      agentName: agentConfig.name,
+      reply: response.text || 'O agente concluiu o processamento sem texto adicional.',
+      timestamp: nowIso()
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      error: `Falha na interação com o ${agentConfig.name}: ${err?.message || 'Erro de processamento'}`
+    });
+  }
+}));
+
 // Content library + calendar
 router.get('/content', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   let query: any = firestore().collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id);
@@ -1026,6 +1134,55 @@ router.post('/autopilot/clear-errors', requireAuth, asyncRoute(async (req: Authe
   const companyId = safeString(req.body?.companyId, 200);
   const result = await clearAutopilotErrors(req.user!.id, companyId || undefined);
   res.json({ success: true, message: 'Histórico de erros limpo com sucesso.', ...result });
+}));
+
+router.get('/autopilot/master-control', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const control = await getMasterAutomationControl(req.user!.id);
+  res.json({ control });
+}));
+
+router.post('/autopilot/master-control', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const patch: any = {};
+  if (req.body?.globalEnabled !== undefined) patch.globalEnabled = Boolean(req.body.globalEnabled);
+  if (req.body?.costGuardEnabled !== undefined) patch.costGuardEnabled = Boolean(req.body.costGuardEnabled);
+  if (req.body?.mode && ['automatic', 'manual_approval'].includes(req.body.mode)) patch.mode = req.body.mode;
+  if (req.body?.maxDailyVideos !== undefined) patch.maxDailyVideos = Math.max(0, Math.min(10, Number(req.body.maxDailyVideos) || 0));
+  if (req.body?.maxDailyImages !== undefined) patch.maxDailyImages = Math.max(0, Math.min(30, Number(req.body.maxDailyImages) || 0));
+  if (req.body?.monthlyBudgetCapUsd !== undefined) patch.monthlyBudgetCapUsd = Math.max(5, Math.min(500, Number(req.body.monthlyBudgetCapUsd) || 25));
+  if (req.body?.requireManualApproval !== undefined) patch.requireManualApproval = Boolean(req.body.requireManualApproval);
+  if (req.body?.projectToggles && typeof req.body.projectToggles === 'object') patch.projectToggles = req.body.projectToggles;
+
+  const updated = await updateMasterAutomationControl(req.user!.id, patch);
+  res.json({
+    message: updated.globalEnabled
+      ? 'Motor de automação ativado com sucesso.'
+      : 'Automação pausada com segurança no Botão Master (Zero Custos).',
+    control: updated
+  });
+}));
+
+router.post('/autopilot/project-toggle', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const projectId = safeString(req.body?.projectId, 150);
+  const enabled = Boolean(req.body?.enabled);
+  if (!projectId) return res.status(400).json({ error: 'projectId é obrigatório.' });
+
+  const current = await getMasterAutomationControl(req.user!.id);
+  const updated = await updateMasterAutomationControl(req.user!.id, {
+    projectToggles: {
+      ...(current.projectToggles || {}),
+      [projectId]: enabled
+    }
+  });
+
+  res.json({
+    message: `Projeto ${projectId} ${enabled ? 'ativado' : 'pausado'} na automação.`,
+    control: updated
+  });
+}));
+
+router.get('/autopilot/cost-summary', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const summary = await calculateAutopilotCostSummary(req.user!.id);
+  res.json({ summary });
 }));
 
 router.get('/autopilot/overview', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
@@ -1781,6 +1938,11 @@ router.delete('/alma/memories/:id', requireAuth, asyncRoute(async (req: Authenti
   res.json({ success: true, deletedId: id });
 }));
 
+router.post('/portal/blog/heal-covers', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  const result = await healAllStoredBlogCovers();
+  res.json({ success: true, ...result });
+}));
+
 // Technical SEO endpoints
 router.get('/sitemap.xml', asyncRoute(async (_req, res) => res.type('application/xml').send(await buildSitemapXml())));
 router.get('/robots.txt', (_req, res) => res.type('text/plain').send(buildRobotsTxt()));
@@ -1794,12 +1956,35 @@ export async function buildSitemapXml(): Promise<string> {
     lastmod?: string;
     changefreq?: 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
     priority?: string;
+    image?: {
+      url: string;
+      title?: string;
+      caption?: string;
+    };
   }
 
   const urls: SitemapUrlEntry[] = [
-    { loc: `${base}/`, lastmod: now, changefreq: 'daily', priority: '1.0' },
-    { loc: `${base}/vitrine`, lastmod: now, changefreq: 'daily', priority: '0.90' },
-    { loc: `${base}/blog`, lastmod: now, changefreq: 'daily', priority: '0.90' },
+    {
+      loc: `${base}/`,
+      lastmod: now,
+      changefreq: 'daily',
+      priority: '1.0',
+      image: { url: `${base}/icons/icon-512.png`, title: 'Portal Vip Brasil — Central de Marketing & Vitrine' }
+    },
+    {
+      loc: `${base}/vitrine`,
+      lastmod: now,
+      changefreq: 'daily',
+      priority: '0.95',
+      image: { url: `${base}/icons/logo.png`, title: 'Vitrine Oficial de Sites & Aplicativos' }
+    },
+    {
+      loc: `${base}/blog`,
+      lastmod: now,
+      changefreq: 'daily',
+      priority: '0.95',
+      image: { url: `${base}/icons/icon-512.png`, title: 'Blog Editorial & Guias SEO Portal Vip Brasil' }
+    },
     { loc: `${base}/termos`, lastmod: now, changefreq: 'monthly', priority: '0.60' },
     { loc: `${base}/privacidade`, lastmod: now, changefreq: 'monthly', priority: '0.60' },
     { loc: `${base}/cookies`, lastmod: now, changefreq: 'monthly', priority: '0.50' },
@@ -1823,7 +2008,8 @@ export async function buildSitemapXml(): Promise<string> {
           loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
           lastmod: item.updatedAt || item.publishedAt || now,
           changefreq: 'monthly',
-          priority: '0.75'
+          priority: '0.80',
+          image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
         });
       }
     }
@@ -1835,7 +2021,8 @@ export async function buildSitemapXml(): Promise<string> {
           loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
           lastmod: item.updatedAt || item.publishedAt || now,
           changefreq: 'weekly',
-          priority: '0.85'
+          priority: '0.90',
+          image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
         });
       }
     }
@@ -1846,7 +2033,8 @@ export async function buildSitemapXml(): Promise<string> {
           loc: `${base}/blog/${encodeURIComponent(seeded.slug)}`,
           lastmod: seeded.updatedAt || now,
           changefreq: 'weekly',
-          priority: '0.85'
+          priority: '0.90',
+          image: seeded.coverImage ? { url: seeded.coverImage, title: seeded.title } : undefined
         });
       }
     }
@@ -1854,11 +2042,13 @@ export async function buildSitemapXml(): Promise<string> {
     const projects = await listAllPortalProjectsFromDb().catch(() => PORTAL_VIP_PROJECTS);
     for (const project of projects) {
       if (project.active !== false && project.slug) {
+        const coverImg = project.bannerUrl || project.logoUrl;
         urls.push({
           loc: `${base}/vitrine/${encodeURIComponent(project.slug)}`,
           lastmod: project.updatedAt || now,
           changefreq: 'daily',
-          priority: '0.85'
+          priority: '0.90',
+          image: coverImg ? { url: coverImg, title: project.name } : undefined
         });
       }
     }
@@ -1867,7 +2057,13 @@ export async function buildSitemapXml(): Promise<string> {
   }
 
   const escapeXml = (value: string) =>
-    value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+
   const safeLastmod = (value?: string) => {
     if (!value) return '';
     const date = new Date(value);
@@ -1878,16 +2074,20 @@ export async function buildSitemapXml(): Promise<string> {
     .filter((item, index, list) => list.findIndex((candidate) => candidate.loc === item.loc) === index)
     .map((item) => {
       const lastmod = safeLastmod(item.lastmod);
+      const imgBlock = item.image?.url
+        ? `\n    <image:image>\n      <image:loc>${escapeXml(item.image.url)}</image:loc>${item.image.title ? `\n      <image:title>${escapeXml(item.image.title)}</image:title>` : ''}\n    </image:image>`
+        : '';
       return `  <url>
-    <loc>${escapeXml(item.loc)}</loc>${lastmod ? `\n    <lastmod>${escapeXml(lastmod)}</lastmod>` : ''}${item.changefreq ? `\n    <changefreq>${item.changefreq}</changefreq>` : ''}${item.priority ? `\n    <priority>${item.priority}</priority>` : ''}
+    <loc>${escapeXml(item.loc)}</loc>${lastmod ? `\n    <lastmod>${escapeXml(lastmod)}</lastmod>` : ''}${item.changefreq ? `\n    <changefreq>${item.changefreq}</changefreq>` : ''}${item.priority ? `\n    <priority>${item.priority}</priority>` : ''}${imgBlock}
   </url>`;
     })
     .join('\n');
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9 http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd http://www.google.com/schemas/sitemap-image/1.1 http://www.google.com/schemas/sitemap-image/1.1/sitemap-image.xsd">
 ${body}
 </urlset>
 `;

@@ -1,48 +1,193 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <!-- 1. Páginas Principais e Institucionais -->
   <url>
     <loc>https://portal-vip-brasil.vercel.app/</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://portal-vip-brasil.vercel.app/icons/icon-512.png</image:loc>
+      <image:title>Portal Vip Brasil — Central de Marketing e Vitrine de Projetos</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/blog</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/agentes</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/termos</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/privacidade</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/cookies</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/exclusao-de-dados</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/apps-compliance</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
   </url>
+
+  <!-- 2. Páginas de Vitrine de Projetos e Aplicativos da Play Store -->
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine/magia-das-crencas</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Magia das Crenças — Reprogramação Mental e Prosperidade</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine/exu-responde</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Exu Responde — Guardião e Abertura de Caminhos</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine/maria-padilha-rainha-das-7-encruzilhadas</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1518895949257-7621c3c786d7?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Maria Padilha — Rainha das 7 Encruzilhadas e Magnetismo Amoroso</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine/manual-catolico</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Manual Católico — Orações, Santos e Espiritualidade Cristã</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine/froc-ia</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Froc IA — Inteligência Artificial e Automação de Marketing</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine/oraculos</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1596704017254-9b121068fb31?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Oráculos — Tarot dos Guardiões e Runas Nórdicas</image:title>
+    </image:image>
   </url>
   <url>
     <loc>https://portal-vip-brasil.vercel.app/vitrine/froc-ia-marketing-engine</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+  </url>
+
+  <!-- 3. Artigos de Autoridade do Blog (com Rich Snippets e Imagens) -->
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/blog/runas-nordicas-guia-completo-futhark-antigo</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1532767153582-b1a0e5145009?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Runas Nórdicas: Guia Completo do Futhark Antigo e Tiragens</image:title>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/blog/tarot-dos-guardioes-leitura-diaria-revelacoes</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Tarot dos Guardiões: Leitura Diária e Revelações dos Arcanos</image:title>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/blog/maria-padilha-amor-autoestima-firmezas-eticas</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1559563458-527698bf5295?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Maria Padilha e o Despertar do Magnetismo Pessoal</image:title>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/blog/oracoes-catolicas-poderosas-protecao-diaria</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1548625361-195fe5795df5?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Orações Católicas Poderosas para Proteção Diária e Paz</image:title>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/blog/inteligencia-artificial-marketing-digital-2026</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Inteligência Artificial e o Futuro do Tráfego Orgânico</image:title>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://portal-vip-brasil.vercel.app/blog/reprogramacao-mental-prosperidade-crencas-limitantes</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&amp;fit=crop&amp;w=1200&amp;q=80</image:loc>
+      <image:title>Reprogramação Mental: Destravando Crenças Limitantes de Dinheiro</image:title>
+    </image:image>
   </url>
 </urlset>

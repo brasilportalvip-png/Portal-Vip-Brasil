@@ -767,6 +767,76 @@ function extractGeneratedImage(response: any): { data: string; mimeType: string 
   return null;
 }
 
+function resolveNicheVisualGuidance(company?: any, theme?: string, title?: string): {
+  styleDescription: string;
+  lightingAndAtmosphere: string;
+  negativeDirectives: string;
+} {
+  const corpus = `${company?.name || ''} ${company?.category || ''} ${company?.segment || ''} ${theme || ''} ${title || ''}`.toLowerCase();
+
+  if (corpus.includes('runa') || corpus.includes('viking') || corpus.includes('nordic') || corpus.includes('futhark')) {
+    return {
+      styleDescription: 'Fotografia nórdica mística de altíssima definição, pedras rúnicas esculpidas com símbolos ancestrais verdadeiros, madeira rústica ancestral, névoa escandinava sutil',
+      lightingAndAtmosphere: 'Luz natural suave de aurora boreal ou crepúsculo ártico, névoa cinematográfica, detalhes hiper-realistas',
+      negativeDirectives: 'SEM prédios modernos, SEM escritório, SEM pessoas de terno, SEM computadores, SEM logotipos corporativos, SEM arte abstrata genérica'
+    };
+  }
+
+  if (corpus.includes('tarot') || corpus.includes('oraculo') || corpus.includes('cigano') || corpus.includes('arcanos')) {
+    return {
+      styleDescription: 'Mesa de cartomancia refinada com cartas clássicas de tarot e baralho cigano ricamente ilustradas, veludo escuro, cristais de quartzo translúcidos',
+      lightingAndAtmosphere: 'Chama dourada de velas acesas, iluminação chiaroscuro dramática, fumaça tênue de incenso sagrado, atmosfera oracular profunda',
+      negativeDirectives: 'SEM escritório executivo, SEM aperto de mão corporativo, SEM elementos infantis, SEM logos comerciais, SEM desfoque distorcido'
+    };
+  }
+
+  if (corpus.includes('padilha') || corpus.includes('amorosa') || corpus.includes('seducao') || corpus.includes('paixao') || corpus.includes('afetiv')) {
+    return {
+      styleDescription: 'Arranjo majestoso de rosas vermelhas aveludadas de pétalas rubras profundas, cálice dourado antigo, fita de cetim escarlate, estética magnética e envolvente',
+      lightingAndAtmosphere: 'Luz tênue e aveludada de velas, reflexos dourados e rubros, contraluz sedutor e elegante',
+      negativeDirectives: 'SEM símbolos caricatos, SEM escritório moderno, SEM estética genérica fria, SEM logotipos ou marcas d\'água'
+    };
+  }
+
+  if (corpus.includes('exu') || corpus.includes('guardiao') || corpus.includes('quimbanda') || corpus.includes('encruzilhada') || corpus.includes('abrir caminho')) {
+    return {
+      styleDescription: 'Cena noturna solene de encruzilhada ancestral, símbolo imponente de tridente de ferro forjado, brasas ardentes e fumaça mística ascendente',
+      lightingAndAtmosphere: 'Contraste imponente de luz de fogueira sagrada e sombras da noite, reverência espiritual, aura de proteção e firmeza',
+      negativeDirectives: 'SEM caricaturas pejorativas, SEM escritório, SEM computador, SEM logos de bancos, SEM pessoas de terno'
+    };
+  }
+
+  if (corpus.includes('catolico') || corpus.includes('terco') || corpus.includes('novena') || corpus.includes('oracao') || corpus.includes('biblia') || corpus.includes('santo') || corpus.includes('santa')) {
+    return {
+      styleDescription: 'Altar devocional solene com terço sagrado de contas polidas, bíblia aberta em pergaminho sagrado, velas acesas e vitral sacro iluminado',
+      lightingAndAtmosphere: 'Raios de luz divina dourada atravessando vitrais coloridos, paz celestial, serenidade e reverência de fé inabalável',
+      negativeDirectives: 'SEM escritório corporativo, SEM elementos profanos, SEM caricaturas, SEM computadores, SEM marcas comerciais'
+    };
+  }
+
+  if (corpus.includes('prosperidade') || corpus.includes('gratidao') || corpus.includes('abundancia') || corpus.includes('crenca') || corpus.includes('riqueza')) {
+    return {
+      styleDescription: 'Nascer do sol radiante dourado rompendo nuvens no horizonte, natureza verdejante e florescente, símbolo de colheita abundante e meditação inspiradora',
+      lightingAndAtmosphere: 'Luz dourada da manhã (golden hour) brilhante e acolhedora, atmosfera de paz mental, plenitude e elevação espiritual',
+      negativeDirectives: 'SEM prédios cinzentos de escritórios vazios, SEM pilhas desordenadas de dinheiro falso, SEM logos comerciais'
+    };
+  }
+
+  if (corpus.includes('inteligencia artificial') || corpus.includes('ia') || corpus.includes('froc ia') || corpus.includes('algoritmo') || corpus.includes('tecnologia')) {
+    return {
+      styleDescription: 'Interface cyberfuturista refinada com nós de redes neurais brilhando em tons ciano neon e violeta profundo, dados holográficos tridimensionais, precisão tecnológica de ponta',
+      lightingAndAtmosphere: 'Brilho volumétrico de luz neon ciano sobre fundo escuro obsidiana, estética sci-fi minimalista e premium',
+      negativeDirectives: 'SEM robôs de lata antigos, SEM placas de circuito obsoletas dos anos 90, SEM clip art genérico'
+    };
+  }
+
+  return {
+    styleDescription: 'Fotografia editorial moderna de altíssimo padrão publicitário, smartphone elegante exibindo métricas de crescimento e aplicativo oficial verificado',
+    lightingAndAtmosphere: 'Estúdio profissional contemporâneo, iluminação suave e limpa, alta definição e elegância visual',
+    negativeDirectives: 'SEM clichês corporativos ultrapassados, SEM imagens genéricas de bancos de imagem baratos, SEM distorção'
+  };
+}
+
 export async function generateMarketingImage(data: {
   userId: string;
   company?: any;
@@ -798,6 +868,8 @@ export async function generateMarketingImage(data: {
   const title = String(data.title || data.theme);
   const theme = String(data.theme);
 
+  const nicheGuidance = resolveNicheVisualGuidance(data.company, theme, title);
+
   const prompt = `${companyContext(data.company)}
 
 Projeto: ${project}
@@ -807,11 +879,12 @@ Título da publicação: ${title}
 Tema visual: ${theme}
 
 Crie uma imagem publicitária premium, exclusiva e original para o projeto "${project}" com base no tema "${theme}" e título "${title}".
-Data de criação: ${currentDate}. Identificador da execução única: ${executionId}.
-Estilo visual: ${data.style || 'fotografia comercial moderna e sofisticada'}.
-Proporção: ${aspectRatio}.
-Resolução desejada: ${resolution}.
-Não inclua logotipos ou marcas de terceiros. Não invente selos, depoimentos ou números. Se houver texto na arte, mantenha-o curto, legível e somente se fizer sentido para o briefing.`;
+DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
+- Estilo do Nicho: ${data.style || nicheGuidance.styleDescription}.
+- Atmosfera e Iluminação: ${nicheGuidance.lightingAndAtmosphere}.
+- Proporção: ${aspectRatio}.
+- Resolução desejada: ${resolution}.
+- REGRAS NEGATIVAS E ANTI-REPETIÇÃO: ${nicheGuidance.negativeDirectives}. Não inclua logotipos corporativos genéricos, marcas d'água ou banners com texto excessivo. A imagem deve ser visualmente deslumbrante, hiper-relevante ao nicho exato do projeto e única.`;
 
   let model = config.geminiModels.image || 'gemini-3.1-flash-image';
 
@@ -903,22 +976,24 @@ Não inclua logotipos ou marcas de terceiros. Não invente selos, depoimentos ou
       imageUrl = `data:${image.mimeType};base64,${image.data}`;
       mimeType = image.mimeType;
 
-      try {
-        const token = crypto.randomUUID();
-        const bucket = getAdminStorage().bucket();
-        const file = bucket.file(storagePath);
-        await file.save(buffer, {
-          resumable: false,
-          metadata: {
-            contentType: image.mimeType,
-            cacheControl: 'public,max-age=31536000,immutable',
-            metadata: { firebaseStorageDownloadTokens: token }
-          }
-        });
-        imageUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(token)}`;
-      } catch (storageErr) {
-        console.error('[Froc AI Image Storage Error] Falha ao persistir imagem no Firebase Storage:', storageErr);
-        throw new Error('Não foi possível armazenar a imagem gerada com segurança. A operação foi encerrada sem persistir resultado inválido.');
+      const adminStorage = getAdminStorage();
+      if (adminStorage) {
+        try {
+          const token = crypto.randomUUID();
+          const bucket = adminStorage.bucket();
+          const file = bucket.file(storagePath);
+          await file.save(buffer, {
+            resumable: false,
+            metadata: {
+              contentType: image.mimeType,
+              cacheControl: 'public,max-age=31536000,immutable',
+              metadata: { firebaseStorageDownloadTokens: token }
+            }
+          });
+          imageUrl = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucket.name)}/o/${encodeURIComponent(storagePath)}?alt=media&token=${encodeURIComponent(token)}`;
+        } catch (storageErr) {
+          console.warn('[AI Image Storage Warning] Falha ao persistir no Firebase Storage, mantendo base64 URL:', storageErr);
+        }
       }
     }
 
