@@ -1,6 +1,7 @@
 import { COLLECTIONS, firestore, nowIso } from './store.js';
 import { recoverStalePublishingPostsR8, processScheduledPostsR8 } from './scheduledPublisherR8.js';
 import { sanitizeSecretText } from './aiErrorDiagnostic.js';
+import { isGlobalAutomationEnabled } from './automationGate.js';
 
 export interface SocialPublicationTelemetry {
   recovered: number;
@@ -51,11 +52,6 @@ async function releaseLock(owner: string, fencingToken: number) {
 
 export async function runSocialPublicationWorker(options: { timeoutMs?: number; workerId?: string } = {}): Promise<SocialPublicationWorkerResult> {
   const startedAt = Date.now();
-  // A plataforma pode encerrar a função perto de 90s. Encerramos antes disso
-  // para persistir o item atual e permitir continuação idempotente no ciclo seguinte.
-  const timeoutMs = options.timeoutMs || 70_000;
-  const workerId = options.workerId || `social_worker_${startedAt}_${Math.random().toString(36).slice(2, 8)}`;
-  const lock = await acquireLock(workerId, timeoutMs + 15_000);
   const telemetry: SocialPublicationTelemetry = {
     recovered: 0,
     attempted: 0,
@@ -66,6 +62,23 @@ export async function runSocialPublicationWorker(options: { timeoutMs?: number; 
     deferred: 0,
     remaining: 0
   };
+
+  const isAutoEnabled = await isGlobalAutomationEnabled();
+  if (!isAutoEnabled) {
+    return {
+      success: true,
+      status: 'skipped_concurrent',
+      durationMs: Date.now() - startedAt,
+      telemetry,
+      error: 'Automação pausada no Botão Mestre (Zero Custos). Publicações automáticas suspensas.'
+    };
+  }
+
+  // A plataforma pode encerrar a função perto de 90s. Encerramos antes disso
+  // para persistir o item atual e permitir continuação idempotente no ciclo seguinte.
+  const timeoutMs = options.timeoutMs || 70_000;
+  const workerId = options.workerId || `social_worker_${startedAt}_${Math.random().toString(36).slice(2, 8)}`;
+  const lock = await acquireLock(workerId, timeoutMs + 15_000);
   if (!lock.acquired) return { success: false, status: 'skipped_concurrent', durationMs: Date.now() - startedAt, telemetry };
 
   const controller = new AbortController();

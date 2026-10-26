@@ -3,6 +3,7 @@ import { firestore, COLLECTIONS } from './store.js';
 import { config } from '../config/index.js';
 import { processPendingVideoJobs, VideoJobWorkerTelemetry } from './ai.js';
 import { sanitizeSecretText } from './aiErrorDiagnostic.js';
+import { isGlobalAutomationEnabled } from './automationGate.js';
 
 export interface VideoRetryExecutionRecord {
   lastExecutionAt: string;
@@ -214,6 +215,19 @@ export async function runVideoRetryWorker(options: {
   const timeoutMs = options.timeoutMs || 240_000;
   const startTime = Date.now();
   const startTimeIso = new Date(startTime).toISOString();
+
+  // 0. Bloqueio centralizado fail-closed via Botão Mestre
+  const isAutoEnabled = await isGlobalAutomationEnabled();
+  if (!isAutoEnabled) {
+    return {
+      success: true,
+      status: 'skipped_concurrent',
+      trigger,
+      durationMs: Date.now() - startTime,
+      telemetry: { ...DEFAULT_TELEMETRY },
+      error: 'Automação pausada no Botão Mestre (Zero Custos). Retentativas de vídeo suspensas.'
+    };
+  }
 
   // 1. Aquisição atômica da trava distribuída
   const lock = await acquireVideoRetryCronLock(workerId, timeoutMs + 30_000);

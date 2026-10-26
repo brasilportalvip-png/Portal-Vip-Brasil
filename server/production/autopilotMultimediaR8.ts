@@ -3,6 +3,16 @@ import { getPortalProjectFromDb, listAllPortalProjectsFromDb } from './almaPortf
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
 import { normalizeProvider, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported } from './socialMediaPublisher.js';
+import {
+  isGlobalAutomationEnabled,
+  isProjectAutomationEnabled,
+  assertAutomationAllowed,
+  getMasterAutomationControl,
+  updateMasterAutomationControl,
+  toggleProjectAutomation,
+  type MasterAutomationControl
+} from './automationGate.js';
+import { calculateFinancialCostSummary } from './financialGuardian.js';
 
 export const DEFAULT_AUTOPILOT_TARGET_PLATFORMS = [
   'Facebook', 'Instagram', 'LinkedIn', 'X', 'TikTok', 'YouTube', 'Pinterest'
@@ -369,6 +379,8 @@ export async function executeAutopilotJob(
   await jobRef.set(job, { merge: true });
 
   try {
+    await assertAutomationAllowed({ userId: ap.userId, projectId: ap.companyId, operationType: 'autopilot_job' });
+
     const project = await getPortalProjectFromDb(ap.companyId);
     if (!project || project.active === false) {
       throw new Error(`Projeto ${ap.companyId} não encontrado ou está inativo no cadastro.`);
@@ -691,6 +703,18 @@ export async function processAutopilotMultimediaR8(options?: {
   skippedCount: number;
   jobs: AutopilotJob[];
 }> {
+  const isGlobalOn = await isGlobalAutomationEnabled();
+  if (!isGlobalOn) {
+    console.log('[AutopilotR8] Execução em lote ignorada: Automação desligada no Botão Mestre.');
+    return {
+      processed: 0,
+      successCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+      jobs: []
+    };
+  }
+
   const db = firestore();
   const snap = await db.collection(COLLECTIONS.autopilotConfigs).where('enabled', '==', true).get();
   const now = new Date();
@@ -710,6 +734,8 @@ export async function processAutopilotMultimediaR8(options?: {
     const ap = { id: doc.id, ...doc.data() } as AutopilotRecord;
     const project: any = projectMap.get(ap.companyId);
     if (!project || project.active === false) continue;
+    const projectAllowed = await isProjectAutomationEnabled(ap.companyId, ap.userId);
+    if (!projectAllowed) continue;
     if (!isDue(ap, now)) continue;
 
     const timezone = ap.timezone || 'America/Sao_Paulo';
@@ -813,6 +839,8 @@ export interface AutopilotExecutionResult {
 }
 
 export async function triggerUserAutopilotMultimediaR8(userId: string, companyId: string): Promise<AutopilotExecutionResult> {
+  await assertAutomationAllowed({ userId, projectId: companyId, operationType: 'autopilot_trigger' });
+
   const lockKey = `${userId}_${companyId}`;
   const now = Date.now();
   const lastRun = activeAutopilotRuns.get(lockKey);
@@ -1254,151 +1282,13 @@ export async function clearAutopilotErrors(userId: string, companyId?: string): 
   return { clearedCount };
 }
 
-export interface MasterAutomationControl {
-  globalEnabled: boolean;
-  costGuardEnabled: boolean;
-  mode: 'automatic' | 'manual_approval';
-  maxDailyVideos: number;
-  maxDailyImages: number;
-  monthlyBudgetCapUsd: number;
-  requireManualApproval: boolean;
-  projectToggles: Record<string, boolean>;
-  lastPausedAt?: string | null;
-  lastResumedAt?: string | null;
-  updatedAt: string;
-}
+export {
+  getMasterAutomationControl,
+  updateMasterAutomationControl,
+  toggleProjectAutomation,
+  type MasterAutomationControl
+} from './automationGate.js';
 
-const DEFAULT_MASTER_CONTROL: MasterAutomationControl = {
-  globalEnabled: true,
-  costGuardEnabled: true,
-  mode: 'automatic',
-  maxDailyVideos: 1,
-  maxDailyImages: 6,
-  monthlyBudgetCapUsd: 25,
-  requireManualApproval: false,
-  projectToggles: {},
-  lastPausedAt: null,
-  lastResumedAt: null,
-  updatedAt: new Date().toISOString()
-};
-
-export async function getMasterAutomationControl(userId?: string): Promise<MasterAutomationControl> {
-  const db = firestore();
-  const docId = userId ? `master_control_${userId}` : 'master_control_global';
-  try {
-    const snap = await db.collection(COLLECTIONS.systemSettings).doc(docId).get();
-    if (snap.exists) {
-      return { ...DEFAULT_MASTER_CONTROL, ...snap.data() };
-    }
-  } catch (err) {
-    console.warn('[MasterControl] Erro ao ler Firestore:', err);
-  }
-  return { ...DEFAULT_MASTER_CONTROL };
-}
-
-export async function updateMasterAutomationControl(
-  userId: string,
-  patch: Partial<MasterAutomationControl>
-): Promise<MasterAutomationControl> {
-  const db = firestore();
-  const docId = userId ? `master_control_${userId}` : 'master_control_global';
-  const current = await getMasterAutomationControl(userId);
-  const now = nowIso();
-  const updated: MasterAutomationControl = {
-    ...current,
-    ...patch,
-    projectToggles: {
-      ...(current.projectToggles || {}),
-      ...(patch.projectToggles || {})
-    },
-    updatedAt: now
-  };
-
-  if (patch.globalEnabled !== undefined) {
-    if (patch.globalEnabled === false) {
-      updated.lastPausedAt = now;
-    } else {
-      updated.lastResumedAt = now;
-    }
-  }
-
-  try {
-    await db.collection(COLLECTIONS.systemSettings).doc(docId).set(updated, { merge: true });
-    await db.collection(COLLECTIONS.systemSettings).doc('master_control_global').set(updated, { merge: true });
-  } catch (err) {
-    console.warn('[MasterControl] Erro ao gravar Firestore:', err);
-  }
-  return updated;
-}
-
-export async function calculateAutopilotCostSummary(userId: string): Promise<{
-  currentMonth: string;
-  totalTextGenerations: number;
-  totalImageGenerations: number;
-  totalVideoGenerations: number;
-  estimatedCostUsd: number;
-  estimatedCostBrl: number;
-  budgetCapUsd: number;
-  budgetUsedPercent: number;
-  costGuardActive: boolean;
-  masterStatus: 'ACTIVE' | 'PAUSED';
-}> {
-  const db = firestore();
-  const master = await getMasterAutomationControl(userId);
-  const currentMonth = new Date().toISOString().slice(0, 7);
-
-  let textCount = 0;
-  let imageCount = 0;
-  let videoCount = 0;
-
-  try {
-    const [aiSnap, videoSnap] = await Promise.all([
-      db.collection(COLLECTIONS.aiExecutions).where('userId', '==', userId).limit(200).get().catch(() => ({ docs: [] })),
-      db.collection(COLLECTIONS.mediaGenerationJobs).where('userId', '==', userId).limit(100).get().catch(() => ({ docs: [] }))
-    ]);
-
-    for (const doc of (aiSnap as any).docs) {
-      const d = doc.data();
-      const ts = String(d.timestamp || d.createdAt || '');
-      if (ts.startsWith(currentMonth)) {
-        if (d.type?.includes('image')) imageCount++;
-        else textCount++;
-      }
-    }
-
-    for (const doc of (videoSnap as any).docs) {
-      const d = doc.data();
-      const ts = String(d.createdAt || '');
-      if (ts.startsWith(currentMonth) && d.status !== 'failed') {
-        videoCount++;
-      }
-    }
-  } catch {
-    // Estimativas padrão seguras
-  }
-
-  // Preços estimados de consumo Google AI:
-  // Gemini 3.x Text: ~$0.001 por geração
-  // Imagen / Flash Image: ~$0.03 por imagem
-  // Veo 3.1 Video: ~$0.20 por vídeo renderizado
-  const costText = textCount * 0.001;
-  const costImage = imageCount * 0.03;
-  const costVideo = videoCount * 0.20;
-  const estimatedCostUsd = Number((costText + costImage + costVideo).toFixed(2));
-  const estimatedCostBrl = Number((estimatedCostUsd * 5.60).toFixed(2));
-  const budgetCapUsd = master.monthlyBudgetCapUsd || 25;
-  const budgetUsedPercent = Math.min(100, Math.round((estimatedCostUsd / budgetCapUsd) * 100));
-
-  return {
-    currentMonth,
-    totalTextGenerations: textCount,
-    totalImageGenerations: imageCount,
-    totalVideoGenerations: videoCount,
-    estimatedCostUsd,
-    estimatedCostBrl,
-    budgetCapUsd,
-    budgetUsedPercent,
-    costGuardActive: master.costGuardEnabled,
-    masterStatus: master.globalEnabled ? 'ACTIVE' : 'PAUSED'
-  };
-}
+export {
+  calculateFinancialCostSummary as calculateAutopilotCostSummary
+} from './financialGuardian.js';

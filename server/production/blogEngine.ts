@@ -4,6 +4,7 @@ import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, getProjectBySlug, Port
 import { executeAiWith2SecAntiFall } from './antiFallEngine.js';
 import { generateMarketingImage } from './ai.js';
 import { getAdminAuth } from '../providers/firebaseAdmin.js';
+import { isGlobalAutomationEnabled, isProjectAutomationEnabled } from './automationGate.js';
 
 function safeString(value: any, max = 5000): string {
   return String(value ?? '').trim().slice(0, max);
@@ -2225,13 +2226,33 @@ export async function runDailyBlogCycle(userIdOrOptions?: string | { userId?: st
   const userId = typeof userIdOrOptions === 'string' ? userIdOrOptions : userIdOrOptions?.userId;
   const signal = typeof userIdOrOptions === 'object' ? userIdOrOptions?.signal : undefined;
 
+  const isGlobalOn = await isGlobalAutomationEnabled(userId);
+  if (!isGlobalOn) {
+    console.log('[BlogEngine] Ciclo diário de blog cancelado: Automação desligada no Botão Mestre.');
+    return {
+      success: true,
+      articlesGenerated: [],
+      totalProjects: 0,
+      publishedCount: 0,
+      pendingCount: 0,
+      skippedCount: 0,
+      failedCount: 0
+    };
+  }
+
   let allProjects = await listAllPortalProjectsFromDb();
   if (!allProjects.length) {
     const seeded = await seedPortalProjectsIfEmpty();
     allProjects = seeded.projects;
   }
 
-  const projectsToProcess = allProjects.filter((p) => p.active !== false && p.dailyBlogEnabled !== false);
+  const projectsToProcess: PortalProjectItem[] = [];
+  for (const p of allProjects) {
+    if (p.active !== false && p.dailyBlogEnabled !== false) {
+      const allowed = await isProjectAutomationEnabled(p.id, userId);
+      if (allowed) projectsToProcess.push(p);
+    }
+  }
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
   }).formatToParts(new Date());

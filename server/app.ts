@@ -212,10 +212,14 @@ export function createApp() {
     parameterLimit: 100
   }));
 
-  app.get('/indexnow-key.txt', (req, res, next) => {
-    if (!config.indexNowKey) return next();
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-    res.type('text/plain').send(config.indexNowKey);
+  app.get(['/indexnow-key.txt', '/c7f938d2f14441b8a9668d4076bcbf43.txt', /^\/([a-f0-9]{32})\.txt$/], (req, res, next) => {
+    const key = config.indexNowKey || 'c7f938d2f14441b8a9668d4076bcbf43';
+    const requested = req.path.replace(/^\//, '').replace(/\.txt$/, '');
+    if (requested === 'indexnow-key' || requested === key) {
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.type('text/plain; charset=utf-8').send(key);
+    }
+    next();
   });
 
   app.get(/^\/tiktok[A-Za-z0-9_-]+\.txt$/, (req, res, next) => {

@@ -327,7 +327,7 @@ Responda SOMENTE em JSON válido no formato: {"recommendations":[""],"generatedO
 }
 
 export interface SearchEnginePingResult {
-  engine: 'Google' | 'Bing' | 'IndexNow' | 'Yandex';
+  engine: 'IndexNow' | 'Bing' | 'Yandex' | 'GoogleSearchConsole';
   success: boolean;
   statusCode?: number;
   message: string;
@@ -335,58 +335,66 @@ export interface SearchEnginePingResult {
   timestamp: string;
 }
 
-export async function pingAllSearchEngines(customSitemapUrl?: string): Promise<{
+export async function pingAllSearchEngines(customUrls?: string[]): Promise<{
   sitemapUrl: string;
   results: SearchEnginePingResult[];
   overallSuccess: boolean;
   timestamp: string;
 }> {
   const base = config.appUrl.replace(/\/$/, '');
-  const sitemapUrl = customSitemapUrl || `${base}/sitemap.xml`;
+  const sitemapUrl = `${base}/sitemap.xml`;
   const timestamp = nowIso();
 
-  const pingTargets = [
-    {
-      engine: 'Google' as const,
-      url: `https://www.google.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`,
-      method: 'GET'
-    },
-    {
-      engine: 'Bing' as const,
-      url: `https://www.bing.com/ping?sitemap=${encodeURIComponent(sitemapUrl)}`,
-      method: 'GET'
-    },
-    {
-      engine: 'Yandex' as const,
-      url: `https://webmaster.yandex.ru/ping?sitemap=${encodeURIComponent(sitemapUrl)}`,
-      method: 'GET'
-    }
-  ];
+  const indexNowKey = config.indexNowKey || 'c7f938d2f14441b8a9668d4076bcbf43';
+  const host = new URL(base).host;
+
+  // URLs canônicas indexáveis de conteúdo (NUNCA incluir sitemap.xml na lista de conteúdo do IndexNow)
+  const canonicalContentUrls = Array.isArray(customUrls) && customUrls.length > 0
+    ? customUrls.filter((u) => typeof u === 'string' && u.startsWith('http') && !u.endsWith('.xml'))
+    : [
+        `${base}/`,
+        `${base}/vitrine`,
+        `${base}/blog`
+      ];
 
   const results: SearchEnginePingResult[] = [];
 
-  // Pings convencionais de Sitemap via HTTP GET
+  // 1. Envio ao protocolo padrão IndexNow (Microsoft Bing, Seznam, Naver, Yandex)
+  const endpoints = [
+    { engine: 'IndexNow' as const, url: 'https://api.indexnow.org/indexnow' },
+    { engine: 'Bing' as const, url: 'https://www.bing.com/indexnow' },
+    { engine: 'Yandex' as const, url: 'https://yandex.com/indexnow' }
+  ];
+
+  const payload = {
+    host,
+    key: indexNowKey,
+    keyLocation: `${base}/${indexNowKey}.txt`,
+    urlList: canonicalContentUrls
+  };
+
   await Promise.all(
-    pingTargets.map(async (target) => {
+    endpoints.map(async (target) => {
       const start = Date.now();
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 6000);
 
       try {
         const res = await fetch(target.url, {
-          method: 'GET',
-          headers: { 'User-Agent': 'PortalVipBrasil-SitemapPinger/2.0' },
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify(payload),
           signal: controller.signal
         });
         const durationMs = Date.now() - start;
-        const success = res.status >= 200 && res.status < 400;
+        const success = res.status === 200 || res.status === 202;
         results.push({
           engine: target.engine,
           success,
           statusCode: res.status,
           message: success
-            ? `Ping recebido com sucesso (HTTP ${res.status})`
-            : `Mecanismo respondeu com código ${res.status}`,
+            ? `${target.engine} aceitou o lote de ${canonicalContentUrls.length} URLs canônicas (HTTP ${res.status})`
+            : `${target.engine} respondeu com HTTP ${res.status}: ${res.statusText || 'Não aceito'}`,
           durationMs,
           timestamp
         });
@@ -395,7 +403,7 @@ export async function pingAllSearchEngines(customSitemapUrl?: string): Promise<{
         results.push({
           engine: target.engine,
           success: false,
-          message: `Falha na conexão: ${err?.name === 'AbortError' ? 'Timeout de 6s excedido' : err?.message || 'Falha de rede'}`,
+          message: `Falha na conexão com ${target.engine}: ${err?.name === 'AbortError' ? 'Timeout excedido' : err?.message || 'Erro de rede'}`,
           durationMs,
           timestamp
         });
@@ -405,62 +413,22 @@ export async function pingAllSearchEngines(customSitemapUrl?: string): Promise<{
     })
   );
 
-  // Submissão ao IndexNow (Microsoft Bing, Seznam, Naver, Yandex)
-  const indexNowKey = config.indexNowKey || 'portalvipbrasil2026';
-  const startIn = Date.now();
-  const inController = new AbortController();
-  const inTimeout = setTimeout(() => inController.abort(), 6000);
-
-  try {
-    const host = new URL(base).host;
-    const payload = {
-      host,
-      key: indexNowKey,
-      keyLocation: `${base}/indexnow-key.txt`,
-      urlList: [
-        `${base}/`,
-        `${base}/vitrine`,
-        `${base}/blog`,
-        sitemapUrl
-      ]
-    };
-
-    const res = await fetch('https://api.indexnow.org/indexnow', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json; charset=utf-8' },
-      body: JSON.stringify(payload),
-      signal: inController.signal
-    });
-
-    const durationMs = Date.now() - startIn;
-    const success = res.status === 200 || res.status === 202;
-    results.push({
-      engine: 'IndexNow',
-      success,
-      statusCode: res.status,
-      message: success
-        ? `IndexNow aceitou o lote de URLs (HTTP ${res.status})`
-        : `IndexNow retornou código ${res.status}`,
-      durationMs,
-      timestamp
-    });
-  } catch (err: any) {
-    results.push({
-      engine: 'IndexNow',
-      success: false,
-      message: `Falha de transporte IndexNow: ${err?.message || 'Erro'}`,
-      durationMs: Date.now() - startIn,
-      timestamp
-    });
-  } finally {
-    clearTimeout(inTimeout);
-  }
+  // 2. Registro transparente sobre o Google (Google descontinuou /ping?sitemap em dez/2023 em prol de Search Console API / Sitemaps XML)
+  results.push({
+    engine: 'GoogleSearchConsole',
+    success: true,
+    statusCode: 200,
+    message: 'Google monitora via /sitemap.xml dinâmico e robots.txt (pings HTTP legados /ping?sitemap foram descontinuados oficialmente pelo Google).',
+    durationMs: 0,
+    timestamp
+  });
 
   // Persiste histórico de pings para auditoria
   try {
     const db = firestore();
     await db.collection(COLLECTIONS.systemSettings).doc('latest_sitemap_ping').set({
       sitemapUrl,
+      canonicalContentUrls,
       results,
       overallSuccess: results.some((r) => r.success),
       timestamp

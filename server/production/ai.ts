@@ -9,6 +9,9 @@ import { serverDetectNicheForVideo, SERVER_NICHE_VIDEO_TEMPLATES } from './video
 import { diagnoseAiError, calculateNextAttemptAt, sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { normalizeProvider } from './social.js';
 import { checkUniversalConnectionReady } from './socialMediaPublisher.js';
+import { computePerceptualHash, checkImageUniqueness, recordImageFingerprint } from './imageGuard.js';
+import { assertAutomationAllowed } from './automationGate.js';
+import { preflightReserveBudget, reconcileBudgetReservation } from './financialGuardian.js';
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_FINALIZATION_LEASE_MS = 10 * 60 * 1000;
@@ -970,6 +973,13 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
       const buffer = Buffer.from(image.data, 'base64');
       if (!buffer.length || buffer.length > 12 * 1024 * 1024) throw new Error('A imagem retornada possui tamanho inválido.');
       imageHash = crypto.createHash('sha256').update(buffer).digest('hex');
+      const perceptualHash = computePerceptualHash(buffer);
+      const companyId = data.company?.id || 'default';
+
+      const uniqueness = await checkImageUniqueness(companyId, buffer, imageHash);
+      if (!uniqueness.isUnique) {
+        console.warn(`[ImageGuard] Colisão de imagem ou proximidade perceptual detectada para ${companyId}: ${uniqueness.reason}`);
+      }
 
       const ext = image.mimeType.includes('png') ? 'png' : image.mimeType.includes('webp') ? 'webp' : 'jpg';
       storagePath = `generated/${data.userId}/${executionId}.${ext}`;
@@ -995,6 +1005,16 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
           console.warn('[AI Image Storage Warning] Falha ao persistir no Firebase Storage, mantendo base64 URL:', storageErr);
         }
       }
+
+      await recordImageFingerprint({
+        companyId,
+        userId: data.userId,
+        contentItemId: executionId,
+        sha256Hash: imageHash,
+        perceptualHash,
+        imageUrl,
+        theme: data.theme
+      });
     }
 
     await firestore().collection(COLLECTIONS.aiExecutions).doc(executionId).set({

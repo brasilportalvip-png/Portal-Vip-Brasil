@@ -15,6 +15,7 @@ import {
 
 import { recoverStalePublishingPostsR8, processScheduledPostsR8 } from './scheduledPublisherR8.js';
 import { processAutopilotMultimediaR8, triggerUserAutopilotMultimediaR8, type AutopilotExecutionResult } from './autopilotMultimediaR8.js';
+import { isGlobalAutomationEnabled } from './automationGate.js';
 
 // Contrato de identidade preservado para logs, notificações e governança de produção.
 export const PORTAL_VIP_AUTOMATION_IDENTITY = {
@@ -611,6 +612,12 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
 }
 
 export async function processSchedulerTick(options: { trigger?: SchedulerTrigger; timeoutMs?: number } = {}) {
+  const isAutoOn = await isGlobalAutomationEnabled();
+  if (!isAutoOn) {
+    console.log('[Scheduler] processSchedulerTick ignorado: Automação desligada no Botão Mestre.');
+    return { skipped: true, reason: 'Automação global está DESLIGADA pelo Botão Master (Zero Custos). Nenhuma rotina agendada executada.' };
+  }
+
   const lease = await acquireLock(options.trigger || 'internal');
   if (!lease) return { skipped: true, reason: 'Outro ciclo já está em execução.' };
 

@@ -501,16 +501,18 @@ export const AlmaAgentsPage: React.FC = () => {
     setConversationOutput('');
 
     try {
-      const data = await apiRequest<{ response: string; agentId: string }>('/api/ai/agent-chat', {
+      const data = await apiRequest<{ response?: string; reply?: string; agentId: string }>('/api/ai/agent-chat', {
         method: 'POST',
         body: {
           agentId: activeAgent.id,
           userMessage: messageToSend,
-          projectId: selectedProjectId
+          prompt: messageToSend,
+          projectId: selectedProjectId,
+          companyId: selectedProjectId
         }
       });
 
-      setConversationOutput(data.response || 'Resposta recebida com sucesso.');
+      setConversationOutput(data.response || data.reply || 'Resposta recebida com sucesso.');
     } catch (err: any) {
       setConversationOutput(`⚠️ Erro ao consultar o agente: ${err.message || 'Tente novamente.'}`);
     } finally {

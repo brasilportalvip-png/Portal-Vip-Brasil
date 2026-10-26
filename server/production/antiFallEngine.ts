@@ -4,6 +4,7 @@ import { textAiClient } from './ai.js';
 import { type PortalProjectItem, listAllPortalProjectsFromDb, seedPortalProjectsIfEmpty } from './almaPortfolio.js';
 import { ensureValidSocialAccessToken, isTextAutoPublishSupported, normalizeProvider, type SocialProvider } from './social.js';
 import { COLLECTIONS, createNotification, firestore, nowIso, stableId } from './store.js';
+import { isGlobalAutomationEnabled, isProjectAutomationEnabled } from './automationGate.js';
 
 export interface AntiFallModelAttempt {
   model: string;
@@ -266,14 +267,34 @@ export async function runDailyPortalMarketingCycle(userIdOrOptions?: string | { 
   let scheduledCount = 0;
   let skippedCount = 0;
 
+  const isGlobalOn = await isGlobalAutomationEnabled(targetUserId);
+  if (!isGlobalOn) {
+    console.log('[AntiFallEngine] Ciclo diário de marketing cancelado: Automação desligada no Botão Mestre.');
+    return {
+      success: true,
+      publishedCount: 0,
+      generatedCount: 0,
+      scheduledCount: 0,
+      skippedCount: 0,
+      totalProjects: 0,
+      itemsGenerated: [],
+      errors: []
+    };
+  }
+
   let allProjects = await listAllPortalProjectsFromDb();
   if (!allProjects.length) {
     const seeded = await seedPortalProjectsIfEmpty();
     allProjects = seeded.projects;
   }
 
-  const selectedProjects = allProjects.filter((p) => p.active !== false && p.dailyMarketingEnabled !== false);
-  const projectsToProcess = selectedProjects;
+  const projectsToProcess: PortalProjectItem[] = [];
+  for (const p of allProjects) {
+    if (p.active !== false && p.dailyMarketingEnabled !== false) {
+      const allowed = await isProjectAutomationEnabled(p.id, targetUserId);
+      if (allowed) projectsToProcess.push(p);
+    }
+  }
 
   for (const project of projectsToProcess) {
     if (signal?.aborted) break;
