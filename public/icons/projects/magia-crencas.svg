@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="goldGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FCD34D" />
+      <stop offset="60%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#78350F" />
+    </radialGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#181308" stroke="#F59E0B" stroke-width="3" stroke-opacity="0.4" />
+  <!-- Sacred Geometry Circle -->
+  <circle cx="100" cy="100" r="72" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4,3" stroke-opacity="0.6" />
+  <circle cx="100" cy="100" r="54" fill="#261A05" stroke="#FCD34D" stroke-width="2" />
+  <!-- Sacred Sunburst Rays -->
+  <path d="M100 28 L100 42 M100 158 L100 172 M28 100 L42 100 M158 100 L172 100 M49 49 L59 59 M141 141 L151 151 M49 151 L59 141 M141 49 L151 59" stroke="#FCD34D" stroke-width="2" stroke-linecap="round" stroke-opacity="0.8" />
+  <!-- Sacred Lotus / Flame of Faith -->
+  <path d="M100 62 C85 82 82 108 100 130 C118 108 115 82 100 62 Z" fill="url(#goldGlow)" filter="url(#glow)" />
+  <path d="M100 78 C92 92 90 110 100 126 C110 110 108 92 100 78 Z" fill="#FFFBEB" opacity="0.9" />
+  <path d="M78 95 C82 112 92 124 100 130 C90 122 82 110 78 95 Z" fill="#F59E0B" opacity="0.8" />
+  <path d="M122 95 C118 112 108 124 100 130 C110 122 118 110 122 95 Z" fill="#F59E0B" opacity="0.8" />
+  <!-- Central Spark -->
+  <circle cx="100" cy="104" r="4" fill="#FFFFFF" />
+  <text x="100" y="165" font-family="system-ui, -apple-system, sans-serif" font-size="10" font-weight="900" fill="#FDE68A" text-anchor="middle" letter-spacing="2">MAGIA DAS CRENÇAS</text>
+</svg>

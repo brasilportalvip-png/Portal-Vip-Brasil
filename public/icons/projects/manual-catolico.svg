@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="heavenGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#93C5FD" />
+      <stop offset="60%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1E3A8A" />
+    </radialGradient>
+    <linearGradient id="goldLatin" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FEF08A" />
+      <stop offset="50%" stop-color="#EAB308" />
+      <stop offset="100%" stop-color="#A16207" />
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#0A1128" stroke="#3B82F6" stroke-width="3" stroke-opacity="0.4" />
+  <!-- Sacred Halo of Light -->
+  <circle cx="100" cy="85" r="42" fill="none" stroke="#FACC15" stroke-width="2" stroke-dasharray="3,3" stroke-opacity="0.8" />
+  <circle cx="100" cy="85" r="32" fill="url(#heavenGlow)" opacity="0.3" />
+  <!-- Latin Holy Cross -->
+  <rect x="94" y="44" width="12" height="74" rx="3" fill="url(#goldLatin)" />
+  <rect x="74" y="62" width="52" height="12" rx="3" fill="url(#goldLatin)" />
+  <!-- Cross bevel highlights -->
+  <line x1="100" y1="44" x2="100" y2="118" stroke="#FEF9C3" stroke-width="1.5" stroke-linecap="round" />
+  <line x1="74" y1="68" x2="126" y2="68" stroke="#FEF9C3" stroke-width="1.5" stroke-linecap="round" />
+  <!-- Holy Book / Sacred Scriptures at Base -->
+  <path d="M68 132 C82 126 96 128 100 132 C104 128 118 126 132 132 L132 144 C118 138 104 140 100 144 C96 140 82 138 68 144 Z" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1" />
+  <!-- Rays of Grace -->
+  <line x1="65" y1="50" x2="55" y2="40" stroke="#FDE047" stroke-width="2" stroke-linecap="round" />
+  <line x1="135" y1="50" x2="145" y2="40" stroke="#FDE047" stroke-width="2" stroke-linecap="round" />
+  <text x="100" y="168" font-family="Georgia, serif" font-size="10" font-weight="bold" fill="#BAE6FD" text-anchor="middle" letter-spacing="2">MANUAL CATÓLICO</text>
+  <text x="100" y="180" font-family="system-ui, sans-serif" font-size="7.5" font-weight="600" fill="#FDE047" text-anchor="middle" letter-spacing="1">FÉ &amp; TRADIÇÃO</text>
+</svg>

@@ -839,6 +839,11 @@ export interface AutopilotExecutionResult {
 }
 
 export async function triggerUserAutopilotMultimediaR8(userId: string, companyId: string): Promise<AutopilotExecutionResult> {
+  const project = await getPortalProjectFromDb(companyId);
+  if (!project || project.active === false) {
+    throw new Error('Projeto oficial não encontrado ou inativo no cadastro.');
+  }
+
   await assertAutomationAllowed({ userId, projectId: companyId, operationType: 'autopilot_trigger' });
 
   const lockKey = `${userId}_${companyId}`;
@@ -887,10 +892,7 @@ export async function triggerUserAutopilotMultimediaR8(userId: string, companyId
           primaryGoal: 'Atrair clientes e gerar autoridade'
         };
 
-    const project = await getPortalProjectFromDb(companyId);
-    if (!project || project.active === false) {
-      throw new Error('Projeto oficial não encontrado ou inativo no cadastro.');
-    }
+    // project já validado no início da execução com verificação fail-closed
 
     const timezone = ap.timezone || 'America/Sao_Paulo';
     const current = localSlot(new Date(), timezone);

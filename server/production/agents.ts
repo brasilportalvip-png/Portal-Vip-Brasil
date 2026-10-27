@@ -1,6 +1,7 @@
 import { textAiClient } from './ai.js';
 import { getPortalProjectFromDb } from './almaPortfolio.js';
 import { nowIso } from './store.js';
+import { getMasterBrandDossier, formatDossierForAgentContext } from './brandDossiers.js';
 
 export interface AgentSpec {
   id: string;
@@ -393,8 +394,11 @@ export function getAgentSpec(agentId: string): AgentSpec | null {
 
 export interface AgentInteractionParams {
   agentId: string;
-  prompt: string;
+  prompt?: string;
+  userMessage?: string;
+  message?: string;
   companyId?: string;
+  projectId?: string;
   userId?: string;
   mockAiClient?: any;
 }
@@ -422,27 +426,25 @@ export async function processAgentInteraction(params: AgentInteractionParams): P
     throw error;
   }
 
-  const promptText = String(params.prompt || '').trim();
+  const promptText = String(params.prompt || params.userMessage || params.message || '').trim();
   if (!promptText) {
     const error: any = new Error('A mensagem ou prompt do usuário é obrigatória.');
     error.statusCode = 400;
     throw error;
   }
 
+  const targetProjectId = params.companyId || params.projectId;
   let projectContextInfo = 'CONTEXTO GERAL: Portal Vip Brasil — Ecossistema de Marketing, Vitrine Digital e Divulgação Automática.';
-  if (params.companyId) {
+  let visualNegativeRule = '';
+  let editorialNegativeRule = '';
+
+  if (targetProjectId) {
     try {
-      const project = await getPortalProjectFromDb(params.companyId);
-      if (project) {
-        projectContextInfo = `PROJETO ATIVO SELECIONADO:
-- Nome: ${project.name}
-- Categoria: ${project.category}
-- Segmento: ${project.segment}
-- Website Oficial: ${project.websiteUrl}
-- Google Play Store: ${project.playStoreUrl || 'Sem aplicativo cadastrado'}
-- Público-Alvo: ${project.targetAudience}
-- Diferenciais Principais: ${project.highlights?.join(', ') || ''}
-- Palavras-Chave de Foco: ${project.keywords?.join(', ')}`;
+      const dossier = await getMasterBrandDossier(targetProjectId);
+      if (dossier) {
+        projectContextInfo = formatDossierForAgentContext(dossier);
+        visualNegativeRule = `\nRESTRIÇÕES NEGATIVAS VISUAIS DESTE PROJETO:\n${dossier.visualNegativeConstraints.map((c) => `- ${c}`).join('\n')}`;
+        editorialNegativeRule = `\nRESTRIÇÕES NEGATIVAS EDITORIAIS DESTE PROJETO:\n${dossier.editorialNegativeConstraints.map((c) => `- ${c}`).join('\n')}`;
       }
     } catch {
       // Falha de contexto não impede a consulta do agente
@@ -453,11 +455,14 @@ export async function processAgentInteraction(params: AgentInteractionParams): P
 
 CONTEXTO OPERACIONAL DO PORTAL VIP BRASIL:
 ${projectContextInfo}
+${visualNegativeRule}
+${editorialNegativeRule}
 
 DIRETRIZES TÉCNICAS E DE QUALIDADE:
 1. Responda SEMPRE em português do Brasil nativo, claro, elegante e direto.
 2. Seja prático e forneça soluções prontas para uso (código, tags, prompts finais, roteiros ou textos estruturados).
-3. Nunca invente dados falsos ou promessas irreais.`;
+3. Nunca invente dados falsos ou promessas irreais.
+4. Respeite com rigor absoluto os limites temáticos, religiosos e visuais do nicho selecionado. Jamais misture elementos de outros nichos (ex: imagens católicas para runas nórdicas ou satanização para Exu).`;
 
   const ai = params.mockAiClient || textAiClient();
   const MODEL_NAME = 'gemini-3.8-flash';

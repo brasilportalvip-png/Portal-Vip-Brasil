@@ -244,74 +244,88 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
           {filteredProjects.map((project) => (
             <div
               key={project.id}
-              className="group relative flex flex-col justify-between bg-slate-900/70 border border-slate-800/80 hover:border-cyan-500/50 rounded-2xl p-6 transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 backdrop-blur-sm"
+              className="group relative flex flex-col justify-between overflow-hidden bg-slate-900/80 border border-slate-800/80 hover:border-cyan-500/50 rounded-2xl transition-all duration-300 hover:shadow-2xl hover:shadow-cyan-500/10 backdrop-blur-sm"
             >
-              <div>
-                {/* Header Card: Badges + App Tag */}
-                <div className="flex items-center justify-between gap-2 mb-4">
-                  <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-800 text-cyan-300 border border-slate-700">
+              {/* Individual Card Banner Cover */}
+              <div className="relative h-36 w-full overflow-hidden bg-slate-950 border-b border-slate-800/80">
+                <img
+                  src={project.bannerUrl || project.logoUrl}
+                  alt={project.name}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
+
+                {/* Badges on top of banner */}
+                <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                  <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-900/90 text-cyan-300 border border-cyan-500/30 backdrop-blur-md">
                     {project.category}
                   </span>
                   {project.hasApp ? (
-                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                      <Smartphone className="w-3.5 h-3.5" />
-                      App Play Store
+                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-500/90 text-slate-950 flex items-center gap-1 shadow-md">
+                      <Smartphone className="w-3 h-3" />
+                      Play Store
                     </span>
                   ) : (
-                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20 flex items-center gap-1">
-                      <Globe className="w-3.5 h-3.5" />
+                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-blue-500/90 text-slate-950 flex items-center gap-1 shadow-md">
+                      <Globe className="w-3 h-3" />
                       Web App
                     </span>
                   )}
                 </div>
 
-                {/* Project Title & Tagline */}
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-12 h-12 rounded-xl bg-slate-800 border border-cyan-500/20 p-1 flex-shrink-0 flex items-center justify-center overflow-hidden">
-                    <img
-                      src={project.logoUrl}
-                      alt={project.name}
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white group-hover:text-cyan-300 transition-colors">
+                {/* Overlapping Individual Project Logo */}
+                <div className="absolute -bottom-4 left-5 w-14 h-14 rounded-2xl bg-slate-900 border-2 border-cyan-500/40 p-1.5 shadow-xl flex items-center justify-center overflow-hidden">
+                  <img
+                    src={project.logoUrl}
+                    alt={project.name}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+              </div>
+
+              {/* Card Content */}
+              <div className="p-5 pt-6 flex-1 flex flex-col justify-between">
+                <div>
+                  <div className="mt-1 mb-2">
+                    <h3 className="text-lg font-black text-white group-hover:text-cyan-300 transition-colors">
                       {project.name}
                     </h3>
                     <p className="text-xs text-slate-400 line-clamp-1">{project.segment}</p>
                   </div>
+
+                  <p className="text-xs italic text-cyan-200/90 mb-3 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+                    "{project.tagline}"
+                  </p>
+
+                  <p className="text-xs text-slate-300 leading-relaxed line-clamp-3 mb-4">
+                    {project.description}
+                  </p>
+
+                  {/* Highlights */}
+                  <div className="space-y-1.5 mb-5">
+                    {project.highlights.slice(0, 3).map((hl, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+                        <span className="line-clamp-1">{hl}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Keywords Tags */}
+                  <div className="flex flex-wrap gap-1.5 mb-5">
+                    {project.keywords.slice(0, 4).map((kw, i) => (
+                      <span
+                        key={i}
+                        className="px-2 py-0.5 rounded-md text-[10px] bg-slate-950 border border-slate-800 text-slate-400"
+                      >
+                        #{kw}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-
-                <p className="text-xs italic text-cyan-200/80 mb-3 bg-slate-950/40 p-2 rounded-lg border border-slate-800/50">
-                  "{project.tagline}"
-                </p>
-
-                <p className="text-xs text-slate-300 leading-relaxed line-clamp-3 mb-4">
-                  {project.description}
-                </p>
-
-                {/* Highlights */}
-                <div className="space-y-1.5 mb-5">
-                  {project.highlights.slice(0, 3).map((hl, idx) => (
-                    <div key={idx} className="flex items-center gap-2 text-xs text-slate-300">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
-                      <span className="line-clamp-1">{hl}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Keywords Tags */}
-                <div className="flex flex-wrap gap-1.5 mb-6">
-                  {project.keywords.slice(0, 4).map((kw, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-0.5 rounded-md text-[10px] bg-slate-950 border border-slate-800 text-slate-400"
-                    >
-                      #{kw}
-                    </span>
-                  ))}
-                </div>
-              </div>
 
               {/* Action Buttons */}
               <div className="pt-4 border-t border-slate-800/80 space-y-2">
@@ -377,8 +391,9 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
+      </div>
 
         {/* Footer Info Box: SEO & Bing / Redundância Anti-Quedas */}
         <div className="mt-14 p-6 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 border border-slate-800 shadow-xl">

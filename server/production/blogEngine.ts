@@ -223,6 +223,22 @@ const PROJECT_TOPIC_POOLS: Record<string, Array<{
       category: 'Tecnologia & Apps'
     }
   ],
+  proj_froc_ia: [
+    {
+      topic: 'Froc IA: Como a Inteligência Artificial Está Revolucionando a Produção de Conteúdo e SEO',
+      primaryKeyword: 'inteligência artificial para conteúdo',
+      secondaryKeywords: ['froc ia', 'gerador de artigos seo', 'marketing com ia', 'automação digital'],
+      searchIntent: 'informational',
+      category: 'Inteligência Artificial'
+    },
+    {
+      topic: 'Engenharia de Prompts para Vendas: Como Criar Copys Magnéticas em Segundos',
+      primaryKeyword: 'engenharia de prompts para marketing',
+      secondaryKeywords: ['copys que convertem', 'ia generativa para negócios', 'textos persuasivos'],
+      searchIntent: 'guide',
+      category: 'Marketing & SEO'
+    }
+  ],
   proj_frocia2: [
     {
       topic: 'Froc IA: Como a Inteligência Artificial Está Revolucionando a Produção de Conteúdo e SEO',
@@ -237,6 +253,22 @@ const PROJECT_TOPIC_POOLS: Record<string, Array<{
       secondaryKeywords: ['copys que convertem', 'ia generativa para negócios', 'textos persuasivos'],
       searchIntent: 'guide',
       category: 'Marketing & SEO'
+    }
+  ],
+  proj_oraculos: [
+    {
+      topic: 'Oráculos Online: Como Interpretar o Tarot de Marselha e o Baralho Cigano com Precisão',
+      primaryKeyword: 'tarot online gratis',
+      secondaryKeywords: ['oráculos', 'baralho cigano interpretação', 'runas nórdicas online', 'tiragem de cartas'],
+      searchIntent: 'educational',
+      category: 'Oráculos & Guardiões'
+    },
+    {
+      topic: 'A Sabedoria das Runas Nórdicas: Como Decodificar Mensagens para o Futuro',
+      primaryKeyword: 'runas nórdicas significado',
+      secondaryKeywords: ['leitura de runas online', 'oráculo nórdico', 'autoconhecimento e destino'],
+      searchIntent: 'informational',
+      category: 'Oráculos & Guardiões'
     }
   ],
   proj_oraculos_ts: [

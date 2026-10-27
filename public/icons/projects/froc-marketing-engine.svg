@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="marketingPulse" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="60%" stop-color="#0284C7" />
+      <stop offset="100%" stop-color="#082F49" />
+    </radialGradient>
+    <linearGradient id="rocketGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="50%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#030C1C" stroke="#0284C7" stroke-width="3" stroke-opacity="0.5" />
+  <!-- Growth Orbit rings -->
+  <ellipse cx="100" cy="95" rx="68" ry="28" fill="none" stroke="#38BDF8" stroke-width="1.5" stroke-dasharray="6,3" transform="rotate(-25 100 95)" opacity="0.7" />
+  <circle cx="100" cy="95" r="46" fill="#0C2340" stroke="#0284C7" stroke-width="2" />
+  <!-- Growth Rocket Pulse -->
+  <path d="M100 52 C108 64 116 82 116 102 L106 102 L106 112 L100 116 L94 112 L94 102 L84 102 C84 82 92 64 100 52 Z" fill="url(#rocketGrad)" />
+  <circle cx="100" cy="74" r="5" fill="#BAE6FD" />
+  <!-- Rocket exhaust flame -->
+  <polygon points="100,116 95,128 100,138 105,128" fill="#F59E0B" />
+  <polygon points="100,116 97,125 100,132 103,125" fill="#FDE047" />
+  <!-- Satellite Growth Nodes on Orbit -->
+  <circle cx="56" cy="74" r="5" fill="#38BDF8" />
+  <circle cx="144" cy="116" r="5" fill="#38BDF8" />
+  <!-- Growth Bar chart accent -->
+  <rect x="52" y="112" width="6" height="12" rx="2" fill="#0284C7" />
+  <rect x="62" y="104" width="6" height="20" rx="2" fill="#0369A1" />
+  <rect x="132" y="108" width="6" height="16" rx="2" fill="#0369A1" />
+  <rect x="142" y="98" width="6" height="26" rx="2" fill="#0284C7" />
+  <text x="100" y="158" font-family="system-ui, -apple-system, sans-serif" font-size="9.5" font-weight="900" fill="#E0F2FE" text-anchor="middle" letter-spacing="1.5">MARKETING ENGINE</text>
+  <text x="100" y="172" font-family="system-ui, -apple-system, sans-serif" font-size="8" font-weight="700" fill="#38BDF8" text-anchor="middle" letter-spacing="1">AUTOPILOT &amp; GROWTH</text>
+</svg>

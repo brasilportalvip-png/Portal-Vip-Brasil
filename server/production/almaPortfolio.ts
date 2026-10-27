@@ -57,7 +57,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.magiadascrencas.app',
     appTitle: 'Magia das Crenças App (Play Store)',
     hasApp: true,
-    logoUrl: '/icons/logo.png',
+    logoUrl: '/icons/projects/magia-crencas.svg',
     bannerUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80',
     tagline: 'Desperte seu poder interior e a força das suas convicções.',
     description: 'Portal oficial e aplicativo devocional com orações, rituais sagrados, mensagens diárias, artigos holísticos e orientação espiritual para transformação e prosperidade.',
@@ -86,7 +86,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.portalvipbrasil.exuresponde',
     appTitle: 'Exu Responde App (Play Store)',
     hasApp: true,
-    logoUrl: '/icons/logo.png',
+    logoUrl: '/icons/projects/exu-responde.svg',
     bannerUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1200&q=80',
     tagline: 'Respostas diretas, firmeza nos caminhos e sabedoria ancestral.',
     description: 'Ambiente oracular dedicado aos guardiões, tiragens de conselhos imediatos, direcionamento para tomada de decisão e aplicativo interativo na Play Store.',
@@ -115,7 +115,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=com.portalvipbrasil.mariapadilharainha',
     appTitle: 'Maria Padilha 7 Encruzilhadas App (Play Store)',
     hasApp: true,
-    logoUrl: '/icons/logo.png',
+    logoUrl: '/icons/projects/maria-padilha.svg',
     bannerUrl: 'https://images.unsplash.com/photo-1518895949257-7621c3c786d7?auto=format&fit=crop&w=1200&q=80',
     tagline: 'O poder do amor, da autoestima magnética e da vitória sentimental.',
     description: 'Plataforma oficial e aplicativo para aconselhamento afetivo, orações de poder para amar e ser amada, feitiços de proteção e conexão com a Rainha das 7 Encruzilhadas.',
@@ -144,7 +144,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     playStoreUrl: 'https://play.google.com/store/apps/details?id=br.com.manualcatolico.app',
     appTitle: 'Manual Católico App (Play Store)',
     hasApp: true,
-    logoUrl: '/icons/logo.png',
+    logoUrl: '/icons/projects/manual-catolico.svg',
     bannerUrl: 'https://images.unsplash.com/photo-1504052434569-70ad5836ab65?auto=format&fit=crop&w=1200&q=80',
     tagline: 'Seu companheiro diário de oração, liturgia e doutrina católica.',
     description: 'Compêndio de orações tradicionais da Santa Igreja, santo do dia, novenas milagrosas, terço rezado, catecismo e aplicativo para vivência cristã diária.',
@@ -171,7 +171,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     segment: 'Geração de Conteúdo & Marketing Automatizado',
     websiteUrl: 'https://frocia2.vercel.app/',
     hasApp: false,
-    logoUrl: '/icons/logo.png',
+    logoUrl: '/icons/projects/froc-ia.svg',
     bannerUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
     tagline: 'A evolução da inteligência artificial para marketing e produção de conteúdo.',
     description: 'Sistema avançado de criação com IA generativa, redação de artigos de alta autoridade, copys magnéticas para vendas e automação de canais digitais.',
@@ -198,7 +198,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     segment: 'Motor Oracular TypeScript de Alta Precisão',
     websiteUrl: 'https://oraculos-ts.vercel.app/',
     hasApp: false,
-    logoUrl: '/icons/logo.png',
+    logoUrl: '/icons/projects/oraculos.svg',
     bannerUrl: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1200&q=80',
     tagline: 'O universo dos oráculos decodificado com tecnologia de ponta.',
     description: 'Plataforma completa de tiragens de Tarot de Marselha, Baralho Cigano, Runas Nórdicas e I Ching com interpretações profundas geradas em tempo real.',
@@ -225,7 +225,7 @@ export const PORTAL_VIP_PROJECTS: PortalProjectItem[] = [
     segment: 'Autopilot, Social Hub & Campanhas',
     websiteUrl: 'https://froc-ia-marketing-engine.vercel.app/',
     hasApp: false,
-    logoUrl: '/icons/logo.png',
+    logoUrl: '/icons/projects/froc-marketing-engine.svg',
     bannerUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=80',
     tagline: 'O ecossistema completo para dominar as redes sociais e o Google.',
     description: 'Motor central de marketing para criação automática de vídeos, imagens, artigos de blog e agendamento de publicações com proteção contínua anti-quedas.',
@@ -302,18 +302,6 @@ function defaultProjectSocialSettings(project: PortalProjectItem): PortalProject
   };
 }
 
-function officialIdentityPatch(project: PortalProjectItem): Partial<PortalProjectItem> {
-  const patch: Partial<PortalProjectItem> = {};
-  for (const key of PORTAL_PROJECT_IDENTITY_FIELDS) (patch as any)[key] = project[key];
-  return cleanObject(patch);
-}
-
-function projectIdentityNeedsSync(stored: any, official: PortalProjectItem): boolean {
-  if (!stored || typeof stored !== 'object') return true;
-  const patch = officialIdentityPatch(official) as any;
-  return Object.entries(patch).some(([key, value]) => JSON.stringify(stored[key]) !== JSON.stringify(value));
-}
-
 export function isSeedPortalProject(id: string): boolean {
   return SEED_PROJECT_IDS.has(String(id || ''));
 }
@@ -322,19 +310,64 @@ export function mergeOfficialPortalProject(
   official: PortalProjectItem,
   stored?: Partial<PortalProjectItem> | null
 ): PortalProjectItem {
-  const operational: any = stored && typeof stored === 'object' ? stored : {};
+  if (!stored || typeof stored !== 'object') {
+    return {
+      ...official,
+      active: true,
+      dailyMarketingEnabled: true,
+      dailyBlogEnabled: true,
+      socialSettings: defaultProjectSocialSettings(official),
+      isSeedProject: true,
+      managedByPortalAdmin: true
+    };
+  }
+
+  // Persisted data in Firestore takes STRICT PRIORITY over static code constants.
+  // Static seed values only act as fallbacks if a field has not been populated.
+  const name = safeText(stored.name, 120) || official.name;
+  const slug = safeSlug(stored.slug || official.slug);
+  const websiteUrl = safeWebUrl(stored.websiteUrl) || official.websiteUrl;
+  const playStoreUrl = stored.playStoreUrl !== undefined
+    ? (safeWebUrl(stored.playStoreUrl) || undefined)
+    : official.playStoreUrl;
+  const logoUrl = safeWebUrl(stored.logoUrl) || safeText(stored.logoUrl, 1000) || official.logoUrl;
+  const bannerUrl = safeWebUrl(stored.bannerUrl) || safeText(stored.bannerUrl, 1000) || official.bannerUrl;
+
   return {
-    ...operational,
     ...official,
-    active: typeof operational.active === 'boolean' ? operational.active : true,
-    dailyMarketingEnabled: typeof operational.dailyMarketingEnabled === 'boolean' ? operational.dailyMarketingEnabled : true,
-    dailyBlogEnabled: typeof operational.dailyBlogEnabled === 'boolean' ? operational.dailyBlogEnabled : true,
-    socialSettings: operational.socialSettings && typeof operational.socialSettings === 'object'
-      ? operational.socialSettings
-      : defaultProjectSocialSettings(official),
-    createdAt: operational.createdAt,
-    updatedAt: operational.updatedAt,
-    isSeedProject: true
+    ...stored,
+    id: official.id, // Primary ID is invariant
+    name,
+    slug,
+    category: safeText(stored.category, 150) || official.category,
+    segment: safeText(stored.segment, 200) || official.segment,
+    websiteUrl,
+    playStoreUrl,
+    appTitle: stored.appTitle !== undefined ? safeText(stored.appTitle, 200) : official.appTitle,
+    hasApp: typeof stored.hasApp === 'boolean' ? stored.hasApp : Boolean(playStoreUrl),
+    logoUrl,
+    bannerUrl,
+    tagline: stored.tagline !== undefined ? safeText(stored.tagline, 500) : official.tagline,
+    description: stored.description !== undefined ? safeText(stored.description, 5000) : official.description,
+    highlights: Array.isArray(stored.highlights) && stored.highlights.length > 0 ? safeList(stored.highlights) : official.highlights,
+    keywords: Array.isArray(stored.keywords) && stored.keywords.length > 0 ? safeList(stored.keywords) : official.keywords,
+    targetAudience: stored.targetAudience !== undefined ? safeText(stored.targetAudience, 3000) : official.targetAudience,
+    socialMarketingAngles: Array.isArray(stored.socialMarketingAngles) && stored.socialMarketingAngles.length > 0
+      ? safeList(stored.socialMarketingAngles)
+      : official.socialMarketingAngles,
+    bingSeoKeywords: Array.isArray(stored.bingSeoKeywords) && stored.bingSeoKeywords.length > 0
+      ? safeList(stored.bingSeoKeywords)
+      : official.bingSeoKeywords,
+    active: typeof stored.active === 'boolean' ? stored.active : true,
+    dailyMarketingEnabled: typeof stored.dailyMarketingEnabled === 'boolean' ? stored.dailyMarketingEnabled : true,
+    dailyBlogEnabled: typeof stored.dailyBlogEnabled === 'boolean' ? stored.dailyBlogEnabled : true,
+    socialSettings: stored.socialSettings && typeof stored.socialSettings === 'object'
+      ? stored.socialSettings
+      : (official.socialSettings || defaultProjectSocialSettings(official)),
+    createdAt: stored.createdAt || official.createdAt,
+    updatedAt: stored.updatedAt || official.updatedAt,
+    isSeedProject: true,
+    managedByPortalAdmin: true
   } as PortalProjectItem;
 }
 
@@ -352,8 +385,8 @@ function normalizeCustomProject(raw: any, fallbackId?: string): PortalProjectIte
     playStoreUrl,
     appTitle: safeText(raw?.appTitle, 200) || undefined,
     hasApp: typeof raw?.hasApp === 'boolean' ? raw.hasApp : Boolean(playStoreUrl),
-    logoUrl: safeWebUrl(raw?.logoUrl) || PORTAL_VIP_OFFICIAL_ASSETS.logoUrl,
-    bannerUrl: safeWebUrl(raw?.bannerUrl) || safeWebUrl(raw?.logoUrl) || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl,
+    logoUrl: safeWebUrl(raw?.logoUrl) || safeText(raw?.logoUrl, 1000) || PORTAL_VIP_OFFICIAL_ASSETS.logoUrl,
+    bannerUrl: safeWebUrl(raw?.bannerUrl) || safeText(raw?.bannerUrl, 1000) || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl,
     tagline: safeText(raw?.tagline, 500),
     description: safeText(raw?.description, 5000),
     highlights: safeList(raw?.highlights),
@@ -413,20 +446,26 @@ export async function listAllPortalProjectsFromDb(): Promise<PortalProjectItem[]
 
     const seededProjects = PORTAL_VIP_PROJECTS.map((official) => {
       const stored = storedById.get(official.id);
-      const merged = mergeOfficialPortalProject(official, stored);
       if (!stored) {
-        const newDoc = { ...merged, createdAt: now, updatedAt: now };
+        // Only seed initially if this project document does not exist yet in Firestore
+        const newDoc = {
+          ...official,
+          active: true,
+          dailyMarketingEnabled: true,
+          dailyBlogEnabled: true,
+          socialSettings: defaultProjectSocialSettings(official),
+          isSeedProject: true,
+          managedByPortalAdmin: true,
+          createdAt: now,
+          updatedAt: now
+        };
         writes.push(projectsRef.doc(official.id).set(cleanObject(newDoc), { merge: true }).catch((err) => {
           console.warn(`[PortalPortfolio] Erro ao criar projeto inicial ${official.id}:`, err);
         }));
         return newDoc;
       }
-      if (projectIdentityNeedsSync(stored, official)) {
-        writes.push(projectsRef.doc(official.id).set(cleanObject({ ...officialIdentityPatch(official), updatedAt: now }), { merge: true }).catch((err) => {
-          console.warn(`[PortalPortfolio] Erro ao reparar identidade do projeto ${official.id}:`, err);
-        }));
-      }
-      return merged;
+      // Never overwrite stored user edits with static defaults on reads!
+      return mergeOfficialPortalProject(official, stored);
     });
 
     const customProjects = storedDocs
@@ -464,17 +503,23 @@ export async function getPortalProjectFromDb(idOrSlug: string): Promise<PortalPr
       if (snap.exists) {
         const stored = docData<PortalProjectItem>(snap);
         if (stored) {
-          if (projectIdentityNeedsSync(stored, official)) {
-            await docRef.set(cleanObject({ ...officialIdentityPatch(official), updatedAt: nowIso() }), { merge: true }).catch(() => undefined);
-          }
+          // Return persisted user modifications directly!
           return mergeOfficialPortalProject(official, stored);
         }
       }
+      // First-time seed only if document does not exist in DB
       const now = nowIso();
-      const fresh = mergeOfficialPortalProject(official, {
-        active: true, dailyMarketingEnabled: true, dailyBlogEnabled: true,
-        socialSettings: defaultProjectSocialSettings(official), createdAt: now, updatedAt: now
-      });
+      const fresh: PortalProjectItem = {
+        ...official,
+        active: true,
+        dailyMarketingEnabled: true,
+        dailyBlogEnabled: true,
+        socialSettings: defaultProjectSocialSettings(official),
+        isSeedProject: true,
+        managedByPortalAdmin: true,
+        createdAt: now,
+        updatedAt: now
+      };
       await docRef.set(cleanObject(fresh), { merge: true }).catch(() => undefined);
       return fresh;
     }
@@ -525,40 +570,118 @@ export async function createPortalProjectInDb(input: Partial<PortalProjectItem>)
     updatedAt: now,
     managedByPortalAdmin: true
   }, id);
-  await db.collection(COLLECTIONS.projects).doc(id).set(cleanObject(project));
+
+  const docRef = db.collection(COLLECTIONS.projects).doc(id);
+  await docRef.set(cleanObject(project));
+
+  // Read-After-Write verification
+  const verifySnap = await docRef.get();
+  if (!verifySnap.exists) {
+    const error: any = new Error(`Falha crítica de persistência: projeto ${id} não encontrado após inserção no Firestore.`);
+    error.statusCode = 500;
+    throw error;
+  }
+
   return project;
 }
 
-export async function updatePortalProjectInDb(id: string, updates: Partial<PortalProjectItem>): Promise<PortalProjectItem | null> {
+export async function updatePortalProjectInDb(
+  id: string,
+  updates: Partial<PortalProjectItem>,
+  options?: { expectedUpdatedAt?: string }
+): Promise<PortalProjectItem | null> {
   const current = await getPortalProjectFromDb(id);
   if (!current) return null;
+
+  // Concurrency check: avoid blind overwrite if record was modified since client read it
+  if (options?.expectedUpdatedAt && current.updatedAt && options.expectedUpdatedAt !== current.updatedAt) {
+    const error: any = new Error(`Conflito de edição: este projeto foi alterado recentemente por outro processo em ${current.updatedAt}. Recarregue a página para obter a versão mais recente.`);
+    error.statusCode = 409;
+    throw error;
+  }
+
   const db = firestore();
   const docRef = db.collection(COLLECTIONS.projects).doc(current.id);
   const now = nowIso();
 
-  if (isSeedPortalProject(current.id)) {
-    const operationalPatch: Partial<PortalProjectItem> = {};
-    if (typeof updates.active === 'boolean') operationalPatch.active = updates.active;
-    if (typeof updates.dailyMarketingEnabled === 'boolean') operationalPatch.dailyMarketingEnabled = updates.dailyMarketingEnabled;
-    if (typeof updates.dailyBlogEnabled === 'boolean') operationalPatch.dailyBlogEnabled = updates.dailyBlogEnabled;
-    if (updates.socialSettings && typeof updates.socialSettings === 'object') operationalPatch.socialSettings = updates.socialSettings;
-    if (typeof updates.tagline === 'string') operationalPatch.tagline = updates.tagline;
-    if (typeof updates.description === 'string') operationalPatch.description = updates.description;
-    if (typeof updates.targetAudience === 'string') operationalPatch.targetAudience = updates.targetAudience;
-    if (typeof updates.bannerUrl === 'string') operationalPatch.bannerUrl = updates.bannerUrl;
-    if (typeof updates.logoUrl === 'string') operationalPatch.logoUrl = updates.logoUrl;
-    if (Array.isArray(updates.highlights)) operationalPatch.highlights = updates.highlights;
-    if (Array.isArray(updates.keywords)) operationalPatch.keywords = updates.keywords;
-    if (Array.isArray(updates.socialMarketingAngles)) operationalPatch.socialMarketingAngles = updates.socialMarketingAngles;
-    if (Array.isArray(updates.bingSeoKeywords)) operationalPatch.bingSeoKeywords = updates.bingSeoKeywords;
-    await docRef.set(cleanObject({ ...operationalPatch, updatedAt: now }), { merge: true });
-    return getPortalProjectFromDb(current.id) as Promise<PortalProjectItem>;
+  // Validate slug conflict if slug is being updated
+  if (updates.slug && safeSlug(updates.slug) !== current.slug) {
+    await assertSlugAvailable(safeSlug(updates.slug), current.id);
   }
 
-  const merged = normalizeCustomProject({ ...current, ...updates, id: current.id, updatedAt: now }, current.id);
-  if (merged.slug !== current.slug) await assertSlugAvailable(merged.slug, current.id);
-  await docRef.set(cleanObject(merged), { merge: false });
-  return merged;
+  // Build the comprehensive update payload preserving all editable fields
+  const toSave: Record<string, any> = {
+    id: current.id,
+    updatedAt: now
+  };
+
+  if (updates.name !== undefined) toSave.name = safeText(updates.name, 120);
+  if (updates.slug !== undefined) toSave.slug = safeSlug(updates.slug, current.slug);
+  if (updates.category !== undefined) toSave.category = safeText(updates.category, 150);
+  if (updates.segment !== undefined) toSave.segment = safeText(updates.segment, 200);
+  if (updates.websiteUrl !== undefined) toSave.websiteUrl = safeWebUrl(updates.websiteUrl) || safeText(updates.websiteUrl, 1500);
+  if (updates.playStoreUrl !== undefined) toSave.playStoreUrl = safeWebUrl(updates.playStoreUrl) || undefined;
+  if (updates.appTitle !== undefined) toSave.appTitle = safeText(updates.appTitle, 200);
+  if (typeof updates.hasApp === 'boolean') toSave.hasApp = updates.hasApp;
+  if (updates.logoUrl !== undefined) toSave.logoUrl = safeWebUrl(updates.logoUrl) || safeText(updates.logoUrl, 1500);
+  if (updates.bannerUrl !== undefined) toSave.bannerUrl = safeWebUrl(updates.bannerUrl) || safeText(updates.bannerUrl, 1500);
+  if (updates.tagline !== undefined) toSave.tagline = safeText(updates.tagline, 500);
+  if (updates.description !== undefined) toSave.description = safeText(updates.description, 5000);
+  if (updates.targetAudience !== undefined) toSave.targetAudience = safeText(updates.targetAudience, 3000);
+  if (Array.isArray(updates.highlights)) toSave.highlights = safeList(updates.highlights);
+  if (Array.isArray(updates.keywords)) toSave.keywords = safeList(updates.keywords);
+  if (Array.isArray(updates.socialMarketingAngles)) toSave.socialMarketingAngles = safeList(updates.socialMarketingAngles);
+  if (Array.isArray(updates.bingSeoKeywords)) toSave.bingSeoKeywords = safeList(updates.bingSeoKeywords);
+  if (typeof updates.active === 'boolean') toSave.active = updates.active;
+  if (typeof updates.dailyMarketingEnabled === 'boolean') toSave.dailyMarketingEnabled = updates.dailyMarketingEnabled;
+  if (typeof updates.dailyBlogEnabled === 'boolean') toSave.dailyBlogEnabled = updates.dailyBlogEnabled;
+  if (updates.socialSettings && typeof updates.socialSettings === 'object') toSave.socialSettings = updates.socialSettings;
+
+  if (isSeedPortalProject(current.id)) {
+    toSave.isSeedProject = true;
+    toSave.managedByPortalAdmin = true;
+  } else {
+    toSave.isSeedProject = false;
+    toSave.managedByPortalAdmin = true;
+  }
+
+  // 1. Perform atomic write to Firestore
+  await docRef.set(cleanObject(toSave), { merge: true });
+
+  // 2. Read-After-Write Verification: confirm Firestore actively holds the saved values
+  const verifySnap = await docRef.get();
+  if (!verifySnap.exists) {
+    const error: any = new Error(`Falha crítica de persistência: documento ${current.id} não pôde ser verificado no Firestore.`);
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const storedData = docData<PortalProjectItem>(verifySnap) as any;
+  if (!storedData) {
+    const error: any = new Error(`Falha crítica de persistência: dados vazios retornados do Firestore para o projeto ${current.id}.`);
+    error.statusCode = 500;
+    throw error;
+  }
+
+  // Check critical fields
+  for (const field of ['name', 'slug', 'websiteUrl', 'logoUrl', 'bannerUrl', 'tagline', 'description', 'active'] as const) {
+    if (toSave[field] !== undefined) {
+      const expected = toSave[field];
+      const actual = storedData[field];
+      if (expected !== actual) {
+        const error: any = new Error(`Falha na verificação de gravação do Firestore para o campo '${field}': esperado "${expected}", obtido "${actual}".`);
+        error.statusCode = 500;
+        throw error;
+      }
+    }
+  }
+
+  // 3. Return verified updated project
+  if (isSeedPortalProject(current.id)) {
+    const official = PORTAL_VIP_PROJECTS.find((p) => p.id === current.id)!;
+    return mergeOfficialPortalProject(official, storedData);
+  }
+  return normalizeCustomProject(storedData, current.id);
 }
 
 export async function deletePortalProjectInDb(id: string): Promise<{ deleted: boolean; protected: boolean }> {
@@ -568,3 +691,4 @@ export async function deletePortalProjectInDb(id: string): Promise<{ deleted: bo
   await firestore().collection(COLLECTIONS.projects).doc(current.id).delete();
   return { deleted: true, protected: false };
 }
+

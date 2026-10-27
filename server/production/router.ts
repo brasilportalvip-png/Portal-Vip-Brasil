@@ -11,6 +11,8 @@ import { DEFAULT_AUTOPILOT_TARGET_PLATFORMS, getAutopilotProjectsOverview, trigg
 import { toggleProjectAutomation, assertAutomationAllowed } from './automationGate.js';
 import { calculateFinancialCostSummary } from './financialGuardian.js';
 import { processAgentInteraction, getAgentSpec, CANONICAL_AGENT_IDS } from './agents.js';
+import { getMasterBrandDossier, CANONICAL_BRAND_DOSSIERS } from './brandDossiers.js';
+import { auditAllStoredArticles, auditSingleArticle } from './articleAuditor.js';
 
 function annotateLegacyImageRecord<T extends { imageUrl?: string; metadata?: any }>(item: T): T {
   const isLegacy = isLegacyUnsplashImage(item.imageUrl) || item.metadata?.imageDuplicateDetected === true;
@@ -725,6 +727,47 @@ router.post('/ai/agent-chat', requireAuth, asyncRoute(async (req: AuthenticatedR
       error: err.message || 'Falha na interação com o agente.'
     });
   }
+}));
+
+router.get('/ai/agents', (_req, res) => {
+  const specs = CANONICAL_AGENT_IDS.map((id) => getAgentSpec(id)).filter(Boolean);
+  res.json({ agents: specs, total: specs.length });
+});
+
+router.post('/agents/interact', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const agentId = safeString(req.body?.agentId, 100);
+  const prompt = safeString(req.body?.prompt || req.body?.userMessage || req.body?.message, 10000);
+  const companyId = safeString(req.body?.companyId || req.body?.projectId, 200);
+
+  if (!agentId || !prompt) {
+    return res.status(400).json({ error: 'agentId e mensagem/prompt são obrigatórios.' });
+  }
+
+  const spec = getAgentSpec(agentId);
+  if (!spec) {
+    return res.status(400).json({
+      error: `Agente não reconhecido: "${agentId}". O sistema possui exatamente 30 agentes oficiais cadastrados sem fallback silencioso.`,
+      validAgentIds: CANONICAL_AGENT_IDS
+    });
+  }
+
+  const result = await processAgentInteraction({
+    agentId,
+    prompt,
+    companyId: companyId || undefined,
+    userId: req.user!.id
+  });
+  res.json(result);
+}));
+
+router.get('/portal/brand-dossiers', asyncRoute(async (_req, res) => {
+  res.json({ dossiers: Object.values(CANONICAL_BRAND_DOSSIERS), total: Object.keys(CANONICAL_BRAND_DOSSIERS).length });
+}));
+
+router.get('/portal/brand-dossiers/:id', asyncRoute(async (req, res) => {
+  const dossier = await getMasterBrandDossier(req.params.id);
+  if (!dossier) return res.status(404).json({ error: 'Dossiê não encontrado para o projeto especificado.' });
+  res.json({ dossier });
 }));
 
 // Content library + calendar
@@ -1597,10 +1640,11 @@ router.post('/admin/projects', requireAdmin, asyncRoute(async (req: Authenticate
 }));
 
 router.patch('/admin/projects/:id', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const project = await updatePortalProjectInDb(req.params.id, req.body || {});
+  const { expectedUpdatedAt, ...updates } = req.body || {};
+  const project = await updatePortalProjectInDb(req.params.id, updates, { expectedUpdatedAt });
   if (!project) return res.status(404).json({ error:'Projeto não encontrado.' });
   await writeAdminLog({ operatorId:req.user!.id, operatorEmail:req.user!.email, action:'update_project', details:{ projectId:project.id } });
-  res.json({ success:true, project });
+  res.json({ success:true, project, verifiedInDb: true });
 }));
 
 router.delete('/admin/projects/:id', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
@@ -2110,9 +2154,10 @@ router.get('/portal/projects/:slug', asyncRoute(async (req: Request, res: Respon
 }));
 
 router.patch('/portal/projects/:id', requireAuth, requireAdmin, asyncRoute(async (req: Request, res: Response) => {
-  const updated = await updatePortalProjectInDb(req.params.id, req.body || {});
+  const { expectedUpdatedAt, ...updates } = req.body || {};
+  const updated = await updatePortalProjectInDb(req.params.id, updates, { expectedUpdatedAt });
   if (!updated) return res.status(404).json({ error: 'Projeto não encontrado para atualização.' });
-  res.json({ success: true, project: updated });
+  res.json({ success: true, project: updated, verifiedInDb: true });
 }));
 
 router.post('/portal/daily-pulse', requireAuth, requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
@@ -2246,6 +2291,19 @@ router.post('/portal/blog/track', asyncRoute(async (req: Request, res: Response)
   // Métricas públicas permanecem best-effort no cliente. Persistir cada acesso
   // no Firestore permitia que bots consumissem toda a cota diária de gravações.
   res.status(202).json({ success: true, persisted: false, articleId, metric });
+}));
+
+// Auditoria Integral Não-Destrutiva do Acervo de Artigos (Yoast SEO, Integridade Visual e Nichos)
+router.get('/admin/blog/audit-articles', requireAuth, requireAdmin, asyncRoute(async (req: Request, res: Response) => {
+  const persistDiagnostics = req.query.persist === 'true';
+  const report = await auditAllStoredArticles({ persistDiagnostics });
+  res.json(report);
+}));
+
+router.post('/admin/blog/audit-articles', requireAuth, requireAdmin, asyncRoute(async (req: Request, res: Response) => {
+  const { persistDiagnostics = true } = req.body || {};
+  const report = await auditAllStoredArticles({ persistDiagnostics: Boolean(persistDiagnostics) });
+  res.json(report);
 }));
 
 export { router };

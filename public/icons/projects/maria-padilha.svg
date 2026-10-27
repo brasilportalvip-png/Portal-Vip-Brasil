@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <radialGradient id="roseGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FB7185" />
+      <stop offset="60%" stop-color="#E11D48" />
+      <stop offset="100%" stop-color="#4C0519" />
+    </radialGradient>
+    <linearGradient id="goldCrown" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE68A" />
+      <stop offset="50%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#B45309" />
+    </linearGradient>
+  </defs>
+  <rect width="200" height="200" rx="40" fill="#130408" stroke="#E11D48" stroke-width="3" stroke-opacity="0.5" />
+  <circle cx="100" cy="100" r="70" fill="none" stroke="#BE123C" stroke-width="2" stroke-dasharray="5,3" stroke-opacity="0.7" />
+  <!-- Golden Crown of the Queen -->
+  <path d="M72 65 L76 80 L88 72 L100 84 L112 72 L124 80 L128 65 L120 68 L100 56 L80 68 Z" fill="url(#goldCrown)" />
+  <circle cx="100" cy="54" r="3" fill="#FFFBEB" />
+  <circle cx="72" cy="63" r="2.5" fill="#FFFBEB" />
+  <circle cx="128" cy="63" r="2.5" fill="#FFFBEB" />
+  <!-- Mystic Rose -->
+  <circle cx="100" cy="110" r="32" fill="url(#roseGlow)" />
+  <path d="M100 90 C85 90 80 102 86 112 C92 122 108 122 114 112 C120 102 115 90 100 90 Z" fill="#9F1239" opacity="0.8" />
+  <path d="M93 98 C88 104 90 114 100 116 C110 114 112 104 107 98 C102 94 98 94 93 98 Z" fill="#E11D48" />
+  <circle cx="100" cy="107" r="6" fill="#F43F5E" />
+  <!-- Seduction sparkles / 7 stars -->
+  <polygon points="62,95 64,101 70,103 64,105 62,111 60,105 54,103 60,101" fill="#FDE68A" />
+  <polygon points="138,95 140,101 146,103 140,105 138,111 136,105 130,103 136,101" fill="#FDE68A" />
+  <text x="100" y="162" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="900" fill="#FDA4AF" text-anchor="middle" letter-spacing="2">MARIA PADILHA</text>
+  <text x="100" y="176" font-family="system-ui, -apple-system, sans-serif" font-size="8" font-weight="700" fill="#FDE68A" text-anchor="middle" letter-spacing="1">7 ENCRUZILHADAS</text>
+</svg>

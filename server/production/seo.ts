@@ -413,15 +413,9 @@ export async function pingAllSearchEngines(customUrls?: string[]): Promise<{
     })
   );
 
-  // 2. Registro transparente sobre o Google (Google descontinuou /ping?sitemap em dez/2023 em prol de Search Console API / Sitemaps XML)
-  results.push({
-    engine: 'GoogleSearchConsole',
-    success: true,
-    statusCode: 200,
-    message: 'Google monitora via /sitemap.xml dinâmico e robots.txt (pings HTTP legados /ping?sitemap foram descontinuados oficialmente pelo Google).',
-    durationMs: 0,
-    timestamp
-  });
+  // Nota técnica: O Google descontinuou endpoints públicos legados (/ping?sitemap) em dez/2023.
+  // A descoberta oficial do Google ocorre através da diretiva Sitemap em robots.txt e consulta periódica a /sitemap.xml.
+  // Somente requisições reais aos provedores ativos (IndexNow, Bing, Yandex) são registradas no resultado.
 
   // Persiste histórico de pings para auditoria
   try {

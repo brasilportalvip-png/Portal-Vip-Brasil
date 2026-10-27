@@ -114,7 +114,11 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
   const[generating,setGenerating]=useState(false);
   const [projectForm, setProjectForm] = useState<ProjectForm>(EMPTY_PROJECT);
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectUpdatedAt, setEditingProjectUpdatedAt] = useState<string | null>(null);
+  const [initialSnapshot, setInitialSnapshot] = useState<string>('');
   const [savingProject, setSavingProject] = useState(false);
+  const [projectSaveSuccess, setProjectSaveSuccess] = useState<string | null>(null);
+  const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const [runningScheduler, setRunningScheduler] = useState(false);
   const projectFormRef = useRef<HTMLDivElement>(null);
   const firstProjectInputRef = useRef<HTMLInputElement>(null);
@@ -197,7 +201,11 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
 
   const beginCreate = () => {
     setEditingProjectId('new');
+    setEditingProjectUpdatedAt(null);
     setProjectForm(EMPTY_PROJECT);
+    setInitialSnapshot(JSON.stringify(EMPTY_PROJECT));
+    setProjectSaveSuccess(null);
+    setProjectSaveError(null);
     setFeedback('');
     window.setTimeout(() => {
       projectFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -207,7 +215,8 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
 
   const beginEdit = (project: AdminProject) => {
     setEditingProjectId(project.id);
-    setProjectForm({
+    setEditingProjectUpdatedAt(project.updatedAt || null);
+    const initialData: ProjectForm = {
       name: project.name || '',
       slug: project.slug || '',
       category: project.category || '',
@@ -227,7 +236,11 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
       active: project.active !== false,
       dailyMarketingEnabled: project.dailyMarketingEnabled !== false,
       dailyBlogEnabled: project.dailyBlogEnabled !== false
-    });
+    };
+    setProjectForm(initialData);
+    setInitialSnapshot(JSON.stringify(initialData));
+    setProjectSaveSuccess(null);
+    setProjectSaveError(null);
     setFeedback('');
     window.setTimeout(() => {
       projectFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -235,7 +248,20 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
     }, 60);
   };
 
-  const cancelEdit = () => { setEditingProjectId(null); setProjectForm(EMPTY_PROJECT); };
+  const cancelEdit = () => {
+    const isDirty = initialSnapshot && JSON.stringify(projectForm) !== initialSnapshot;
+    if (isDirty) {
+      const confirmDiscard = window.confirm('Você tem alterações não salvas neste formulário. Deseja realmente descartar e fechar?');
+      if (!confirmDiscard) return;
+    }
+    setEditingProjectId(null);
+    setEditingProjectUpdatedAt(null);
+    setProjectForm(EMPTY_PROJECT);
+    setInitialSnapshot('');
+    setProjectSaveSuccess(null);
+    setProjectSaveError(null);
+  };
+
   const projectPayload = () => ({
     ...projectForm,
     hasApp: Boolean(projectForm.playStoreUrl.trim()),
@@ -244,22 +270,59 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
     socialMarketingAngles: splitList(projectForm.socialMarketingAngles),
     bingSeoKeywords: splitList(projectForm.bingSeoKeywords)
   });
+
   const saveProject = async () => {
-    if (!projectForm.name.trim() || !projectForm.websiteUrl.trim()) { setFeedback('Nome e URL oficial do site são obrigatórios.'); return; }
-    setSavingProject(true); setFeedback('');
+    if (!projectForm.name.trim() || !projectForm.websiteUrl.trim()) {
+      setProjectSaveError('Nome e URL oficial do site são obrigatórios.');
+      return;
+    }
+    setSavingProject(true);
+    setProjectSaveError(null);
+    setProjectSaveSuccess(null);
+    setFeedback('');
+
     try {
       if (editingProjectId === 'new') {
-        const d = await apiRequest<{ project: AdminProject }>('/api/admin/projects', { method: 'POST', body: projectPayload() });
-        setFeedback(`Projeto “${d.project.name}” cadastrado com sucesso e incluído automaticamente no motor global.`);
+        const d = await apiRequest<{ project: AdminProject; verifiedInDb?: boolean }>('/api/admin/projects', {
+          method: 'POST',
+          body: projectPayload()
+        });
+        const msg = `Projeto “${d.project.name}” cadastrado e verificado no banco Firestore com sucesso!`;
+        setFeedback(msg);
+        setProjectSaveSuccess(msg);
+        setInitialSnapshot(JSON.stringify(projectForm));
+        await Promise.all([loadProjects(), loadOverview()]);
+        await onProjectsChanged?.();
+        setTimeout(() => {
+          setEditingProjectId(null);
+          setProjectForm(EMPTY_PROJECT);
+        }, 1200);
       } else if (editingProjectId) {
-        const d = await apiRequest<{ project: AdminProject }>(`/api/admin/projects/${editingProjectId}`, { method: 'PATCH', body: projectPayload() });
-        setFeedback(`Projeto “${d.project.name}” atualizado com sucesso. As alterações foram salvas.`);
+        const payloadWithConcurrency = {
+          ...projectPayload(),
+          expectedUpdatedAt: editingProjectUpdatedAt || undefined
+        };
+        const d = await apiRequest<{ project: AdminProject; verifiedInDb?: boolean }>(`/api/admin/projects/${editingProjectId}`, {
+          method: 'PATCH',
+          body: payloadWithConcurrency
+        });
+        const savedTime = new Date().toLocaleTimeString('pt-BR');
+        const msg = `Alterações salvas e verificadas com sucesso no banco de dados Firestore às ${savedTime}!`;
+        setFeedback(`Projeto “${d.project.name}” atualizado com sucesso e verificado no Firestore.`);
+        setProjectSaveSuccess(msg);
+        setEditingProjectUpdatedAt(d.project.updatedAt || new Date().toISOString());
+        setInitialSnapshot(JSON.stringify(projectForm));
+        await Promise.all([loadProjects(), loadOverview()]);
+        await onProjectsChanged?.();
       }
-      cancelEdit();
-      await Promise.all([loadProjects(), loadOverview()]);
-      await onProjectsChanged?.();
-    } catch (err: any) { setFeedback(err.message || 'Falha ao salvar projeto.'); }
-    finally { setSavingProject(false); }
+    } catch (err: any) {
+      // KEEP FORM VALUES INTACT so user never loses their typed edits!
+      const errorMsg = err.message || 'Falha ao salvar projeto no banco de dados. Seus dados foram preservados no formulário.';
+      setProjectSaveError(errorMsg);
+      setFeedback(errorMsg);
+    } finally {
+      setSavingProject(false);
+    }
   };
   const toggleProject=async(project:AdminProject)=>{
     try{
@@ -535,6 +598,28 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
               Blog diário
             </label>
           </div>
+
+          {editingProjectUpdatedAt && (
+            <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-1">
+              <span className="font-semibold text-slate-300">Última alteração gravada no banco:</span>
+              <span>{new Date(editingProjectUpdatedAt).toLocaleString('pt-BR')}</span>
+            </div>
+          )}
+
+          {projectSaveSuccess && (
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300 flex items-center gap-2 animate-fadeIn">
+              <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
+              <span>{projectSaveSuccess}</span>
+            </div>
+          )}
+
+          {projectSaveError && (
+            <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-300 flex items-center gap-2 animate-fadeIn">
+              <ShieldAlert size={16} className="text-rose-400 shrink-0" />
+              <span>{projectSaveError}</span>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-3 pt-2">
             <button
               type="button"
@@ -542,8 +627,8 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
               onClick={() => void saveProject()}
               className="froc-primary inline-flex items-center gap-2"
             >
-              <Save size={14} />
-              {savingProject ? 'Salvando…' : editingProjectId === 'new' ? 'Cadastrar projeto' : 'Salvar alterações'}
+              <Save size={14} className={savingProject ? 'animate-spin' : ''} />
+              {savingProject ? 'Salvando e verificando no banco…' : editingProjectId === 'new' ? 'Cadastrar projeto' : 'Salvar alterações'}
             </button>
             <button
               type="button"
