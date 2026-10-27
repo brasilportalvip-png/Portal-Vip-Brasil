@@ -12,7 +12,7 @@ import { toggleProjectAutomation, assertAutomationAllowed } from './automationGa
 import { calculateFinancialCostSummary } from './financialGuardian.js';
 import { processAgentInteraction, getAgentSpec, CANONICAL_AGENT_IDS } from './agents.js';
 import { getMasterBrandDossier, CANONICAL_BRAND_DOSSIERS } from './brandDossiers.js';
-import { auditAllStoredArticles, auditSingleArticle } from './articleAuditor.js';
+import { auditAllStoredArticles, auditSingleArticle, verifyArticleQualityGate } from './articleAuditor.js';
 
 function annotateLegacyImageRecord<T extends { imageUrl?: string; metadata?: any }>(item: T): T {
   const isLegacy = isLegacyUnsplashImage(item.imageUrl) || item.metadata?.imageDuplicateDetected === true;
@@ -2268,6 +2268,22 @@ router.patch('/portal/blog/articles/:id/status', requireAuth, requireAdmin, asyn
   }
 
   const db = firestore();
+  const artDoc = await db.collection(COLLECTIONS.blogArticles).doc(id).get();
+  if (!artDoc.exists) {
+    return res.status(404).json({ error: 'Artigo não encontrado.' });
+  }
+  const articleData = artDoc.data() || {};
+  if (status === 'published') {
+    try {
+      await verifyArticleQualityGate({ id, ...articleData });
+    } catch (auditErr: any) {
+      return res.status(422).json({
+        error: auditErr?.message || 'Falha no portão de qualidade editorial.',
+        audit: auditErr?.audit || null
+      });
+    }
+  }
+
   await db.collection(COLLECTIONS.blogArticles).doc(id).set({
     status,
     updatedAt: nowIso()

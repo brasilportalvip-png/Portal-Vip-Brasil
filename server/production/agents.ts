@@ -488,14 +488,26 @@ DIRETRIZES TÉCNICAS E DE QUALIDADE:
   const ai = params.mockAiClient || textAiClient();
   const MODEL_NAME = 'gemini-3.8-flash';
 
-  const res = await ai.models.generateContent({
-    model: MODEL_NAME,
-    contents: promptText,
-    config: {
-      systemInstruction: completeSystemInstruction,
-      maxOutputTokens: 3500
+  let res: any;
+  try {
+    res = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: promptText,
+      config: {
+        systemInstruction: completeSystemInstruction,
+        maxOutputTokens: 3500
+      }
+    });
+  } catch (aiErr) {
+    if (reservationId) {
+      await reconcileBudgetReservation({
+        reservationId,
+        userId: params.userId || 'portal_user',
+        success: false
+      }).catch(() => undefined);
     }
-  });
+    throw aiErr;
+  }
 
   const generatedText = res?.text || (typeof res === 'string' ? res : 'O agente concluiu o processamento sem texto adicional.');
 

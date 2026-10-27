@@ -478,9 +478,9 @@ export async function listAllPortalProjectsFromDb(): Promise<PortalProjectItem[]
       if (!a.isSeedProject && b.isSeedProject) return 1;
       return String(a.name).localeCompare(String(b.name), 'pt-BR');
     });
-  } catch (err) {
-    console.warn('[PortalPortfolio] Erro ao consultar Firestore projects, usando lista inicial:', err);
-    return PORTAL_VIP_PROJECTS.map((project) => mergeOfficialPortalProject(project));
+  } catch (err: any) {
+    console.error('[PortalPortfolio] Erro estrito ao consultar Firestore projects (Fail-Closed):', err);
+    throw new Error(`Falha de integridade ao consultar projetos no Firestore: ${err?.message || err}. Fallback desativado para garantir que falhas de leitura não sejam mascaradas.`);
   }
 }
 

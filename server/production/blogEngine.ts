@@ -5,6 +5,7 @@ import { executeAiWith2SecAntiFall } from './antiFallEngine.js';
 import { generateMarketingImage } from './ai.js';
 import { getAdminAuth } from '../providers/firebaseAdmin.js';
 import { isGlobalAutomationEnabled, isProjectAutomationEnabled } from './automationGate.js';
+import { verifyArticleQualityGate } from './articleAuditor.js';
 
 function safeString(value: any, max = 5000): string {
   return String(value ?? '').trim().slice(0, max);
@@ -102,6 +103,7 @@ export interface BlogSettings {
   defaultAuthorRole: string;
   autoSocialRepurpose: boolean;
   indexNowEnabled: boolean;
+  editorialControlsApproved?: boolean;
   updatedAt: string;
 }
 
@@ -1422,7 +1424,13 @@ export async function getBlogSettings(): Promise<BlogSettings> {
   try {
     const doc = await firestore().collection(COLLECTIONS.blogSettings).doc('main').get();
     if (doc.exists) {
-      return { ...DEFAULT_BLOG_SETTINGS, ...(doc.data() as BlogSettings) };
+      const data = doc.data() as BlogSettings;
+      // Garante aprovação manual efetiva mesmo com configurações legadas no Firestore:
+      // O modo só pode ser 'automatic' se os controles editoriais tiverem sido aprovados explicitamente.
+      const resolvedMode: 'automatic' | 'approval' = (data.editorialControlsApproved === true && data.mode === 'automatic')
+        ? 'automatic'
+        : 'approval';
+      return { ...DEFAULT_BLOG_SETTINGS, ...data, mode: resolvedMode };
     }
   } catch (err) {
     console.warn('[BlogEngine] Erro ao carregar configurações do blog, usando padrão:', err);
@@ -2164,6 +2172,19 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     generationModel: aiRes.modelUsed
   };
 
+  // Verificação obrigatória do Quality Gate Editorial antes de qualquer publicação
+  let resolvedStatus: StoredBlogArticle['status'] = targetStatus;
+  try {
+    const qualityAudit = await verifyArticleQualityGate(newArticle);
+    if (qualityAudit.status !== 'APPROVED_HIGH_QUALITY' || qualityAudit.score < 70) {
+      resolvedStatus = 'pending_approval';
+    }
+  } catch (gateErr: any) {
+    console.warn(`[BlogEngine] Artigo ${articleId} retido em 'pending_approval' pelo Quality Gate:`, gateErr?.message || gateErr);
+    resolvedStatus = 'pending_approval';
+  }
+  newArticle.status = resolvedStatus;
+
   try {
     await db.collection(COLLECTIONS.blogArticles).doc(articleId).set(newArticle);
   } catch (err) {
@@ -2172,12 +2193,12 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
   }
 
   // Notifica IndexNow se estiver publicado (Bing e mecanismos participantes).
-  if (targetStatus === 'published' && settings.indexNowEnabled) {
+  if (resolvedStatus === 'published' && settings.indexNowEnabled) {
     await notifyIndexNow([articlePublicUrl]);
   }
 
   // Repurpose social do artigo: cria uma única fila idempotente para conexões compatíveis com imagem/texto.
-  if (targetStatus === 'published' && settings.autoSocialRepurpose && options?.userId) {
+  if (resolvedStatus === 'published' && settings.autoSocialRepurpose && options?.userId) {
     try {
       const connectionsSnap = await db.collection(COLLECTIONS.socialConnections)
         .where('userId', '==', options.userId)
