@@ -239,3 +239,56 @@ test('Auditoria de Artigos: Auditoria não-destrutiva identifica Yoast SEO, cont
   assert.equal(audit2.visualIntegrity.isGenericLogo, false);
 });
 
+test('Auditoria de Artigos: Detecção de duplicatas (títulos idênticos e mesma imagem de capa)', async () => {
+  const { auditSingleArticle } = await import('../server/production/articleAuditor.js');
+
+  const seenTitles = new Map<string, number>([['artigoduplicadoseo', 2]]);
+  const seenCovers = new Map<string, number>([['https://example.com/capa-duplicada.jpg', 3]]);
+
+  const duplicateArticle = {
+    id: 'art_dup_1',
+    title: 'Artigo Duplicado SEO',
+    slug: 'artigo-duplicado-seo',
+    projectId: 'proj_froc_marketing_engine',
+    content: 'Conteúdo relevante e explicativo.',
+    coverImage: 'https://example.com/capa-duplicada.jpg'
+  };
+
+  const audit = await auditSingleArticle(duplicateArticle, { seenTitles, seenCovers });
+  assert.equal(audit.duplicateFlags.isDuplicateTitle, true);
+  assert.equal(audit.duplicateFlags.isDuplicateCoverImage, true);
+  assert.equal(audit.duplicateFlags.duplicateCoverCount, 3);
+  assert.ok(audit.actionableSuggestions.some((s) => s.includes('Título idêntico')));
+  assert.ok(audit.actionableSuggestions.some((s) => s.includes('Imagem de capa repetida')));
+});
+
+test('Custos & Automação: Trava financeira bloqueia chamadas de agentes se o Botão Mestre estiver desligado', async () => {
+  const { updateMasterAutomationControl } = await import('../server/production/automationGate.js');
+
+  const testUserId = 'admin_test_lock';
+  await updateMasterAutomationControl(testUserId, { globalEnabled: false });
+
+  await assert.rejects(
+    async () => {
+      await processAgentInteraction({
+        agentId: 'TECH_LEAD_CORE',
+        prompt: 'Qual a arquitetura recomendada?',
+        userId: testUserId,
+        mockAiClient: {
+          models: {
+            generateContent: async () => ({ text: 'ok' })
+          }
+        }
+      });
+    },
+    (err: any) => {
+      assert.equal(err.statusCode, 423);
+      assert.match(err.message, /Automação bloqueada pelo Botão Mestre/);
+      return true;
+    }
+  );
+
+  // Restaura o botão mestre para ligado para os demais testes
+  await updateMasterAutomationControl(testUserId, { globalEnabled: true });
+});
+

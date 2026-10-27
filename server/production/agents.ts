@@ -2,6 +2,8 @@ import { textAiClient } from './ai.js';
 import { getPortalProjectFromDb } from './almaPortfolio.js';
 import { nowIso } from './store.js';
 import { getMasterBrandDossier, formatDossierForAgentContext } from './brandDossiers.js';
+import { assertAutomationAllowed } from './automationGate.js';
+import { preflightReserveBudget, reconcileBudgetReservation } from './financialGuardian.js';
 
 export interface AgentSpec {
   id: string;
@@ -464,6 +466,25 @@ DIRETRIZES TÉCNICAS E DE QUALIDADE:
 3. Nunca invente dados falsos ou promessas irreais.
 4. Respeite com rigor absoluto os limites temáticos, religiosos e visuais do nicho selecionado. Jamais misture elementos de outros nichos (ex: imagens católicas para runas nórdicas ou satanização para Exu).`;
 
+  // Trava Mestre Global e por Projeto: Fail-Closed se pausado
+  await assertAutomationAllowed({ userId: params.userId, projectId: targetProjectId, operationType: 'agent_chat' });
+
+  let reservationId: string | undefined;
+  if (!params.mockAiClient) {
+    const budget = await preflightReserveBudget({
+      userId: params.userId || 'portal_user',
+      operation: 'agent_chat',
+      companyId: targetProjectId
+    });
+    if (!budget.allowed) {
+      const error: any = new Error(budget.reason || 'Operação de agente bloqueada pelo controle de orçamento ou trava mestre financeira.');
+      error.statusCode = 423;
+      error.code = 'FINANCIAL_GATE_BLOCKED';
+      throw error;
+    }
+    reservationId = budget.reservationId;
+  }
+
   const ai = params.mockAiClient || textAiClient();
   const MODEL_NAME = 'gemini-3.8-flash';
 
@@ -477,6 +498,16 @@ DIRETRIZES TÉCNICAS E DE QUALIDADE:
   });
 
   const generatedText = res?.text || (typeof res === 'string' ? res : 'O agente concluiu o processamento sem texto adicional.');
+
+  if (reservationId) {
+    await reconcileBudgetReservation({
+      reservationId,
+      userId: params.userId || 'portal_user',
+      success: true,
+      actualTokens: res?.usageMetadata?.totalTokenCount || 0,
+      actualCostUsd: (res?.usageMetadata?.totalTokenCount || 500) * 0.0000003
+    }).catch(() => undefined);
+  }
 
   return {
     agentId: spec.id,

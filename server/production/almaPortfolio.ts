@@ -538,10 +538,11 @@ export async function getPortalProjectFromDb(idOrSlug: string): Promise<PortalPr
       return stored ? normalizeCustomProject(stored, managedDoc.id) : undefined;
     }
   } catch (err) {
-    console.warn('[PortalPortfolio] Erro ao consultar projeto individual no Firestore:', err);
+    console.error('[PortalPortfolio] Erro crítico ao consultar projeto individual no Firestore:', err);
+    throw new Error(`Falha de leitura do Firestore para o projeto "${norm}". O sistema não mascara erros de banco: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  return official ? mergeOfficialPortalProject(official) : undefined;
+  return undefined;
 }
 
 export async function createPortalProjectInDb(input: Partial<PortalProjectItem>): Promise<PortalProjectItem> {
@@ -663,16 +664,30 @@ export async function updatePortalProjectInDb(
     throw error;
   }
 
-  // Check critical fields
-  for (const field of ['name', 'slug', 'websiteUrl', 'logoUrl', 'bannerUrl', 'tagline', 'description', 'active'] as const) {
-    if (toSave[field] !== undefined) {
-      const expected = toSave[field];
-      const actual = storedData[field];
-      if (expected !== actual) {
-        const error: any = new Error(`Falha na verificação de gravação do Firestore para o campo '${field}': esperado "${expected}", obtido "${actual}".`);
+  // Check ALL saved fields to ensure 100% verified persistence in Firestore
+  for (const [field, expected] of Object.entries(toSave)) {
+    if (['updatedAt', 'isSeedProject', 'managedByPortalAdmin', 'id'].includes(field)) continue;
+    const actual = storedData[field];
+    if (Array.isArray(expected)) {
+      const expStr = JSON.stringify(expected);
+      const actStr = JSON.stringify(actual || []);
+      if (expStr !== actStr) {
+        const error: any = new Error(`Falha na verificação de gravação do Firestore para a lista '${field}': esperado ${expStr}, obtido ${actStr}.`);
         error.statusCode = 500;
         throw error;
       }
+    } else if (typeof expected === 'object' && expected !== null) {
+      const expStr = JSON.stringify(expected);
+      const actStr = JSON.stringify(actual || {});
+      if (expStr !== actStr) {
+        const error: any = new Error(`Falha na verificação de gravação do Firestore para o objeto '${field}': esperado ${expStr}, obtido ${actStr}.`);
+        error.statusCode = 500;
+        throw error;
+      }
+    } else if (expected !== actual) {
+      const error: any = new Error(`Falha na verificação de gravação do Firestore para o campo '${field}': esperado "${expected}", obtido "${actual}".`);
+      error.statusCode = 500;
+      throw error;
     }
   }
 

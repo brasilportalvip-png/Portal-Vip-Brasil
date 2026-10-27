@@ -105,9 +105,9 @@ export interface BlogSettings {
   updatedAt: string;
 }
 
-// Configurações padrão do blog
+// Configurações padrão do blog — Pausado por padrão para aprovação editorial
 const DEFAULT_BLOG_SETTINGS: BlogSettings = {
-  mode: 'automatic',
+  mode: 'approval',
   frequency: 'daily',
   defaultAuthorName: 'Equipe Editorial Portal Vip Brasil',
   defaultAuthorRole: 'Especialista em Conteúdo & Tecnologia',
