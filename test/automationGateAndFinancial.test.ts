@@ -47,7 +47,7 @@ test('Automação Gate: toggleProjectAutomation retorna contrato esperado com ca
   assert.ok(reactivated.message.includes('ativado com sucesso'));
 });
 
-test('Image Guard: Perceptual dHash 64-bit e distância de Hamming anti-repetição', () => {
+test('Image Guard: Perceptual dHash 64-bit e distância de Hamming anti-repetição', async () => {
   // Dois gradientes similares produzem dHash com baixa distância de Hamming
   const bufA = Buffer.alloc(8 * 9);
   const bufB = Buffer.alloc(8 * 9);
@@ -57,8 +57,8 @@ test('Image Guard: Perceptual dHash 64-bit e distância de Hamming anti-repetiç
     bufB[i] = (i * 3 + (i % 2 === 0 ? 1 : 0)) % 256;
   }
 
-  const hashA = computePerceptualHash(bufA);
-  const hashB = computePerceptualHash(bufB);
+  const hashA = await computePerceptualHash(bufA);
+  const hashB = await computePerceptualHash(bufB);
 
   assert.equal(hashA.length, 16, 'dHash deve ter 16 caracteres hexadecimais (64 bits)');
   assert.equal(hashB.length, 16);

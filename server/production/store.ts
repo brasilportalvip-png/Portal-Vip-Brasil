@@ -438,7 +438,8 @@ export const COLLECTIONS = {
   mediaGenerationJobs: 'mediaGenerationJobs',
   autopilotJobs: 'autopilotJobs',
   rateLimits: 'rateLimits',
-  usedImageHashes: 'usedImageHashes'
+  usedImageHashes: 'usedImageHashes',
+  articleVersions: 'articleVersions'
 } as const;
 
 export type DatabaseHealth = {

@@ -107,7 +107,7 @@ export interface BlogSettings {
 }
 
 // Configurações padrão do blog — Publicação 100% Automática diária orientada pelo Botão Mestre
-const DEFAULT_BLOG_SETTINGS: BlogSettings = {
+export const DEFAULT_BLOG_SETTINGS: BlogSettings = {
   mode: 'automatic',
   frequency: 'daily',
   defaultAuthorName: 'Equipe Editorial Portal Vip Brasil',
@@ -1571,8 +1571,32 @@ export async function listBlogArticles(filters: {
 }> {
   try {
     const db = firestore();
-    const snap = await db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').limit(500).get();
-    let items: StoredBlogArticle[] = snap.docs.map((d) => {
+    const allRawDocs: any[] = [];
+    const BATCH_SIZE = 500;
+    let lastDoc: any = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      let q = db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').limit(BATCH_SIZE);
+      if (lastDoc && typeof q.startAfter === 'function') {
+        q = q.startAfter(lastDoc);
+      }
+      const snap = await q.get();
+      if (!snap || !snap.docs || snap.docs.length === 0) {
+        hasMore = false;
+        break;
+      }
+      for (const d of snap.docs) {
+        allRawDocs.push(d);
+      }
+      if (snap.docs.length < BATCH_SIZE) {
+        hasMore = false;
+      } else {
+        lastDoc = snap.docs[snap.docs.length - 1];
+      }
+    }
+
+    let items: StoredBlogArticle[] = allRawDocs.map((d) => {
       const data = d.data() as any;
       const article: StoredBlogArticle = { id: d.id, ...data };
       if (isInvalidOrLogoImage(article.coverImage)) {
@@ -1600,7 +1624,8 @@ export async function listBlogArticles(filters: {
       items = items.filter((article) => article.category === filters.category);
     }
 
-    if (items.length === 0 && snap.empty) {
+    // Apenas se o banco estiver comprovadamente vazio (zero documentos cadastrados)
+    if (items.length === 0 && allRawDocs.length === 0) {
       items = INITIAL_SEEDED_ARTICLES.filter((article) =>
         (!filters.status || filters.status === 'all' || article.status === filters.status) &&
         (!filters.projectId || filters.projectId === 'todos' || article.relatedProjectId === filters.projectId || (article as any).relatedProjectSlug === filters.projectId) &&
@@ -1635,35 +1660,9 @@ export async function listBlogArticles(filters: {
       totalPages
     };
   } catch (err) {
-    console.warn('[BlogEngine] Erro ao listar artigos do Firestore, usando fallback local:', err);
-    let items = [...INITIAL_SEEDED_ARTICLES];
-    if (filters.status && filters.status !== 'all') items = items.filter((a) => a.status === filters.status);
-    if (filters.category && filters.category !== 'Todos') items = items.filter((a) => a.category === filters.category);
-    if (filters.projectId && filters.projectId !== 'todos') items = items.filter((a) => a.relatedProjectId === filters.projectId || (a as any).relatedProjectSlug === filters.projectId);
-    if (filters.query) {
-      const q = filters.query.toLowerCase().trim();
-      items = items.filter((art) =>
-        art.title.toLowerCase().includes(q) ||
-        art.excerpt.toLowerCase().includes(q) ||
-        art.tags?.some((t) => t.toLowerCase().includes(q)) ||
-        art.primaryKeyword?.toLowerCase().includes(q) ||
-        art.secondaryKeywords?.some((keyword) => keyword.toLowerCase().includes(q))
-      );
-    }
-    items.sort((a, b) => String(b.publishedAt || '').localeCompare(String(a.publishedAt || '')));
-    const total = items.length;
-    const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
-    const offset = Math.max(Number(filters.offset || 0), 0);
-    const page = Math.floor(offset / limit) + 1;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    return {
-      articles: items.slice(offset, offset + limit),
-      total,
-      limit,
-      offset,
-      page,
-      totalPages
-    };
+    // REGRA DE OURO: Nunca mascarar erro de leitura real do Firestore apresentando artigos iniciais falsos
+    console.error('[BlogEngine] Erro de leitura no Firestore ao listar artigos (Fail-Closed):', err);
+    throw new Error(`Falha ao carregar artigos do banco de dados: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

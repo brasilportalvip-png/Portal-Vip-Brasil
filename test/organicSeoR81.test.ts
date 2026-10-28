@@ -51,7 +51,7 @@ test('R8.1 SEO: contratos de crescimento orgânico permanecem ativos no código'
   assert.match(blog, /coverImageGenerated/);
   assert.match(blog, /buildDynamicTopicR81/);
   assert.ok(!blog.includes("chosenTopicItem = pool[0] ||"), 'Pool esgotado não pode voltar ao primeiro tema e duplicar pauta.');
-  assert.match(blog, /collection\(COLLECTIONS\.blogArticles\)\.orderBy\('publishedAt', 'desc'\)\.limit\(500\)\.get\(\)/);
+  assert.match(blog, /collection\(COLLECTIONS\.blogArticles\)\.orderBy\('publishedAt', 'desc'\)/);
   assert.ok(!/where\('status', '==', filters\.status\)[\s\S]{0,500}orderBy\('publishedAt'/.test(blog), 'Listagem pública não pode depender do índice composto status + publishedAt.');
   assert.match(blog, /url: '\/vitrine\/' \+ project\.slug/);
   assert.match(blog, /daily_blog_seo/);

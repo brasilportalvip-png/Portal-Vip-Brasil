@@ -12,6 +12,7 @@ Allow: /apps-compliance
 Disallow: /api/
 Disallow: /admin
 Disallow: /dashboard
+Disallow: /agentes
 Disallow: /projetos
 Disallow: /autopilot
 Disallow: /criar-conteudo

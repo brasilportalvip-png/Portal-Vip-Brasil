@@ -220,28 +220,28 @@ export const YoastSeoAuditor: React.FC<{ target: YoastAuditTarget; siteDomain?: 
         }
       }
 
-      // 7. Densidade da palavra-chave
-      if (totalWords > 50) {
+      // 7. Relevância semântica da palavra-chave no texto (Padrão Google Helpful Content)
+      if (totalWords > 30) {
         const regex = new RegExp(cleanKeyword.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'), 'gi');
         const matches = (content.match(regex) || []).length;
         const density = (matches / Math.max(1, totalWords)) * 100;
         const formattedDensity = density.toFixed(1);
 
-        if (density >= 1.0 && density <= 2.8) {
+        if (matches >= 1 && density <= 3.5) {
           checks.push({
             id: 'kw-density',
             category: 'seo',
-            title: 'Densidade da Palavra-chave',
-            description: `Densidade perfeita de ${formattedDensity}% (${matches} ocorrências). Dentro da faixa recomendada pelo Yoast (1.0% a 2.8%).`,
+            title: 'Presença e Relevância da Palavra-chave',
+            description: `Uso orgânico e natural (${matches} ocorrências, ${formattedDensity}%). Em perfeita conformidade com as diretrizes do Google Helpful Content.`,
             status: 'good',
             score: 10
           });
-        } else if (density < 1.0) {
+        } else if (matches === 0) {
           checks.push({
             id: 'kw-density',
             category: 'seo',
-            title: 'Densidade da Palavra-chave',
-            description: `Densidade baixa de ${formattedDensity}% (${matches} ocorrências). Aumente a frequência da palavra no texto para alcançar ao menos 1.0%.`,
+            title: 'Palavra-chave no Corpo do Texto',
+            description: 'A palavra-chave foco não foi encontrada no corpo do artigo. Inclua-a de modo natural em subtítulos ou parágrafos explicativos.',
             status: 'warning',
             score: 5
           });
@@ -249,41 +249,41 @@ export const YoastSeoAuditor: React.FC<{ target: YoastAuditTarget; siteDomain?: 
           checks.push({
             id: 'kw-density',
             category: 'seo',
-            title: 'Densidade da Palavra-chave',
-            description: `Densidade excessiva de ${formattedDensity}% (${matches} ocorrências). Risco de penalidade por keyword stuffing (limite Yoast 2.8%).`,
-            status: 'bad',
-            score: 2
+            title: 'Frequência da Palavra-chave',
+            description: `Densidade elevada (${formattedDensity}%, ${matches} ocorrências). Evite repetições artificiais para prevenir sobre-otimização.`,
+            status: 'warning',
+            score: 6
           });
         }
       }
 
-      // 8. Tamanho total do artigo
-      if (totalWords >= 800) {
+      // 8. Profundidade e Resposta à Intenção de Busca
+      if (totalWords >= 600) {
         checks.push({
           id: 'word-count',
           category: 'seo',
-          title: 'Volume e Profundidade do Conteúdo',
-          description: `Excelente volume (${totalWords} palavras). Ideal para classificação na primeira página do Google e Bing.`,
+          title: 'Profundidade e Resposta à Intenção de Busca',
+          description: `Excelente extensão (${totalWords} palavras) com capacidade de responder integralmente à intenção de busca do usuário (EEAT).`,
           status: 'good',
           score: 10
         });
-      } else if (totalWords >= 400) {
+      } else if (totalWords >= 250) {
         checks.push({
           id: 'word-count',
           category: 'seo',
-          title: 'Volume do Conteúdo',
-          description: `Bom volume (${totalWords} palavras). Artigos com mais de 800 palavras têm 3.5x mais links e retenção.`,
-          status: 'warning',
-          score: 7
+          title: 'Extensão e Utilidade do Conteúdo',
+          description: `Extensão satisfatória (${totalWords} palavras). O Google prioriza utilidade direta em vez de contagens mecânicas arbitrárias.`,
+          status: 'good',
+          score: 8
         });
       } else {
         checks.push({
           id: 'word-count',
           category: 'seo',
-          title: 'Volume do Conteúdo (Thin Content)',
-          description: `Conteúdo muito curto (${totalWords} palavras). O mínimo recomendado é de 400 palavras.`,
-          status: 'bad',
-          score: 2
+          title: 'Extensão do Artigo',
+          description: `Artigo conciso (${totalWords} palavras). Certifique-se de que todas as dúvidas principais do leitor foram abordadas.`,
+          status: 'warning',
+          score: 5
         });
       }
 

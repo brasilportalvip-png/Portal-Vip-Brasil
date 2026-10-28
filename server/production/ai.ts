@@ -973,12 +973,12 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
       const buffer = Buffer.from(image.data, 'base64');
       if (!buffer.length || buffer.length > 12 * 1024 * 1024) throw new Error('A imagem retornada possui tamanho inválido.');
       imageHash = crypto.createHash('sha256').update(buffer).digest('hex');
-      const perceptualHash = computePerceptualHash(buffer);
+      const perceptualHash = await computePerceptualHash(buffer);
       const companyId = data.company?.id || 'default';
 
       const uniqueness = await checkImageUniqueness(companyId, buffer, imageHash);
       if (!uniqueness.isUnique) {
-        console.warn(`[ImageGuard] Colisão de imagem ou proximidade perceptual detectada para ${companyId}: ${uniqueness.reason}`);
+        throw new Error(`Imagem reprovada no controle de unicidade visual: ${uniqueness.reason || 'Imagem idêntica ou excessivamente similar detectada.'}`);
       }
 
       const ext = image.mimeType.includes('png') ? 'png' : image.mimeType.includes('webp') ? 'webp' : 'jpg';

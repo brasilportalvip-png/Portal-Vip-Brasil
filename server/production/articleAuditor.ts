@@ -10,17 +10,24 @@
  * 'penalização automática por ter menos de 350 palavras'. O foco do Google
  * Helpful Content e EEAT é a utilidade e resposta completa à intenção de busca.
  * 
- * NUNCA deleta artigos de forma destrutiva. Gera diagnósticos acionáveis
- * e marcações no banco para revisão humana ou regeneração orientada.
+ * NUNCA deleta artigos de forma destrutiva. Gera diagnósticos acionáveis,
+ * backups de versão e propostas de consolidação 301.
  */
 
-import { COLLECTIONS, firestore, nowIso } from './store.js';
+import { COLLECTIONS, firestore, nowIso, newId } from './store.js';
 
 export type ArticleAuditStatus = 
   | 'APPROVED_HIGH_QUALITY'
   | 'ACTIONABLE_REVISION_NEEDED'
   | 'SUBSTANCE_REVISION_NEEDED'
   | 'CROSS_NICHE_VIOLATION';
+
+export type ArticleActionClassification =
+  | 'MANTER'
+  | 'MELHORAR'
+  | 'REESCREVER'
+  | 'CONSOLIDAR'
+  | 'AVALIAR_DESINDEXACAO';
 
 export interface ArticleDuplicateFlags {
   isDuplicateTitle: boolean;
@@ -29,8 +36,15 @@ export interface ArticleDuplicateFlags {
   duplicateCoverCount: number;
 }
 
+export interface CanonicalProposal {
+  canonicalUrl: string;
+  redirect301Proposed: boolean;
+  reason: string;
+}
+
 export interface ArticleAuditResult {
   articleId: string;
+  sourceCollection: 'blogArticles' | 'blogPosts' | 'initialSeed';
   slug: string;
   title: string;
   projectId?: string;
@@ -38,6 +52,8 @@ export interface ArticleAuditResult {
   wordCount: number;
   score: number; // 0 a 100
   status: ArticleAuditStatus;
+  classification: ArticleActionClassification;
+  canonicalProposal?: CanonicalProposal;
   yoastSeoChecks: {
     hasTitleKeyword: boolean;
     hasMetaDescription: boolean;
@@ -65,6 +81,9 @@ export interface ArticleAuditResult {
 
 export interface GlobalArticlesAuditSummary {
   totalAudited: number;
+  blogArticlesCount: number;
+  blogPostsCount: number;
+  initialSeedCount: number;
   approvedCount: number;
   revisionNeededCount: number;
   substanceNeededCount: number;
@@ -74,6 +93,13 @@ export interface GlobalArticlesAuditSummary {
   averageWordCount: number;
   averageScore: number;
   genericCoverImageCount: number;
+  classificationBreakdown: {
+    manter: number;
+    melhorar: number;
+    reescrever: number;
+    consolidar: number;
+    avaliarDesindexacao: number;
+  };
   auditedAt: string;
   items: ArticleAuditResult[];
 }
@@ -106,24 +132,41 @@ export const NICHE_PROHIBITED_TERMS: Record<string, string[]> = {
 };
 
 /**
+ * Normaliza texto para comparação semântica e deduplicação no idioma português.
+ */
+export function normalizeTextForDeduplication(text: string): string {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Audita um artigo individual com base em critérios técnicos reais de SEO,
  * sem mitos de contagem arbitrária de palavras.
  */
 export async function auditSingleArticle(
   article: any,
   context?: {
-    seenTitles?: Map<string, number>;
+    sourceCollection?: 'blogArticles' | 'blogPosts' | 'initialSeed';
+    seenTitles?: Map<string, { count: number; primaryArticleId: string; slug: string }>;
     seenSlugs?: Map<string, number>;
     seenCovers?: Map<string, number>;
+    baseUrl?: string;
   }
 ): Promise<ArticleAuditResult> {
   const articleId = String(article.id || article.slug || 'unknown');
+  const sourceCollection = context?.sourceCollection || article.sourceCollection || 'blogArticles';
   const title = String(article.title || '').trim();
   const slug = String(article.slug || '').trim();
   const projectId = String(article.projectId || article.relatedProjectId || '');
   const primaryKeyword = String(article.primaryKeyword || '').toLowerCase().trim();
   const metaDescription = String(article.metaDescription || article.summary || '').trim();
   const coverImage = String(article.coverImage || article.featuredImageUrl || '').trim();
+  const baseUrl = context?.baseUrl || 'https://portal-vip-brasil.vercel.app';
 
   // 1. Extração de texto e contagem
   let fullText = `${title} ${metaDescription} ${article.excerpt || ''} ${article.introduction || ''} ${article.conclusion || ''} ${article.callToAction || ''}`;
@@ -178,9 +221,10 @@ export async function auditSingleArticle(
   const crossNicheDetected = violatingTerms.length > 0;
 
   // 5. Verificação de Duplicatas
-  const normTitle = normalizedTitle.replace(/[^a-z0-9]/g, '');
+  const normTitle = normalizeTextForDeduplication(title);
   const normSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const titleOccurrences = context?.seenTitles?.get(normTitle) || 1;
+  const titleEntry = context?.seenTitles?.get(normTitle);
+  const titleOccurrences = titleEntry?.count || 1;
   const slugOccurrences = context?.seenSlugs?.get(normSlug) || 1;
   const coverOccurrences = coverImage ? (context?.seenCovers?.get(coverImage) || 1) : 1;
 
@@ -210,24 +254,43 @@ export async function auditSingleArticle(
   if (duplicateFlags.isDuplicateTitle) score = Math.max(0, score - 20);
   if (duplicateFlags.isDuplicateCoverImage) score = Math.max(0, score - 15);
 
-  // 7. Determinação de Status
+  // 7. Determinação de Status e Classificação Editorial Obrigatória
   let status: ArticleAuditStatus = 'APPROVED_HIGH_QUALITY';
+  let classification: ArticleActionClassification = 'MANTER';
   const actionableSuggestions: string[] = [];
+  let canonicalProposal: CanonicalProposal | undefined;
 
   if (crossNicheDetected) {
     status = 'CROSS_NICHE_VIOLATION';
+    classification = 'REESCREVER';
     actionableSuggestions.push(`Remover termos indevidos do nicho (${violatingTerms.join(', ')}) para manter a pureza temática e o respeito cultural.`);
-  } else if (wordCount < 200 && !hasProperHeadings) {
+  } else if (duplicateFlags.isDuplicateTitle && titleEntry && titleEntry.primaryArticleId !== articleId) {
+    classification = 'CONSOLIDAR';
+    canonicalProposal = {
+      canonicalUrl: `${baseUrl}/blog/${titleEntry.slug}`,
+      redirect301Proposed: true,
+      reason: `Duplicata exata de pauta/título. Consolidar na URL canônica /blog/${titleEntry.slug} via 301.`
+    };
+    actionableSuggestions.push(`Canibalização de SEO com artigo idêntico (${titleEntry.primaryArticleId}). Proposta consolidação canônica para ${canonicalProposal.canonicalUrl}.`);
+  } else if (wordCount < 150 && !hasProperHeadings) {
     status = 'SUBSTANCE_REVISION_NEEDED';
+    classification = 'AVALIAR_DESINDEXACAO';
+    actionableSuggestions.push('Conteúdo com profundidade insuficiente (<150 palavras) e sem subtítulos. Avaliar desindexação ou reescrita profunda.');
+  } else if (wordCount < 300) {
+    status = 'SUBSTANCE_REVISION_NEEDED';
+    classification = 'REESCREVER';
     actionableSuggestions.push('Expandir a profundidade do artigo com seções temáticas para responder plenamente à intenção de busca do leitor (Helpful Content).');
   } else if (score < 70 || isGenericLogo || !metaDescriptionLengthOk || duplicateFlags.isDuplicateTitle) {
     status = 'ACTIONABLE_REVISION_NEEDED';
+    classification = 'MELHORAR';
+  } else {
+    classification = 'MANTER';
   }
 
   if (isGenericLogo) {
     actionableSuggestions.push('Substituir o logotipo genérico por uma imagem temática exclusiva do nicho em alta definição.');
   }
-  if (duplicateFlags.isDuplicateTitle) {
+  if (duplicateFlags.isDuplicateTitle && classification !== 'CONSOLIDAR') {
     actionableSuggestions.push('Título idêntico a outro artigo existente. Diferencie o título para evitar canibalização de palavras-chave.');
   }
   if (duplicateFlags.isDuplicateCoverImage) {
@@ -248,6 +311,7 @@ export async function auditSingleArticle(
 
   return {
     articleId,
+    sourceCollection,
     slug,
     title,
     projectId,
@@ -255,6 +319,8 @@ export async function auditSingleArticle(
     wordCount,
     score,
     status,
+    classification,
+    canonicalProposal,
     yoastSeoChecks: {
       hasTitleKeyword,
       hasMetaDescription,
@@ -303,36 +369,95 @@ export async function verifyArticleQualityGate(article: any): Promise<ArticleAud
 }
 
 /**
- * Varre todo o acervo no Firestore e gera relatório consolidado sem deletar nada.
+ * Cria snapshot de backup e histórico de versão de um artigo antes de qualquer alteração.
  */
-export async function auditAllStoredArticles(options: { persistDiagnostics?: boolean } = {}): Promise<GlobalArticlesAuditSummary> {
+export async function backupArticleVersion(
+  articleId: string,
+  collection: string,
+  articleData: any,
+  reason = 'manual_or_automated_audit_edit'
+): Promise<string> {
   const db = firestore();
-  
-  const [blogArticlesSnap, blogPostsSnap] = await Promise.all([
-    db.collection(COLLECTIONS.blogArticles).get().catch(() => ({ docs: [] } as any)),
-    db.collection(COLLECTIONS.blogPosts).get().catch(() => ({ docs: [] } as any))
+  const versionId = newId('ver');
+  const now = nowIso();
+
+  await db.collection(COLLECTIONS.articleVersions).doc(versionId).set({
+    versionId,
+    articleId,
+    collection,
+    snapshot: articleData,
+    reason,
+    createdAt: now
+  });
+
+  return versionId;
+}
+
+/**
+ * Varre todo o acervo no Firestore e gera relatório consolidado sem deletar nada.
+ * Inventaria 100% dos documentos com paginação real e sem limite arbitrário de 500.
+ */
+export async function auditAllStoredArticles(options: {
+  persistDiagnostics?: boolean;
+  createBackupBeforePersist?: boolean;
+} = {}): Promise<GlobalArticlesAuditSummary> {
+  const db = firestore();
+
+  // 1. Busca integral paginada em lotes para suportar acervos de 450+ a milhares de artigos
+  const fetchAllFromCollection = async (colName: string): Promise<any[]> => {
+    const docs: any[] = [];
+    const BATCH_SIZE = 500;
+    let lastDoc: any = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      let q = db.collection(colName).limit(BATCH_SIZE);
+      if (lastDoc && typeof q.startAfter === 'function') {
+        q = q.startAfter(lastDoc);
+      }
+      const snap = await q.get().catch(() => ({ docs: [] } as any));
+      if (!snap || !snap.docs || snap.docs.length === 0) {
+        hasMore = false;
+        break;
+      }
+      for (const d of snap.docs) {
+        docs.push({ id: d.id, sourceCollection: colName, ...d.data() });
+      }
+      if (snap.docs.length < BATCH_SIZE) {
+        hasMore = false;
+      } else {
+        lastDoc = snap.docs[snap.docs.length - 1];
+      }
+    }
+    return docs;
+  };
+
+  const [blogArticlesList, blogPostsList] = await Promise.all([
+    fetchAllFromCollection(COLLECTIONS.blogArticles),
+    fetchAllFromCollection(COLLECTIONS.blogPosts)
   ]);
 
-  const allArticles: any[] = [];
-  const seenIds = new Set<string>();
+  // Inventaria integralmente cada registro por coleção e ID
+  const allArticles: any[] = [...blogArticlesList, ...blogPostsList];
 
-  for (const doc of [...blogArticlesSnap.docs, ...blogPostsSnap.docs]) {
-    if (!seenIds.has(doc.id)) {
-      seenIds.add(doc.id);
-      allArticles.push({ id: doc.id, ...doc.data() });
-    }
-  }
-
-  // Mapa de duplicatas globais
-  const seenTitles = new Map<string, number>();
+  // Mapa de duplicatas globais com registro de ID primário para proposta canônica 301
+  const seenTitles = new Map<string, { count: number; primaryArticleId: string; slug: string }>();
   const seenSlugs = new Map<string, number>();
   const seenCovers = new Map<string, number>();
 
   for (const art of allArticles) {
-    const t = String(art.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const t = normalizeTextForDeduplication(art.title);
     const s = String(art.slug || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const c = String(art.coverImage || art.featuredImageUrl || '').trim();
-    if (t) seenTitles.set(t, (seenTitles.get(t) || 0) + 1);
+
+    if (t) {
+      const existing = seenTitles.get(t);
+      if (!existing) {
+        seenTitles.set(t, { count: 1, primaryArticleId: art.id, slug: art.slug || '' });
+      } else {
+        existing.count += 1;
+      }
+    }
     if (s) seenSlugs.set(s, (seenSlugs.get(s) || 0) + 1);
     if (c) seenCovers.set(c, (seenCovers.get(c) || 0) + 1);
   }
@@ -348,14 +473,33 @@ export async function auditAllStoredArticles(options: { persistDiagnostics?: boo
   let totalWords = 0;
   let totalScore = 0;
 
+  const classificationBreakdown = {
+    manter: 0,
+    melhorar: 0,
+    reescrever: 0,
+    consolidar: 0,
+    avaliarDesindexacao: 0
+  };
+
   for (const art of allArticles) {
-    const audit = await auditSingleArticle(art, { seenTitles, seenSlugs, seenCovers });
+    const audit = await auditSingleArticle(art, {
+      sourceCollection: art.sourceCollection,
+      seenTitles,
+      seenSlugs,
+      seenCovers
+    });
     results.push(audit);
 
     if (audit.status === 'APPROVED_HIGH_QUALITY') approvedCount++;
     else if (audit.status === 'ACTIONABLE_REVISION_NEEDED') revisionNeededCount++;
     else if (audit.status === 'SUBSTANCE_REVISION_NEEDED') substanceNeededCount++;
     else if (audit.status === 'CROSS_NICHE_VIOLATION') crossNicheViolationCount++;
+
+    if (audit.classification === 'MANTER') classificationBreakdown.manter++;
+    else if (audit.classification === 'MELHORAR') classificationBreakdown.melhorar++;
+    else if (audit.classification === 'REESCREVER') classificationBreakdown.reescrever++;
+    else if (audit.classification === 'CONSOLIDAR') classificationBreakdown.consolidar++;
+    else if (audit.classification === 'AVALIAR_DESINDEXACAO') classificationBreakdown.avaliarDesindexacao++;
 
     if (audit.visualIntegrity.isGenericLogo) genericCoverCount++;
     if (audit.duplicateFlags.isDuplicateTitle) duplicateTitlesCount++;
@@ -365,13 +509,19 @@ export async function auditAllStoredArticles(options: { persistDiagnostics?: boo
     totalScore += audit.score;
 
     if (options.persistDiagnostics && art.id) {
-      const targetCol = blogArticlesSnap.docs.some((d: any) => d.id === art.id)
-        ? COLLECTIONS.blogArticles
-        : COLLECTIONS.blogPosts;
+      const targetCol = art.sourceCollection === COLLECTIONS.blogPosts
+        ? COLLECTIONS.blogPosts
+        : COLLECTIONS.blogArticles;
+
+      if (options.createBackupBeforePersist) {
+        await backupArticleVersion(art.id, targetCol, art, 'audit_diagnostics_persist').catch(() => undefined);
+      }
 
       await db.collection(targetCol).doc(art.id).set({
         auditScore: audit.score,
         auditStatus: audit.status,
+        auditClassification: audit.classification,
+        canonicalProposal: audit.canonicalProposal || null,
         auditSuggestions: audit.actionableSuggestions,
         lastAuditedAt: audit.auditedAt,
         isGenericCoverFlagged: audit.visualIntegrity.isGenericLogo,
@@ -384,6 +534,9 @@ export async function auditAllStoredArticles(options: { persistDiagnostics?: boo
   const count = results.length || 1;
   return {
     totalAudited: results.length,
+    blogArticlesCount: blogArticlesList.length,
+    blogPostsCount: blogPostsList.length,
+    initialSeedCount: 0,
     approvedCount,
     revisionNeededCount,
     substanceNeededCount,
@@ -393,6 +546,7 @@ export async function auditAllStoredArticles(options: { persistDiagnostics?: boo
     genericCoverImageCount: genericCoverCount,
     averageWordCount: Math.round(totalWords / count),
     averageScore: Math.round(totalScore / count),
+    classificationBreakdown,
     auditedAt: nowIso(),
     items: results
   };
