@@ -172,10 +172,10 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Mais de 7 anos de atuação no ecossistema espiritual brasileiro'
     ],
     verificationStatus: {
-      isAudited: true,
-      lastAuditedAt: '2026-10-27T00:00:00.000Z',
-      auditNotes: 'Dossiê validado com dados oficiais do aplicativo e domínio www.magiadascrencas.com.br',
-      unverifiedFields: []
+      isAudited: false,
+      lastAuditedAt: '2026-10-28T00:00:00.000Z',
+      auditNotes: 'Domínio web oficial comprovado (www.magiadascrencas.com.br). Métricas de loja externa e tempo de atuação pendentes de auditoria documental.',
+      unverifiedFields: ['playStoreUrl', 'historicalLaunchDate', 'thirdPartyStoreMetrics']
     }
   },
 
@@ -265,10 +265,10 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Pioneirismo em tecnologia oracular com respeito aos fundamentos'
     ],
     verificationStatus: {
-      isAudited: true,
-      lastAuditedAt: '2026-10-27T00:00:00.000Z',
-      auditNotes: 'Dossiê alinhado aos fundamentos da Umbanda e App Store com ID oficial com.portalvipbrasil.exuresponde',
-      unverifiedFields: []
+      isAudited: false,
+      lastAuditedAt: '2026-10-28T00:00:00.000Z',
+      auditNotes: 'Fundamentos litúrgicos de Umbanda e diretrizes de nicho validados. Pacote em loja de terceiros e métricas externas pendentes de comprovação documental.',
+      unverifiedFields: ['playStoreUrl', 'activeInstalls', 'thirdPartyStoreMetrics']
     }
   },
 
@@ -358,10 +358,10 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Comunidade engajada com milhares de testemunhos de resgate da dignidade'
     ],
     verificationStatus: {
-      isAudited: true,
-      lastAuditedAt: '2026-10-27T00:00:00.000Z',
-      auditNotes: 'Validado com especificações oficiais da Play Store com.portalvipbrasil.mariapadilha',
-      unverifiedFields: []
+      isAudited: false,
+      lastAuditedAt: '2026-10-28T00:00:00.000Z',
+      auditNotes: 'Diretrizes de respeito ético e espiritual de nicho validadas. Pacote e métricas de loja de terceiros pendentes de comprovação documental.',
+      unverifiedFields: ['playStoreUrl', 'thirdPartyStoreMetrics']
     }
   },
 
@@ -451,10 +451,10 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Conformidade integral com os textos litúrgicos da CNBB'
     ],
     verificationStatus: {
-      isAudited: true,
-      lastAuditedAt: '2026-10-27T00:00:00.000Z',
-      auditNotes: 'Validado com parâmetros litúrgicos e identificador de app com.portalvipbrasil.manualcatolico',
-      unverifiedFields: []
+      isAudited: false,
+      lastAuditedAt: '2026-10-28T00:00:00.000Z',
+      auditNotes: 'Conformidade bíblica e fidelidade ao magistério católico validadas. Pacote em loja de terceiros pendente de confirmação documental.',
+      unverifiedFields: ['playStoreUrl', 'thirdPartyStoreMetrics']
     }
   },
 
@@ -544,9 +544,9 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Processamento de alta velocidade e arquitetura sem dependências obsoletas'
     ],
     verificationStatus: {
-      isAudited: true,
-      lastAuditedAt: '2026-10-27T00:00:00.000Z',
-      auditNotes: 'Dossiê validado para o ecossistema Froc IA. App nativo móvel marcado como pendente de confirmação.',
+      isAudited: false,
+      lastAuditedAt: '2026-10-28T00:00:00.000Z',
+      auditNotes: 'Ecossistema web Froc IA validado. Aplicativo nativo móvel não evidenciado.',
       unverifiedFields: ['playStoreUrl', 'appTitle']
     }
   },
@@ -637,10 +637,10 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Acervo detalhado dos 78 arcanos e 24 runas totalmente documentados'
     ],
     verificationStatus: {
-      isAudited: true,
-      lastAuditedAt: '2026-10-27T00:00:00.000Z',
-      auditNotes: 'Dossiê validado com ID de pacote com.portalvipbrasil.oraculos e domínio oraculos-web.vercel.app',
-      unverifiedFields: []
+      isAudited: false,
+      lastAuditedAt: '2026-10-28T00:00:00.000Z',
+      auditNotes: 'Aplicação web oracular validada (oraculos-web.vercel.app). Pacote em loja de terceiros e métricas externas pendentes de confirmação documental.',
+      unverifiedFields: ['playStoreUrl', 'thirdPartyStoreMetrics']
     }
   },
 
@@ -730,9 +730,9 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Estrutura com mais de 30 agentes especializados cobrindo todas as áreas de marketing'
     ],
     verificationStatus: {
-      isAudited: true,
-      lastAuditedAt: '2026-10-27T00:00:00.000Z',
-      auditNotes: 'Dossiê validado para o núcleo de marketing da Froc IA. App móvel não aplicável (SaaS web).',
+      isAudited: false,
+      lastAuditedAt: '2026-10-28T00:00:00.000Z',
+      auditNotes: 'Plataforma SaaS web validada. App móvel em loja de terceiros não aplicável.',
       unverifiedFields: ['playStoreUrl', 'appTitle']
     }
   }
