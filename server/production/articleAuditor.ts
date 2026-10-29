@@ -222,11 +222,23 @@ export async function auditSingleArticle(
 
   // 5. Verificação de Duplicatas
   const normTitle = normalizeTextForDeduplication(title);
+  const normTitleCompact = normTitle.replace(/\s+/g, '');
   const normSlug = slug.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const titleEntry = context?.seenTitles?.get(normTitle);
-  const titleOccurrences = titleEntry?.count || 1;
-  const slugOccurrences = context?.seenSlugs?.get(normSlug) || 1;
-  const coverOccurrences = coverImage ? (context?.seenCovers?.get(coverImage) || 1) : 1;
+
+  const rawTitleVal = (context?.seenTitles as any)?.get(normTitle) ?? (context?.seenTitles as any)?.get(normTitleCompact);
+  const titleOccurrences = typeof rawTitleVal === 'number'
+    ? rawTitleVal
+    : (rawTitleVal?.count || 1);
+
+  const rawSlugVal = (context?.seenSlugs as any)?.get(normSlug);
+  const slugOccurrences = typeof rawSlugVal === 'number'
+    ? rawSlugVal
+    : (rawSlugVal?.count || 1);
+
+  const rawCoverVal = coverImage ? (context?.seenCovers as any)?.get(coverImage) : 1;
+  const coverOccurrences = typeof rawCoverVal === 'number'
+    ? rawCoverVal
+    : (rawCoverVal?.count || 1);
 
   const duplicateFlags: ArticleDuplicateFlags = {
     isDuplicateTitle: titleOccurrences > 1,
@@ -264,14 +276,14 @@ export async function auditSingleArticle(
     status = 'CROSS_NICHE_VIOLATION';
     classification = 'REESCREVER';
     actionableSuggestions.push(`Remover termos indevidos do nicho (${violatingTerms.join(', ')}) para manter a pureza temática e o respeito cultural.`);
-  } else if (duplicateFlags.isDuplicateTitle && titleEntry && titleEntry.primaryArticleId !== articleId) {
+  } else if (duplicateFlags.isDuplicateTitle && rawTitleVal && typeof rawTitleVal === 'object' && rawTitleVal.primaryArticleId && rawTitleVal.primaryArticleId !== articleId) {
     classification = 'CONSOLIDAR';
     canonicalProposal = {
-      canonicalUrl: `${baseUrl}/blog/${titleEntry.slug}`,
+      canonicalUrl: `${baseUrl}/blog/${rawTitleVal.slug || slug}`,
       redirect301Proposed: true,
-      reason: `Duplicata exata de pauta/título. Consolidar na URL canônica /blog/${titleEntry.slug} via 301.`
+      reason: `Duplicata exata de pauta/título. Consolidar na URL canônica /blog/${rawTitleVal.slug || slug} via 301.`
     };
-    actionableSuggestions.push(`Canibalização de SEO com artigo idêntico (${titleEntry.primaryArticleId}). Proposta consolidação canônica para ${canonicalProposal.canonicalUrl}.`);
+    actionableSuggestions.push(`Canibalização de SEO com artigo idêntico (${rawTitleVal.primaryArticleId}). Proposta consolidação canônica para ${canonicalProposal.canonicalUrl}.`);
   } else if (wordCount < 150 && !hasProperHeadings) {
     status = 'SUBSTANCE_REVISION_NEEDED';
     classification = 'AVALIAR_DESINDEXACAO';
