@@ -6,6 +6,11 @@ import {
   getAgentSpec,
   processAgentInteraction
 } from '../server/production/agents.js';
+import { updateMasterAutomationControl } from '../server/production/automationGate.js';
+
+test.before(async () => {
+  await updateMasterAutomationControl('setup', { globalEnabled: true, pauseAllExternalApis: false });
+});
 
 test('30 Agentes: Todos os 30 agentes oficiais estão cadastrados com IDs canônicos', () => {
   assert.equal(CANONICAL_AGENT_IDS.length, 30, 'Devem existir exatamente 30 agentes cadastrados');

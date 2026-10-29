@@ -22,7 +22,7 @@ import {
 } from '../server/production/financialGuardian.js';
 
 test('Automação Gate: Fail-Closed e valores padrão consistentes', () => {
-  assert.equal(DEFAULT_MASTER_AUTOMATION.globalEnabled, true);
+  assert.equal(DEFAULT_MASTER_AUTOMATION.globalEnabled, false, 'Padrão ausente deve ser rigorosamente falso (Zero Custos)');
   assert.equal(DEFAULT_MASTER_AUTOMATION.monthlyBudgetCapBrl, 150.00);
   assert.equal(DEFAULT_MASTER_AUTOMATION.monthlyBudgetCapUsd, 27.27);
   assert.equal(FIXED_EXCHANGE_RATE_BRL_PER_USD, 5.50);

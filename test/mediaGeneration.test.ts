@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resetMemoryDb, getMemoryCollection } from '../server/production/store.js';
+import { updateMasterAutomationControl } from '../server/production/automationGate.js';
 import * as firebaseAdminProvider from '../server/providers/firebaseAdmin.js';
 import {
   isValidMp4Buffer,
@@ -23,6 +24,7 @@ test('Media: valida container MP4 e rejeita HTML/JSON', () => {
 
 test('Media: vídeo privado usa zero créditos, finaliza uma vez e isola usuário', async () => {
   resetMemoryDb();
+  await updateMasterAutomationControl('admin', { globalEnabled: true, pauseAllExternalApis: false });
   const saved = new Map<string, Buffer>();
   firebaseAdminProvider.setAdminStorageForTesting({
     bucket: () => ({
@@ -81,6 +83,7 @@ test('Media: vídeo privado usa zero créditos, finaliza uma vez e isola usuári
 
 test('Media: falha do Firebase Storage não cria vídeo concluído nem agendamento com URL local', async () => {
   resetMemoryDb();
+  await updateMasterAutomationControl('admin', { globalEnabled: true, pauseAllExternalApis: false });
   firebaseAdminProvider.setAdminStorageForTesting(null);
   setMediaAiClientForTesting({
     models: { generateVideos: async () => ({ name: 'operations/storage-failure-video' }) },

@@ -3,11 +3,29 @@ import { COLLECTIONS, firestore, nowIso } from './store.js';
 
 export interface GoogleSearchConsoleStatus {
   configured: boolean;
-  status: 'configured' | 'unconfigured' | 'error';
+  status: 'connected' | 'configured' | 'unconfigured' | 'auth_failed' | 'permission_denied' | 'error';
   siteUrl?: string;
   hasCredentials: boolean;
   message: string;
   lastCheckedAt: string;
+}
+
+export interface GoogleSearchAnalyticsRow {
+  keys: string[];
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export interface GoogleSearchAnalyticsResult {
+  configured: boolean;
+  rows: GoogleSearchAnalyticsRow[];
+  totalClicks: number;
+  totalImpressions: number;
+  averageCtr: number;
+  averagePosition: number;
+  error?: string;
 }
 
 export interface GoogleSearchConsoleSitemapInfo {
@@ -23,7 +41,8 @@ export interface GoogleSearchConsoleSitemapInfo {
 
 /**
  * Consulta a configuração e saúde da integração oficial com o Google Search Console.
- * Fail-Closed & Sem Falsificações: Se credenciais não existirem, retorna explicitamente "unconfigured".
+ * Diferencia explicitamente: credenciais ausentes, falha de autenticação, falta de permissão e conexão funcional.
+ * Fail-Closed & Sem Falsificações: Não simula métricas falsas.
  */
 export async function getGoogleSearchConsoleStatus(): Promise<GoogleSearchConsoleStatus> {
   const serviceAccountEmail = process.env.GOOGLE_SEARCH_CONSOLE_CLIENT_EMAIL || process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -43,14 +62,65 @@ export async function getGoogleSearchConsoleStatus(): Promise<GoogleSearchConsol
     };
   }
 
-  return {
-    configured: true,
-    status: 'configured',
-    siteUrl,
-    hasCredentials: true,
-    message: 'Google Search Console configurado com credenciais autênticas de conta de serviço.',
-    lastCheckedAt: nowIso()
-  };
+  // Se credenciais existem, valida o token e a permissão real na propriedade
+  const token = await getSearchConsoleAccessToken();
+  if (!token) {
+    return {
+      configured: false,
+      status: 'auth_failed',
+      siteUrl,
+      hasCredentials: true,
+      message: 'Falha de autenticação: Credenciais presentes, mas a chave privada ou conta de serviço foram rejeitadas pelo endpoint OAuth2 do Google.',
+      lastCheckedAt: nowIso()
+    };
+  }
+
+  try {
+    const encodedSiteUrl = encodeURIComponent(siteUrl);
+    const res = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodedSiteUrl}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (res.status === 403) {
+      return {
+        configured: true,
+        status: 'permission_denied',
+        siteUrl,
+        hasCredentials: true,
+        message: `Conta de serviço autenticada, mas sem permissão de acesso à propriedade "${siteUrl}" no Search Console. Adicione ${serviceAccountEmail} como usuário no painel do Google Search Console.`,
+        lastCheckedAt: nowIso()
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        configured: true,
+        status: 'error',
+        siteUrl,
+        hasCredentials: true,
+        message: `API Search Console retornou status HTTP ${res.status} ao consultar a propriedade.`,
+        lastCheckedAt: nowIso()
+      };
+    }
+
+    return {
+      configured: true,
+      status: 'connected',
+      siteUrl,
+      hasCredentials: true,
+      message: 'Conexão ativa e verificada com o Google Search Console via API oficial autenticada.',
+      lastCheckedAt: nowIso()
+    };
+  } catch (netErr: any) {
+    return {
+      configured: true,
+      status: 'error',
+      siteUrl,
+      hasCredentials: true,
+      message: `Erro de conexão ao verificar propriedade no Google Search Console: ${netErr?.message || netErr}`,
+      lastCheckedAt: nowIso()
+    };
+  }
 }
 
 /**
@@ -237,6 +307,132 @@ export async function submitSearchConsoleSitemap(feedpath: string): Promise<{
       success: false,
       configured: true,
       message: `Erro de conexão ao submeter sitemap ao Google Search Console: ${err?.message || err}`
+    };
+  }
+}
+
+/**
+ * Consulta relatórios reais de desempenho orgânico (Search Analytics) da API oficial do Google Search Console.
+ * Sem simulação: se não configurado ou sem permissão, reporta o status real sem dados falsos.
+ */
+export async function querySearchAnalytics(options: {
+  startDate?: string;
+  endDate?: string;
+  dimensions?: Array<'query' | 'page' | 'country' | 'device' | 'searchAppearance' | 'date'>;
+  rowLimit?: number;
+} = {}): Promise<GoogleSearchAnalyticsResult> {
+  const status = await getGoogleSearchConsoleStatus();
+  if (!status.configured) {
+    return {
+      configured: false,
+      rows: [],
+      totalClicks: 0,
+      totalImpressions: 0,
+      averageCtr: 0,
+      averagePosition: 0,
+      error: status.message || 'Google Search Console não configurado no ambiente.'
+    };
+  }
+
+  const token = await getSearchConsoleAccessToken();
+  if (!token) {
+    return {
+      configured: true,
+      rows: [],
+      totalClicks: 0,
+      totalImpressions: 0,
+      averageCtr: 0,
+      averagePosition: 0,
+      error: 'Não foi possível autenticar junto à API do Google Search Console com as credenciais fornecidas.'
+    };
+  }
+
+  const siteUrl = encodeURIComponent(status.siteUrl || config.appUrl.replace(/\/$/, ''));
+  const apiUrl = `https://www.googleapis.com/webmasters/v3/sites/${siteUrl}/searchAnalytics/query`;
+
+  const now = new Date();
+  const endDate = options.endDate || now.toISOString().slice(0, 10);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+  const startDate = options.startDate || thirtyDaysAgo.toISOString().slice(0, 10);
+
+  const requestBody = {
+    startDate,
+    endDate,
+    dimensions: options.dimensions || ['query', 'page'],
+    rowLimit: Math.min(1000, Math.max(1, options.rowLimit || 50))
+  };
+
+  try {
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return {
+        configured: true,
+        rows: [],
+        totalClicks: 0,
+        totalImpressions: 0,
+        averageCtr: 0,
+        averagePosition: 0,
+        error: `API Google Search Console retornou HTTP ${res.status}: ${errText.slice(0, 300)}`
+      };
+    }
+
+    const data = await res.json() as any;
+    const rawRows = Array.isArray(data.rows) ? data.rows : [];
+
+    let totalClicks = 0;
+    let totalImpressions = 0;
+    let sumCtr = 0;
+    let sumPos = 0;
+
+    const rows: GoogleSearchAnalyticsRow[] = rawRows.map((r: any) => {
+      const clicks = Number(r.clicks || 0);
+      const impressions = Number(r.impressions || 0);
+      const ctr = Number(r.ctr || 0);
+      const position = Number(r.position || 0);
+
+      totalClicks += clicks;
+      totalImpressions += impressions;
+      sumCtr += ctr;
+      sumPos += position;
+
+      return {
+        keys: Array.isArray(r.keys) ? r.keys : [],
+        clicks,
+        impressions,
+        ctr,
+        position
+      };
+    });
+
+    const averageCtr = rows.length > 0 ? sumCtr / rows.length : 0;
+    const averagePosition = rows.length > 0 ? sumPos / rows.length : 0;
+
+    return {
+      configured: true,
+      rows,
+      totalClicks,
+      totalImpressions,
+      averageCtr: Math.round(averageCtr * 10000) / 10000,
+      averagePosition: Math.round(averagePosition * 100) / 100
+    };
+  } catch (err: any) {
+    return {
+      configured: true,
+      rows: [],
+      totalClicks: 0,
+      totalImpressions: 0,
+      averageCtr: 0,
+      averagePosition: 0,
+      error: `Erro de rede ao consultar Search Analytics: ${err?.message || err}`
     };
   }
 }

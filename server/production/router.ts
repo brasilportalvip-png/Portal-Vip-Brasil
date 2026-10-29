@@ -48,7 +48,7 @@ import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './video
 import { runVideoRetryWorker, verifyCronAuthorization, getVideoRetryWorkerHealth } from './videoRetryWorker.js';
 import { runSocialPublicationWorker } from './socialPublicationWorker.js';
 import { inventoryAllArticlesFailClosed, recoverArticleBatch } from './articleRecoveryEngine.js';
-import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap } from './googleSearchConsole.js';
+import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap, querySearchAnalytics } from './googleSearchConsole.js';
 
 const router = Router();
 
@@ -1967,6 +1967,11 @@ router.post('/admin/google-search-console/sitemaps', requireAdmin, asyncRoute(as
   res.json(result);
 }));
 
+router.post('/admin/google-search-console/search-analytics', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const result = await querySearchAnalytics(req.body || {});
+  res.json(result);
+}));
+
 // Technical SEO endpoints
 router.get('/sitemap.xml', asyncRoute(async (_req, res) => res.type('application/xml').send(await buildSitemapXml())));
 router.get('/robots.txt', (_req, res) => res.type('text/plain').send(buildRobotsTxt()));
@@ -1989,104 +1994,109 @@ export async function buildSitemapXml(): Promise<string> {
 
   const urls: SitemapUrlEntry[] = [];
 
-  try {
-    const [blogSnap, articlesSnap] = await Promise.race([
-      Promise.all([
-        firestore().collection(COLLECTIONS.blogPosts).where('status', '==', 'published').get(),
-        firestore().collection(COLLECTIONS.blogArticles).where('status', '==', 'published').get()
-      ]),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Sitemap Firestore timeout')), 4_000))
-    ]);
-
-    let latestContentDate = '2026-03-01T00:00:00.000Z';
-    for (const doc of [...blogSnap.docs, ...articlesSnap.docs]) {
-      const item = doc.data() as any;
-      const ts = item.updatedAt || item.publishedAt;
-      if (ts && ts > latestContentDate) latestContentDate = ts;
+  // 1. Paginação por cursor nas coleções persistentes do Firestore (Fail-Closed)
+  const fetchPublishedWithCursor = async (col: string): Promise<any[]> => {
+    const docs: any[] = [];
+    const BATCH = 300;
+    let last: any = null;
+    let hasMore = true;
+    while (hasMore) {
+      let q = (col === COLLECTIONS.blogArticles
+        ? firestore().collection(COLLECTIONS.blogArticles).where('status', '==', 'published')
+        : firestore().collection(col).where('status', '==', 'published')
+      ).limit(BATCH);
+      if (last && typeof q.startAfter === 'function') q = q.startAfter(last);
+      const snap = await q.get();
+      if (!snap || !snap.docs || snap.docs.length === 0) break;
+      for (const d of snap.docs) docs.push(d);
+      if (snap.docs.length < BATCH) hasMore = false;
+      else last = snap.docs[snap.docs.length - 1];
     }
+    return docs;
+  };
 
-    urls.push(
-      {
-        loc: `${base}/`,
-        lastmod: latestContentDate,
+  const [blogDocs, articleDocs] = await Promise.all([
+    fetchPublishedWithCursor(COLLECTIONS.blogPosts),
+    fetchPublishedWithCursor(COLLECTIONS.blogArticles)
+  ]);
+
+  let latestContentDate = '2026-03-01T00:00:00.000Z';
+  for (const doc of [...blogDocs, ...articleDocs]) {
+    const item = doc.data() as any;
+    const ts = item.updatedAt || item.publishedAt;
+    if (ts && ts > latestContentDate) latestContentDate = ts;
+  }
+
+  // Rotas institucionais e canônicas públicas
+  urls.push(
+    {
+      loc: `${base}/`,
+      lastmod: latestContentDate,
+      changefreq: 'daily',
+      priority: '1.0',
+      image: { url: `${base}/icons/icon-512.png`, title: 'Portal Vip Brasil — Central de Marketing & Vitrine' }
+    },
+    {
+      loc: `${base}/vitrine`,
+      lastmod: latestContentDate,
+      changefreq: 'daily',
+      priority: '0.95',
+      image: { url: `${base}/icons/logo.png`, title: 'Vitrine Oficial de Sites & Aplicativos' }
+    },
+    {
+      loc: `${base}/blog`,
+      lastmod: latestContentDate,
+      changefreq: 'daily',
+      priority: '0.95',
+      image: { url: `${base}/icons/icon-512.png`, title: 'Blog Editorial & Guias SEO Portal Vip Brasil' }
+    },
+    { loc: `${base}/termos`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.60' },
+    { loc: `${base}/privacidade`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.60' },
+    { loc: `${base}/cookies`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.50' },
+    { loc: `${base}/exclusao-de-dados`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.50' },
+    { loc: `${base}/apps-compliance`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.50' }
+  );
+
+  // Artigos de blog reais publicados
+  for (const doc of blogDocs) {
+    const item = doc.data() as any;
+    if (item.slug && item.noindex !== true) {
+      urls.push({
+        loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
+        lastmod: item.updatedAt || item.publishedAt || latestContentDate,
+        changefreq: 'monthly',
+        priority: '0.80',
+        image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
+      });
+    }
+  }
+
+  for (const doc of articleDocs) {
+    const item = doc.data() as any;
+    if (item.slug && item.noindex !== true && !urls.some((entry) => entry.loc.endsWith(`/blog/${encodeURIComponent(item.slug)}`))) {
+      urls.push({
+        loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
+        lastmod: item.updatedAt || item.publishedAt || latestContentDate,
+        changefreq: 'weekly',
+        priority: '0.90',
+        image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
+      });
+    }
+  }
+
+  // Vitrines ativas de projetos oficiais
+  const projects = await listAllPortalProjectsFromDb();
+  for (const project of projects) {
+    if (project.active !== false && project.slug) {
+      const coverImg = project.bannerUrl || project.logoUrl;
+      urls.push({
+        loc: `${base}/vitrine/${encodeURIComponent(project.slug)}`,
+        lastmod: project.updatedAt || latestContentDate,
         changefreq: 'daily',
-        priority: '1.0',
-        image: { url: `${base}/icons/icon-512.png`, title: 'Portal Vip Brasil — Central de Marketing & Vitrine' }
-      },
-      {
-        loc: `${base}/vitrine`,
-        lastmod: latestContentDate,
-        changefreq: 'daily',
-        priority: '0.95',
-        image: { url: `${base}/icons/logo.png`, title: 'Vitrine Oficial de Sites & Aplicativos' }
-      },
-      {
-        loc: `${base}/blog`,
-        lastmod: latestContentDate,
-        changefreq: 'daily',
-        priority: '0.95',
-        image: { url: `${base}/icons/icon-512.png`, title: 'Blog Editorial & Guias SEO Portal Vip Brasil' }
-      },
-      { loc: `${base}/termos`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.60' },
-      { loc: `${base}/privacidade`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.60' },
-      { loc: `${base}/cookies`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.50' },
-      { loc: `${base}/exclusao-de-dados`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.50' },
-      { loc: `${base}/apps-compliance`, lastmod: '2026-03-01T00:00:00.000Z', changefreq: 'monthly', priority: '0.50' }
-    );
-
-    for (const doc of blogSnap.docs) {
-      const item = doc.data() as any;
-      if (item.slug) {
-        urls.push({
-          loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
-          lastmod: item.updatedAt || item.publishedAt || latestContentDate,
-          changefreq: 'monthly',
-          priority: '0.80',
-          image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
-        });
-      }
+        priority: '0.90',
+        image: coverImg ? { url: coverImg, title: project.name } : undefined
+      });
     }
-
-    for (const doc of articlesSnap.docs) {
-      const item = doc.data() as any;
-      if (item.slug && !urls.some((entry) => entry.loc.endsWith(`/blog/${encodeURIComponent(item.slug)}`))) {
-        urls.push({
-          loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
-          lastmod: item.updatedAt || item.publishedAt || now,
-          changefreq: 'weekly',
-          priority: '0.90',
-          image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
-        });
-      }
-    }
-
-    for (const seeded of INITIAL_SEEDED_ARTICLES) {
-      if (!urls.some((entry) => entry.loc.endsWith(`/blog/${encodeURIComponent(seeded.slug)}`))) {
-        urls.push({
-          loc: `${base}/blog/${encodeURIComponent(seeded.slug)}`,
-          lastmod: seeded.updatedAt || now,
-          changefreq: 'weekly',
-          priority: '0.90',
-          image: seeded.coverImage ? { url: seeded.coverImage, title: seeded.title } : undefined
-        });
-      }
-    }
-
-    const projects = await listAllPortalProjectsFromDb().catch(() => PORTAL_VIP_PROJECTS);
-    for (const project of projects) {
-      if (project.active !== false && project.slug) {
-        const coverImg = project.bannerUrl || project.logoUrl;
-        urls.push({
-          loc: `${base}/vitrine/${encodeURIComponent(project.slug)}`,
-          lastmod: project.updatedAt || now,
-          changefreq: 'daily',
-          priority: '0.90',
-          image: coverImg ? { url: coverImg, title: project.name } : undefined
-        });
-      }
-    }
-  } catch (error) {
-    console.warn('[Portal Vip Brasil Sitemap] Falha ao carregar conteúdo dinâmico; mantendo rotas públicas base:', error);
   }
 
   const escapeXml = (value: string) =>

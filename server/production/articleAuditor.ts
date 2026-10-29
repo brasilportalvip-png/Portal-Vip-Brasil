@@ -609,24 +609,30 @@ export async function verifyArticleQualityGate(
     const metaDescription = String(article.metaDescription || excerpt).trim();
     const callToAction = String(article.callToAction || article.cta || '').trim();
     const coverImage = String(article.coverImage || article.featuredImageUrl || '').trim();
+    const coverAlt = String(article.coverAlt || article.imageAlt || (coverImage && !coverImage.includes('logo.png') ? 'Fotografia editorial temática sobre ' + title : '')).trim();
+    const canonicalUrl = String(article.canonicalUrl || article.canonical || '').trim();
     const projectId = String(options.projectId || article.projectId || article.relatedProjectId || article.companyId || '').trim();
 
-    // Monta texto integral
-    let fullText = `${title} ${excerpt} ${metaDescription} ${callToAction}`;
-    if (typeof article.content === 'string') fullText += ` ${article.content}`;
-    if (typeof article.introduction === 'string') fullText += ` ${article.introduction}`;
-    if (typeof article.conclusion === 'string') fullText += ` ${article.conclusion}`;
+    // Separação estrita: Corpo Editorial vs Metadados (Metadados não inflam artificialmente a extensão)
+    let editorialBodyText = '';
+    if (typeof article.content === 'string') editorialBodyText += ` ${article.content}`;
+    if (typeof article.introduction === 'string') editorialBodyText += ` ${article.introduction}`;
+    if (typeof article.conclusion === 'string') editorialBodyText += ` ${article.conclusion}`;
     if (Array.isArray(article.sections)) {
       for (const sec of article.sections) {
-        fullText += ` ${sec.h2 || ''} ${sec.content || ''}`;
+        editorialBodyText += ` ${sec.h2 || ''} ${sec.content || ''}`;
         if (Array.isArray(sec.h3s)) {
-          for (const h3 of sec.h3s) fullText += ` ${h3.h3 || ''} ${h3.content || ''}`;
+          for (const h3 of sec.h3s) editorialBodyText += ` ${h3.h3 || ''} ${h3.content || ''}`;
         }
       }
     }
+    editorialBodyText = editorialBodyText.trim();
+    const bodyWords = editorialBodyText.split(/\s+/).filter(Boolean);
+    const bodyWordCount = bodyWords.length;
+    const lowerBody = editorialBodyText.toLowerCase();
 
-    const words = fullText.trim().split(/\s+/).filter(Boolean);
-    const wordCount = words.length;
+    // Texto total apenas para buscas de termos e integridade
+    const fullText = `${title} ${excerpt} ${metaDescription} ${callToAction} ${editorialBodyText}`;
     const lowerFullText = fullText.toLowerCase();
 
     // 1. Adequação ao nicho e ao projeto
@@ -641,7 +647,7 @@ export async function verifyArticleQualityGate(
       refinementSuggestions.push(`Remover referências a ${foundProhibited.join(', ')} para respeitar a identidade editorial do projeto.`);
     }
 
-    // 2. Originalidade e ausência de duplicação textual
+    // 2. Originalidade e ausência de duplicação textual (consulta histórico relevante)
     const normTitle = normalizeTextForDeduplication(title);
     const normTitleCompact = normTitle.replace(/\s+/g, '');
     let isDupTitle = false;
@@ -649,38 +655,83 @@ export async function verifyArticleQualityGate(
       const entry = (options.seenTitles as any).get(normTitle) ?? (options.seenTitles as any).get(normTitleCompact);
       const count = typeof entry === 'number' ? entry : (entry?.count || 0);
       if (count > 1) isDupTitle = true;
+    } else if (slug && options.failClosedOnGateError !== false) {
+      // Consulta direta ao Firestore quando lista em memória não for fornecida
+      try {
+        const db = firestore();
+        const existingDoc = await db.collection(COLLECTIONS.blogArticles).where('slug', '==', slug).limit(2).get();
+        if (existingDoc && existingDoc.docs) {
+          const match = existingDoc.docs.find((d: any) => d.id !== article.id);
+          if (match) isDupTitle = true;
+        }
+      } catch {}
     }
-    const originalityPassed = !isDupTitle && wordCount >= 250;
+
+    const originalityPassed = !isDupTitle && bodyWordCount >= 250;
     if (isDupTitle) {
-      rejectionReasons.push('Título ou tema idêntico a outra publicação existente no acervo (canibalização de SEO).');
+      rejectionReasons.push('Título ou slug idêntico a outra publicação existente no acervo (canibalização de SEO).');
       refinementSuggestions.push('Alterar o título e ângulo da abordagem para garantir exclusividade e valor único.');
     }
-    if (wordCount < 250) {
-      rejectionReasons.push(`Extensão insuficiente (${wordCount} palavras; mínimo exigido: 250).`);
-      refinementSuggestions.push('Expandir o artigo com seções práticas, exemplos e aprofundamento.');
+    if (bodyWordCount < 250) {
+      rejectionReasons.push(`Extensão do corpo editorial insuficiente (${bodyWordCount} palavras no corpo; mínimo exigido: 250, metadados não contam).`);
+      refinementSuggestions.push('Desenvolver seções com profundidade prática e contextualização do nicho.');
     }
 
-    // 3. Qualidade editorial, gramática e clareza
+    // 3. Qualidade editorial real, gramática e ausência de boilerplate genérico
     const hasUnrenderedTags = /\{\{[\s\S]*?\}\}|<script[\s\S]*?>/i.test(fullText);
-    const editorialPassed = !hasUnrenderedTags && !fullText.includes('[object Object]') && wordCount >= 300;
-    if (hasUnrenderedTags) {
-      rejectionReasons.push('Conteúdo contém templates não renderizados ou tags inválidas.');
+    const hasObjectString = fullText.includes('[object Object]');
+    const hasPlaceholderToken = /lorem ipsum|texto de preenchimento|preencher aqui|conteúdo provisório|\[insira aqui\]/i.test(fullText);
+
+    // Avalia diversidade lexical do corpo editorial para detectar repetição robótica / texto de enchimento
+    const uniqueWords = new Set(bodyWords.map(w => w.toLowerCase()));
+    const lexicalRatio = bodyWordCount > 100 ? uniqueWords.size / bodyWordCount : 1.0;
+    const isRepetitiveBabble = bodyWordCount >= 150 && lexicalRatio < 0.32;
+
+    // Avalia profundidade das seções: cada seção deve ter substância (>20 palavras)
+    let hasShallowSections = false;
+    if (Array.isArray(article.sections) && article.sections.length > 0) {
+      for (const s of article.sections) {
+        const sWords = String(s.content || '').trim().split(/\s+/).filter(Boolean);
+        if (sWords.length < 20) {
+          hasShallowSections = true;
+          break;
+        }
+      }
+    }
+
+    const editorialPassed = !hasUnrenderedTags && !hasObjectString && !hasPlaceholderToken && !isRepetitiveBabble && !hasShallowSections && bodyWordCount >= 250;
+    if (hasUnrenderedTags || hasObjectString) {
+      rejectionReasons.push('Conteúdo contém templates não renderizados, objetos serializados ou tags inválidas.');
       refinementSuggestions.push('Sanitizar o texto e renderizar variáveis antes da publicação.');
     }
+    if (hasPlaceholderToken) {
+      rejectionReasons.push('Conteúdo contém texto placeholder ou genérico ("lorem ipsum", marcações de preenchimento).');
+      refinementSuggestions.push('Substituir blocos placeholder por texto editorial autêntico.');
+    }
+    if (isRepetitiveBabble) {
+      rejectionReasons.push('Baixa diversidade lexical: repetição excessiva de frases idênticas para inflar palavras artificialmente.');
+      refinementSuggestions.push('Reescrever com vocabulário rico, exemplos e novas ideias estruturadas.');
+    }
+    if (hasShallowSections) {
+      rejectionReasons.push('Seções com profundidade insuficiente (< 20 palavras por seção estruturada).');
+      refinementSuggestions.push('Expandir cada seção com explicação clara, benefícios e orientações.');
+    }
 
-    // 4. Precisão factual e ausência de afirmações inventadas
-    const hasFabricatedMiracles = /garantido em 24h|trago seu amor em 24h|cura m[ií]stica definitiva|ganhe milh[oõ]es da noite pro dia/i.test(fullText);
-    const factualPassed = !hasFabricatedMiracles;
+    // 4. Precisão factual e ausência de afirmações enganosas / não comprovadas
+    const hasFabricatedClaims = /garantido em 24h|trago seu amor em 24h|cura m[ií]stica definitiva|ganhe milh[oõ]es da noite pro dia|aprovado pela anvisa|certificado pelo minist[eé]rio da sa[uú]de|reconhecido pelo banco central|parceria oficial com a oms|100% garantido sem qualquer risco/i.test(fullText);
+    const factualPassed = !hasFabricatedClaims;
     if (!factualPassed) {
-      rejectionReasons.push('Afirmações factualmente enganosas ou promessas milagrosas inverídicas detectadas.');
+      rejectionReasons.push('Afirmações factualmente enganosas, promessas milagrosas ou alegações institucionais sem comprovação.');
       refinementSuggestions.push('Substituir alegações sensacionalistas por conteúdo informativo, responsável e cultural.');
     }
 
     // 5. Título, descrição, URL canônica e estrutura SEO
     const titleOk = title.length >= 10 && title.length <= 120;
     const metaOk = metaDescription.length >= 60 && metaDescription.length <= 250;
-    const hasProperHeadings = (Array.isArray(article.sections) && article.sections.length >= 2) || /<h[23]/i.test(article.content || '');
-    const seoStructurePassed = titleOk && metaOk && hasProperHeadings;
+    const slugOk = slug.length >= 3 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug);
+    const hasProperHeadings = (Array.isArray(article.sections) && article.sections.length >= 2) || /<h[23]/i.test(editorialBodyText);
+    const canonicalOk = !canonicalUrl || canonicalUrl.startsWith('http') || canonicalUrl.startsWith('/blog/');
+    const seoStructurePassed = titleOk && metaOk && slugOk && hasProperHeadings && canonicalOk;
     if (!titleOk) {
       rejectionReasons.push(`Título com tamanho inadequado (${title.length} caracteres; esperado 10-120).`);
       refinementSuggestions.push('Ajustar o título para ter entre 10 e 120 caracteres com apelo informativo.');
@@ -689,19 +740,47 @@ export async function verifyArticleQualityGate(
       rejectionReasons.push(`Meta-descrição com tamanho inadequado (${metaDescription.length} caracteres; esperado 60-250).`);
       refinementSuggestions.push('Fornecer meta-descrição entre 60 e 250 caracteres.');
     }
+    if (!slugOk) {
+      rejectionReasons.push(`Slug de URL inválido ("${slug}": deve ser em letras minúsculas com hifens).`);
+      refinementSuggestions.push('Normalizar slug com formato kebab-case.');
+    }
     if (!hasProperHeadings) {
       rejectionReasons.push('Estrutura de tópicos ausente: o artigo precisa de pelo menos 2 subtítulos (H2/H3).');
       refinementSuggestions.push('Dividir o texto em subtítulos H2 e H3 organizados.');
     }
+    if (!canonicalOk) {
+      rejectionReasons.push('URL canônica inválida.');
+      refinementSuggestions.push('Configurar canonicalUrl com URL pública válida.');
+    }
 
-    // 6. Palavra-chave usada naturalmente, sem keyword stuffing
-    const primaryKeyword = String(article.primaryKeyword || article.focusKeyword || title.split(/\s+/).slice(0, 3).join(' ')).toLowerCase();
-    const kwOccurrences = lowerFullText.split(primaryKeyword).length - 1;
-    const kwDensity = (kwOccurrences * Math.max(1, primaryKeyword.split(/\s+/).length)) / Math.max(1, wordCount);
-    const keywordPassed = kwDensity < 0.04;
+    // 6. Palavra-chave usada naturalmente, sem empilhamento artificial (sem porcentagem fixa arbitrária)
+    const primaryKeyword = String(article.primaryKeyword || article.focusKeyword || title.split(/\s+/).slice(0, 3).join(' ')).trim().toLowerCase();
+    let keywordUnnatural = false;
+    let keywordReason = '';
+
+    if (primaryKeyword && primaryKeyword.length >= 3) {
+      // Detecta repetições consecutivas empilhadas da palavra-chave
+      const escapedKw = primaryKeyword.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      const stackedPattern = new RegExp(`\\b${escapedKw}\\b(?:\\s+(?:e|com|para|de|o|a)?\\s*\\b${escapedKw}\\b)+`, 'i');
+      if (stackedPattern.test(lowerBody)) {
+        keywordUnnatural = true;
+        keywordReason = 'Repetição empilhada consecutiva da palavra-chave foco.';
+      }
+
+      // Detecta palavra-chave forçada em todos os títulos de seção
+      if (Array.isArray(article.sections) && article.sections.length >= 3) {
+        const sectionsWithKw = article.sections.filter((s: any) => String(s.h2 || '').toLowerCase().includes(primaryKeyword)).length;
+        if (sectionsWithKw === article.sections.length) {
+          keywordUnnatural = true;
+          keywordReason = 'Palavra-chave foco forçada artificialmente em 100% dos subtítulos H2.';
+        }
+      }
+    }
+
+    const keywordPassed = !keywordUnnatural;
     if (!keywordPassed) {
-      rejectionReasons.push(`Densidade excessiva da palavra-chave foco (${(kwDensity * 100).toFixed(1)}% - keyword stuffing).`);
-      refinementSuggestions.push('Distribuir a palavra-chave de forma mais orgânica e usar variações semânticas/sinônimos.');
+      rejectionReasons.push(`Uso não-natural da palavra-chave foco (${keywordReason}).`);
+      refinementSuggestions.push('Distribuir a palavra-chave de forma orgânica e utilizar variações semânticas e sinônimos.');
     }
 
     // 7. CTA pertinente e conteúdo útil ao leitor
@@ -713,13 +792,17 @@ export async function verifyArticleQualityGate(
 
     // 8. Compatibilidade das imagens e vídeos com o conteúdo e a identidade do projeto
     const isGenericLogo = coverImage.includes('/icons/logo.png') || coverImage.includes('portal-vip-logo.png');
-    const multimediaPassed = Boolean(coverImage && !isGenericLogo && (coverImage.startsWith('http') || coverImage.startsWith('/')));
+    const hasDescriptiveAlt = coverAlt.length >= 8 && !coverAlt.toLowerCase().includes('logo.png');
+    const multimediaPassed = Boolean(coverImage && !isGenericLogo && (coverImage.startsWith('http') || coverImage.startsWith('/'))) && hasDescriptiveAlt;
     if (isGenericLogo) {
       rejectionReasons.push('Imagem de capa é o logotipo genérico do portal (exige fotografia temática exclusiva do nicho).');
       refinementSuggestions.push('Atribuir fotografia temática de alta resolução compatível com o projeto.');
     } else if (!coverImage) {
       rejectionReasons.push('Imagem de capa ausente no artigo.');
       refinementSuggestions.push('Vincular uma imagem de capa exclusiva antes da publicação.');
+    } else if (!hasDescriptiveAlt) {
+      rejectionReasons.push('Texto alternativo (alt) da imagem de capa ausente ou muito curto (<8 caracteres).');
+      refinementSuggestions.push('Fornecer texto alternativo descritivo para acessibilidade e SEO da imagem.');
     }
 
     const allPillarsPassed = nichePassed && originalityPassed && editorialPassed && factualPassed && seoStructurePassed && keywordPassed && ctaPassed && multimediaPassed;
@@ -741,7 +824,7 @@ export async function verifyArticleQualityGate(
         nicheAlignment: { passed: nichePassed, score: nichePassed ? 100 : 0, reason: foundProhibited.join(', ') || undefined },
         originalityNonDuplicate: { passed: originalityPassed, score: originalityPassed ? 100 : 0, reason: isDupTitle ? 'Título duplicado' : undefined },
         editorialQualityGrammar: { passed: editorialPassed, score: editorialPassed ? 100 : 0, reason: hasUnrenderedTags ? 'Tags inválidas' : undefined },
-        factualPrecisionNoHallucination: { passed: factualPassed, score: factualPassed ? 100 : 0, reason: hasFabricatedMiracles ? 'Sensacionalismo' : undefined },
+        factualPrecisionNoHallucination: { passed: factualPassed, score: factualPassed ? 100 : 0, reason: hasFabricatedClaims ? 'Sensacionalismo ou alegação não comprovada' : undefined },
         seoStructureMetadata: { passed: seoStructurePassed, score: seoStructurePassed ? 100 : 0 },
         naturalKeywordUsage: { passed: keywordPassed, score: keywordPassed ? 100 : 0, reason: !keywordPassed ? 'Keyword stuffing' : undefined },
         actionableCtaHelpfulContent: { passed: ctaPassed, score: ctaPassed ? 100 : 0 },

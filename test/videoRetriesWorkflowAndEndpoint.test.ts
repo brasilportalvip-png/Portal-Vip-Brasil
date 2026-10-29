@@ -6,6 +6,7 @@ import YAML from 'yaml';
 import { createApp } from '../server/app.js';
 import { config } from '../server/config/index.js';
 import { firestore, COLLECTIONS, resetMemoryDb } from '../server/production/store.js';
+import { updateMasterAutomationControl } from '../server/production/automationGate.js';
 import {
   runVideoRetryWorker,
   acquireVideoRetryCronLock,
@@ -160,6 +161,7 @@ test('6. Endpoint /api/cron/video-retries: HTTP 401 quando o cabeçalho Authoriz
 
 test('7. Endpoint /api/cron/video-retries: HTTP 200 com autorização válida e resposta sanitizada', async () => {
   resetMemoryDb();
+  await updateMasterAutomationControl('admin', { globalEnabled: true, pauseAllExternalApis: false });
   const app = createApp();
   const testSecret = 'secret_test_cron_token_valid_2026';
   (config as any).cronSecret = testSecret;
@@ -184,6 +186,7 @@ test('7. Endpoint /api/cron/video-retries: HTTP 200 com autorização válida e 
 
 test('8. Endpoint /api/cron/video-retries: HTTP 500 com tratamento seguro quando ocorre falha interna', async () => {
   resetMemoryDb();
+  await updateMasterAutomationControl('admin', { globalEnabled: true, pauseAllExternalApis: false });
   const app = createApp();
   const testSecret = 'secret_test_cron_token_valid_2026';
   (config as any).cronSecret = testSecret;
@@ -257,6 +260,7 @@ test('9. Bloqueio de duas chamadas concorrentes via trava atômica distribuída'
 
 test('10. Persistência durável da telemetria no Firestore e consulta pelo endpoint de saúde', async () => {
   resetMemoryDb();
+  await updateMasterAutomationControl('admin', { globalEnabled: true, pauseAllExternalApis: false });
   const testSecret = 'secret_test_cron_token_valid_2026';
   (config as any).cronSecret = testSecret;
 

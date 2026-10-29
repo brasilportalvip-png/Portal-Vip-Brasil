@@ -10,6 +10,11 @@ import {
 import { runDailyPortalMarketingCycle } from '../server/production/antiFallEngine.js';
 import { runDailyBlogCycle } from '../server/production/blogEngine.js';
 import { publishInstagramMedia, initYouTubeResumableUpload, publishText } from '../server/production/social.js';
+import { updateMasterAutomationControl } from '../server/production/automationGate.js';
+
+test.before(async () => {
+  await updateMasterAutomationControl('test_user_admin', { globalEnabled: true, pauseAllExternalApis: false });
+});
 
 test('Portal Vip Brasil - 7 Projetos Oficiais Iniciais', async () => {
   assert.equal(PORTAL_VIP_PROJECTS.length, 7, 'Devem existir 7 projetos oficiais iniciais pré-configurados');

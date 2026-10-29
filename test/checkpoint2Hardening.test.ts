@@ -17,10 +17,12 @@ import {
   PORTAL_VIP_PROJECTS
 } from '../server/production/almaPortfolio.js';
 import { resetMemoryDb, firestore, COLLECTIONS } from '../server/production/store.js';
+import { updateMasterAutomationControl } from '../server/production/automationGate.js';
 import crypto from 'node:crypto';
 
 test('1. Autopilot Priority: Autopilot executa antes de tarefas pesadas e publica posts gerados', async () => {
   resetMemoryDb();
+  await updateMasterAutomationControl('test_user', { globalEnabled: true, pauseAllExternalApis: false });
   const db = firestore();
   
   // Executa o tick do scheduler
@@ -137,6 +139,7 @@ test('4. Imagem: Detecção de repetição por URL, storagePath e hash criptogr�
 });
 
 test('5. Imagem: generateMarketingImage gera hash SHA-256 e contextualiza o prompt com projeto, data e identificador', async () => {
+  await updateMasterAutomationControl('usr_admin_test', { globalEnabled: true, pauseAllExternalApis: false });
   const company = PORTAL_VIP_PROJECTS[0];
   const executionId = 'exec_teste_789';
   const dateIso = '2026-09-12';

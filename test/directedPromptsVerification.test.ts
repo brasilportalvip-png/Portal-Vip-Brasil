@@ -153,6 +153,12 @@ test('PROMPT 3: Recuperação de artigos antigos com paginação real, backup e 
   resetMemoryDb();
   const db = firestore();
 
+  // Habilita Botão Master explicitamente no banco para o teste de recuperação
+  await db.collection(COLLECTIONS.systemSettings).doc('master_control_global').set({
+    globalEnabled: true,
+    pauseAllExternalApis: false
+  });
+
   // Insere um artigo de baixa qualidade que precisa de ajustes (capa genérica, sem CTA)
   await db.collection(COLLECTIONS.blogArticles).doc('art_antigo_1').set({
     id: 'art_antigo_1',

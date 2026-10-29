@@ -19,10 +19,16 @@ export interface MasterAutomationControl {
   updatedBy?: string;
 }
 
+import { preflightReserveBudget } from './financialGuardian.js';
+
 export const FIXED_EXCHANGE_RATE_BRL_PER_USD = 5.50;
 
+/**
+ * Configuração padrão para quando o documento não existe no banco.
+ * O padrão para configuração ausente é estritamente DESLIGADO (fail-closed, Zero Custos).
+ */
 export const DEFAULT_MASTER_AUTOMATION: MasterAutomationControl = {
-  globalEnabled: true,
+  globalEnabled: false,
   costGuardEnabled: true,
   mode: 'automatic',
   maxDailyVideos: 1,
@@ -31,7 +37,7 @@ export const DEFAULT_MASTER_AUTOMATION: MasterAutomationControl = {
   monthlyBudgetCapUsd: 27.27, // ~ R$ 150,00
   monthlyBudgetCapBrl: 150.00,
   requireManualApproval: false,
-  pauseAllExternalApis: false,
+  pauseAllExternalApis: true,
   projectToggles: {},
   lastPausedAt: null,
   lastResumedAt: null,
@@ -40,34 +46,30 @@ export const DEFAULT_MASTER_AUTOMATION: MasterAutomationControl = {
 
 /**
  * Consulta a chave mestre de automação com política estrita FAIL-CLOSED.
- * Se a consulta ao banco falhar, o sistema assume globalEnabled = false (Zero Custos).
+ * 1. O documento global ('master_control_global') é a autoridade máxima.
+ * 2. Se o documento global estiver ausente, ilegível ou inválido, a automação permanece desligada (Zero Custos).
+ * 3. O Master OFF global PREVALECE sobre qualquer documento individual de usuário ou projeto.
+ * 4. Um documento de usuário ausente, desatualizado ou com enabled=true NUNCA ignora o Master OFF global.
  */
 export async function getMasterAutomationControl(userId?: string): Promise<MasterAutomationControl> {
   const db = firestore();
-  const docId = userId ? `master_control_${userId}` : 'master_control_global';
 
+  let globalData: Partial<MasterAutomationControl> | null = null;
   try {
-    const snap = await db.collection(COLLECTIONS.systemSettings).doc(docId).get();
-    if (snap.exists) {
-      const data = snap.data() as Partial<MasterAutomationControl>;
-      const capBrl = typeof data.monthlyBudgetCapBrl === 'number'
-        ? data.monthlyBudgetCapBrl
-        : (typeof data.monthlyBudgetCapUsd === 'number' ? data.monthlyBudgetCapUsd * FIXED_EXCHANGE_RATE_BRL_PER_USD : 150);
-      const capUsd = typeof data.monthlyBudgetCapUsd === 'number'
-        ? data.monthlyBudgetCapUsd
-        : capBrl / FIXED_EXCHANGE_RATE_BRL_PER_USD;
-
+    const globalSnap = await db.collection(COLLECTIONS.systemSettings).doc('master_control_global').get();
+    if (globalSnap && globalSnap.exists) {
+      globalData = globalSnap.data() as Partial<MasterAutomationControl>;
+    } else {
+      // Documento global ausente: Fail-Closed imediato (Zero Custos)
       return {
         ...DEFAULT_MASTER_AUTOMATION,
-        ...data,
-        monthlyBudgetCapBrl: capBrl,
-        monthlyBudgetCapUsd: capUsd,
-        globalEnabled: Boolean(data.globalEnabled !== false)
+        globalEnabled: false,
+        pauseAllExternalApis: true,
+        updatedAt: nowIso()
       };
     }
   } catch (err: any) {
-    console.error('[AutomationGate] FAIL-CLOSED ativado: Falha ao ler Firestore, bloqueando automações por segurança:', err);
-    // FAIL-CLOSED: Se a configuração não puder ser consultada, bloqueia novas operações pagas!
+    console.error('[AutomationGate] FAIL-CLOSED ativado: Falha ao ler documento global no Firestore, bloqueando automações por segurança:', err);
     return {
       ...DEFAULT_MASTER_AUTOMATION,
       globalEnabled: false,
@@ -76,20 +78,75 @@ export async function getMasterAutomationControl(userId?: string): Promise<Maste
     };
   }
 
-  return { ...DEFAULT_MASTER_AUTOMATION };
+  // Se o documento global estiver explicitamente desligado ou pausado:
+  const isGlobalStrictlyEnabled = Boolean(globalData && globalData.globalEnabled === true && globalData.pauseAllExternalApis !== true);
+  if (!isGlobalStrictlyEnabled) {
+    // Configuração global OFF PREVALECE sobre qualquer usuário ou projeto!
+    const capBrl = typeof globalData?.monthlyBudgetCapBrl === 'number'
+      ? globalData.monthlyBudgetCapBrl
+      : (typeof globalData?.monthlyBudgetCapUsd === 'number' ? globalData.monthlyBudgetCapUsd * FIXED_EXCHANGE_RATE_BRL_PER_USD : 150);
+    const capUsd = typeof globalData?.monthlyBudgetCapUsd === 'number'
+      ? globalData.monthlyBudgetCapUsd
+      : capBrl / FIXED_EXCHANGE_RATE_BRL_PER_USD;
+
+    return {
+      ...DEFAULT_MASTER_AUTOMATION,
+      ...(globalData || {}),
+      monthlyBudgetCapBrl: capBrl,
+      monthlyBudgetCapUsd: capUsd,
+      globalEnabled: false,
+      pauseAllExternalApis: true,
+      updatedAt: globalData?.updatedAt || nowIso()
+    };
+  }
+
+  // 2. Se a chave global está LIGADA e um userId foi fornecido, verifica se o usuário pausou individualmente
+  let userData: Partial<MasterAutomationControl> | null = null;
+  if (userId) {
+    try {
+      const userSnap = await db.collection(COLLECTIONS.systemSettings).doc(`master_control_${userId}`).get();
+      if (userSnap && userSnap.exists) {
+        userData = userSnap.data() as Partial<MasterAutomationControl>;
+      }
+    } catch (err) {
+      console.warn(`[AutomationGate] Falha ao ler configuração individual do usuário ${userId}, aplicando estado seguro:`, err);
+    }
+  }
+
+  // Se o usuário desligou individualmente, respeita a pausa.
+  const userGlobalEnabled = userData ? (userData.globalEnabled !== false && userData.pauseAllExternalApis !== true) : true;
+  const effectiveGlobalEnabled = isGlobalStrictlyEnabled && userGlobalEnabled;
+
+  const mergedData = {
+    ...globalData,
+    ...(userData || {})
+  };
+
+  const capBrl = typeof mergedData.monthlyBudgetCapBrl === 'number'
+    ? mergedData.monthlyBudgetCapBrl
+    : (typeof mergedData.monthlyBudgetCapUsd === 'number' ? mergedData.monthlyBudgetCapUsd * FIXED_EXCHANGE_RATE_BRL_PER_USD : 150);
+  const capUsd = typeof mergedData.monthlyBudgetCapUsd === 'number'
+    ? mergedData.monthlyBudgetCapUsd
+    : capBrl / FIXED_EXCHANGE_RATE_BRL_PER_USD;
+
+  return {
+    ...DEFAULT_MASTER_AUTOMATION,
+    ...mergedData,
+    monthlyBudgetCapBrl: capBrl,
+    monthlyBudgetCapUsd: capUsd,
+    globalEnabled: effectiveGlobalEnabled,
+    pauseAllExternalApis: !effectiveGlobalEnabled
+  };
 }
 
 /**
  * Verifica se a automação global está ligada.
- * Fail-Closed: se houver qualquer erro na leitura, retorna false.
+ * Fail-Closed: se houver qualquer erro na leitura ou configuração ausente, retorna false.
  */
 export async function isGlobalAutomationEnabled(userId?: string): Promise<boolean> {
   try {
     const control = await getMasterAutomationControl(userId);
-    if (!control.globalEnabled || control.pauseAllExternalApis) {
-      return false;
-    }
-    return true;
+    return Boolean(control.globalEnabled && !control.pauseAllExternalApis);
   } catch {
     return false;
   }
@@ -128,11 +185,12 @@ export async function isProjectAutomationEnabled(projectId: string, userId?: str
 
 /**
  * Lança exceção se a automação estiver desligada para a operação / projeto.
+ * Garante reserva atômica pré-voo de orçamento para operações com custo.
  */
 export async function assertAutomationAllowed(options?: {
   projectId?: string;
   userId?: string;
-  operationType?: string;
+  operationType?: 'article' | 'image' | 'video' | 'agent_chat' | string;
 }): Promise<void> {
   const globalOn = await isGlobalAutomationEnabled(options?.userId);
   if (!globalOn) {
@@ -152,6 +210,23 @@ export async function assertAutomationAllowed(options?: {
       );
       error.statusCode = 423; // Locked
       error.code = 'PROJECT_AUTOMATION_LOCKED';
+      throw error;
+    }
+  }
+
+  // Reserva orçamentária atômica antes de chamadas pagas
+  if (options?.operationType && ['article', 'image', 'video', 'agent_chat'].includes(options.operationType)) {
+    const budgetRes = await preflightReserveBudget({
+      userId: options?.userId || 'portal_vip_system',
+      operation: options.operationType as any,
+      companyId: options?.projectId
+    });
+    if (!budgetRes.allowed) {
+      const error: any = new Error(
+        budgetRes.reason || 'Orçamento mensal de automação esgotado. Operação paga bloqueada para proteção de custos.'
+      );
+      error.statusCode = 423;
+      error.code = 'BUDGET_CAP_EXCEEDED';
       throw error;
     }
   }

@@ -133,11 +133,10 @@ export async function checkImageUniqueness(
 
   const db = firestore();
   try {
-    // 1. Verificação determinística rápida no índice de hashes SHA-256 já utilizados
+    // 1. Verificação determinística rápida no índice de hashes SHA-256 já utilizados (Fail-Closed)
     const deterministicDoc = await db.collection(COLLECTIONS.usedImageHashes)
       .doc(`${companyId}_${sha256}`.slice(0, 150))
-      .get()
-      .catch(() => null);
+      .get();
 
     if (deterministicDoc && deterministicDoc.exists) {
       return {
@@ -286,32 +285,65 @@ export async function reserveImageFingerprintAtomically(options: {
   ttlSeconds?: number;
 }): Promise<{ reserved: boolean; reason?: string }> {
   const db = firestore();
-  const reservationKey = `${options.companyId}_${options.sha256Hash}`.slice(0, 150);
-  const ref = db.collection(COLLECTIONS.schedulerLocks).doc(`imghash_${reservationKey}`);
+  const shaKey = `${options.companyId}_${options.sha256Hash}`.slice(0, 150);
+  const refSha = db.collection(COLLECTIONS.schedulerLocks).doc(`imghash_${shaKey}`);
+
+  const pHash = options.perceptualHash ? String(options.perceptualHash).slice(0, 32) : '';
+  const refPhash = pHash ? db.collection(COLLECTIONS.schedulerLocks).doc(`imgphash_${options.companyId}_${pHash}`) : null;
+
   const now = Date.now();
   const ttlMs = (options.ttlSeconds || 60) * 1000;
 
   try {
     return await db.runTransaction(async (tx: any) => {
-      const snap = await tx.get(ref);
-      const data = snap.exists ? snap.data() || {} : {};
-      const lockedUntil = typeof data.lockedUntil === 'number' ? data.lockedUntil : 0;
-
-      if (lockedUntil > now) {
-        return {
-          reserved: false,
-          reason: `Condição de corrida prevenida: imagem já está sendo reservada e publicada pelo worker ${data.workerId || 'ativo'}.`
-        };
+      // 1. Verificação da reserva por SHA-256
+      const snapSha = await tx.get(refSha);
+      if (snapSha && snapSha.exists) {
+        const dataSha = snapSha.data() || {};
+        const lockedUntil = typeof dataSha.lockedUntil === 'number' ? dataSha.lockedUntil : 0;
+        if (lockedUntil > now) {
+          return {
+            reserved: false,
+            reason: `Condição de corrida prevenida: imagem (SHA-256) já está sendo reservada pelo worker ${dataSha.workerId || 'ativo'}.`
+          };
+        }
       }
 
-      tx.set(ref, {
+      // 2. Verificação da reserva por Perceptual Hash (dHash) para imagens visualmente equivalentes mesmo com bytes diferentes
+      if (refPhash) {
+        const snapPhash = await tx.get(refPhash);
+        if (snapPhash && snapPhash.exists) {
+          const dataPhash = snapPhash.data() || {};
+          const lockedUntil = typeof dataPhash.lockedUntil === 'number' ? dataPhash.lockedUntil : 0;
+          if (lockedUntil > now) {
+            return {
+              reserved: false,
+              reason: `Condição de corrida prevenida: imagem visualmente equivalente (dHash ${pHash}) já está sendo reservada pelo worker ${dataPhash.workerId || 'ativo'}.`
+            };
+          }
+        }
+      }
+
+      // 3. Aplica as reservas atômicas
+      tx.set(refSha, {
         companyId: options.companyId,
         workerId: options.workerId,
         sha256Hash: options.sha256Hash,
-        perceptualHash: options.perceptualHash || '',
+        perceptualHash: pHash,
         lockedUntil: now + ttlMs,
         reservedAt: nowIso()
       }, { merge: true });
+
+      if (refPhash) {
+        tx.set(refPhash, {
+          companyId: options.companyId,
+          workerId: options.workerId,
+          sha256Hash: options.sha256Hash,
+          perceptualHash: pHash,
+          lockedUntil: now + ttlMs,
+          reservedAt: nowIso()
+        }, { merge: true });
+      }
 
       return { reserved: true };
     });
