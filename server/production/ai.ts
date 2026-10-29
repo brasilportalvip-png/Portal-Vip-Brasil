@@ -428,6 +428,7 @@ export async function executeAi<T = string>(data: {
   maxTokens?: number;
   parse?: (text: string) => T;
 }): Promise<{ result: T; creditsUsed: number; executionId: string; modelUsed: string }> {
+  await assertAutomationAllowed({ userId: data.userId, projectId: data.company?.id });
   const cost = 0;
   const executionId = newId('exec');
   const started = Date.now();
@@ -860,6 +861,7 @@ export async function generateMarketingImage(data: {
   resolution: string;
   imageHash?: string;
 }> {
+  await assertAutomationAllowed({ userId: data.userId, projectId: data.company?.id });
   const resolution = data.resolution === '4K' ? '4K' : data.resolution === '2K' ? '2K' : '1K';
   const opKey = resolution === '4K' ? 'image_ai_4k' : resolution === '2K' ? 'image_ai_2k' : 'image_ai_1k';
   const cost = 0;
@@ -1450,6 +1452,7 @@ export async function startVideoGenerationJob(data: {
   autoPublishPlatforms?: string[];
   autoPublishProviderOptions?: { pinterestBoardId?: string; youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
 }): Promise<VideoJobData> {
+  await assertAutomationAllowed({ userId: data.userId, projectId: data.company?.id });
   const preset: VideoPreset = data.preset === 'cinema_4k' ? 'cinema_4k' : data.preset === 'pro_1080p' ? 'pro_1080p' : 'demo_720p';
   const presetConfig = VIDEO_PRESETS[preset];
   const aspectRatio = data.aspectRatio === '16:9' ? '16:9' : '9:16';

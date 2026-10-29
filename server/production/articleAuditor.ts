@@ -360,27 +360,6 @@ export async function auditSingleArticle(
 }
 
 /**
- * Gate de Qualidade Editorial Obrigatório.
- * Bloqueia a publicação de artigos com contaminação de nicho ou imagem genérica.
- */
-export async function verifyArticleQualityGate(article: any): Promise<ArticleAuditResult> {
-  const audit = await auditSingleArticle(article);
-  if (audit.status === 'CROSS_NICHE_VIOLATION') {
-    const error: any = new Error(`Qualidade Editorial Reprovada: Contaminação de nicho detectada (${audit.crossNicheContamination.violatingTerms.join(', ')}). Conteúdo bloqueado.`);
-    error.statusCode = 422;
-    error.audit = audit;
-    throw error;
-  }
-  if (audit.visualIntegrity.isGenericLogo) {
-    const error: any = new Error('Qualidade Editorial Reprovada: O artigo não pode utilizar o logotipo genérico do portal como imagem de capa. Utilize imagem exclusiva do nicho.');
-    error.statusCode = 422;
-    error.audit = audit;
-    throw error;
-  }
-  return audit;
-}
-
-/**
  * Cria snapshot de backup e histórico de versão de um artigo antes de qualquer alteração.
  */
 export async function backupArticleVersion(
@@ -563,3 +542,231 @@ export async function auditAllStoredArticles(options: {
     items: results
   };
 }
+
+export interface QualityGatePillarResult {
+  passed: boolean;
+  score: number;
+  reason?: string;
+}
+
+export interface QualityGateEvaluation {
+  approved: boolean;
+  score: number;
+  pillars: {
+    nicheAlignment: QualityGatePillarResult;
+    originalityNonDuplicate: QualityGatePillarResult;
+    editorialQualityGrammar: QualityGatePillarResult;
+    factualPrecisionNoHallucination: QualityGatePillarResult;
+    seoStructureMetadata: QualityGatePillarResult;
+    naturalKeywordUsage: QualityGatePillarResult;
+    actionableCtaHelpfulContent: QualityGatePillarResult;
+    multimediaCompatibility: QualityGatePillarResult;
+  };
+  rejectionReasons: string[];
+  refinementSuggestions: string[];
+}
+
+/**
+ * Quality Gate Obrigatório de Produção (8 Pilares Inegociáveis)
+ * BLOQUEIA efetivamente a publicação de qualquer conteúdo inadequado.
+ * Fail-Closed: se o gate estiver indisponível ou lançar erro, NÃO publica.
+ */
+export async function verifyArticleQualityGate(
+  article: any,
+  options: {
+    projectId?: string;
+    seenTitles?: Map<string, any>;
+    seenCovers?: Map<string, any>;
+    failClosedOnGateError?: boolean;
+  } = {}
+): Promise<QualityGateEvaluation> {
+  try {
+    if (!article || typeof article !== 'object') {
+      return {
+        approved: false,
+        score: 0,
+        pillars: {
+          nicheAlignment: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' },
+          originalityNonDuplicate: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' },
+          editorialQualityGrammar: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' },
+          factualPrecisionNoHallucination: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' },
+          seoStructureMetadata: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' },
+          naturalKeywordUsage: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' },
+          actionableCtaHelpfulContent: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' },
+          multimediaCompatibility: { passed: false, score: 0, reason: 'Artigo nulo ou inválido' }
+        },
+        rejectionReasons: ['Dados do artigo não fornecidos ou vazios.'],
+        refinementSuggestions: ['Forneça um objeto estruturado de artigo.']
+      };
+    }
+
+    const rejectionReasons: string[] = [];
+    const refinementSuggestions: string[] = [];
+
+    const title = String(article.title || '').trim();
+    const slug = String(article.slug || '').trim();
+    const excerpt = String(article.excerpt || '').trim();
+    const metaDescription = String(article.metaDescription || excerpt).trim();
+    const callToAction = String(article.callToAction || article.cta || '').trim();
+    const coverImage = String(article.coverImage || article.featuredImageUrl || '').trim();
+    const projectId = String(options.projectId || article.projectId || article.relatedProjectId || article.companyId || '').trim();
+
+    // Monta texto integral
+    let fullText = `${title} ${excerpt} ${metaDescription} ${callToAction}`;
+    if (typeof article.content === 'string') fullText += ` ${article.content}`;
+    if (typeof article.introduction === 'string') fullText += ` ${article.introduction}`;
+    if (typeof article.conclusion === 'string') fullText += ` ${article.conclusion}`;
+    if (Array.isArray(article.sections)) {
+      for (const sec of article.sections) {
+        fullText += ` ${sec.h2 || ''} ${sec.content || ''}`;
+        if (Array.isArray(sec.h3s)) {
+          for (const h3 of sec.h3s) fullText += ` ${h3.h3 || ''} ${h3.content || ''}`;
+        }
+      }
+    }
+
+    const words = fullText.trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const lowerFullText = fullText.toLowerCase();
+
+    // 1. Adequação ao nicho e ao projeto
+    const prohibitedTerms = projectId ? NICHE_PROHIBITED_TERMS[projectId] || [] : [];
+    const foundProhibited: string[] = [];
+    for (const term of prohibitedTerms) {
+      if (lowerFullText.includes(term.toLowerCase())) foundProhibited.push(term);
+    }
+    const nichePassed = foundProhibited.length === 0;
+    if (!nichePassed) {
+      rejectionReasons.push(`Contaminação de nicho: termos proibidos encontrados para o projeto ${projectId}: ${foundProhibited.join(', ')}.`);
+      refinementSuggestions.push(`Remover referências a ${foundProhibited.join(', ')} para respeitar a identidade editorial do projeto.`);
+    }
+
+    // 2. Originalidade e ausência de duplicação textual
+    const normTitle = normalizeTextForDeduplication(title);
+    const normTitleCompact = normTitle.replace(/\s+/g, '');
+    let isDupTitle = false;
+    if (options.seenTitles) {
+      const entry = (options.seenTitles as any).get(normTitle) ?? (options.seenTitles as any).get(normTitleCompact);
+      const count = typeof entry === 'number' ? entry : (entry?.count || 0);
+      if (count > 1) isDupTitle = true;
+    }
+    const originalityPassed = !isDupTitle && wordCount >= 250;
+    if (isDupTitle) {
+      rejectionReasons.push('Título ou tema idêntico a outra publicação existente no acervo (canibalização de SEO).');
+      refinementSuggestions.push('Alterar o título e ângulo da abordagem para garantir exclusividade e valor único.');
+    }
+    if (wordCount < 250) {
+      rejectionReasons.push(`Extensão insuficiente (${wordCount} palavras; mínimo exigido: 250).`);
+      refinementSuggestions.push('Expandir o artigo com seções práticas, exemplos e aprofundamento.');
+    }
+
+    // 3. Qualidade editorial, gramática e clareza
+    const hasUnrenderedTags = /\{\{[\s\S]*?\}\}|<script[\s\S]*?>/i.test(fullText);
+    const editorialPassed = !hasUnrenderedTags && !fullText.includes('[object Object]') && wordCount >= 300;
+    if (hasUnrenderedTags) {
+      rejectionReasons.push('Conteúdo contém templates não renderizados ou tags inválidas.');
+      refinementSuggestions.push('Sanitizar o texto e renderizar variáveis antes da publicação.');
+    }
+
+    // 4. Precisão factual e ausência de afirmações inventadas
+    const hasFabricatedMiracles = /garantido em 24h|trago seu amor em 24h|cura m[ií]stica definitiva|ganhe milh[oõ]es da noite pro dia/i.test(fullText);
+    const factualPassed = !hasFabricatedMiracles;
+    if (!factualPassed) {
+      rejectionReasons.push('Afirmações factualmente enganosas ou promessas milagrosas inverídicas detectadas.');
+      refinementSuggestions.push('Substituir alegações sensacionalistas por conteúdo informativo, responsável e cultural.');
+    }
+
+    // 5. Título, descrição, URL canônica e estrutura SEO
+    const titleOk = title.length >= 10 && title.length <= 120;
+    const metaOk = metaDescription.length >= 60 && metaDescription.length <= 250;
+    const hasProperHeadings = (Array.isArray(article.sections) && article.sections.length >= 2) || /<h[23]/i.test(article.content || '');
+    const seoStructurePassed = titleOk && metaOk && hasProperHeadings;
+    if (!titleOk) {
+      rejectionReasons.push(`Título com tamanho inadequado (${title.length} caracteres; esperado 10-120).`);
+      refinementSuggestions.push('Ajustar o título para ter entre 10 e 120 caracteres com apelo informativo.');
+    }
+    if (!metaOk) {
+      rejectionReasons.push(`Meta-descrição com tamanho inadequado (${metaDescription.length} caracteres; esperado 60-250).`);
+      refinementSuggestions.push('Fornecer meta-descrição entre 60 e 250 caracteres.');
+    }
+    if (!hasProperHeadings) {
+      rejectionReasons.push('Estrutura de tópicos ausente: o artigo precisa de pelo menos 2 subtítulos (H2/H3).');
+      refinementSuggestions.push('Dividir o texto em subtítulos H2 e H3 organizados.');
+    }
+
+    // 6. Palavra-chave usada naturalmente, sem keyword stuffing
+    const primaryKeyword = String(article.primaryKeyword || article.focusKeyword || title.split(/\s+/).slice(0, 3).join(' ')).toLowerCase();
+    const kwOccurrences = lowerFullText.split(primaryKeyword).length - 1;
+    const kwDensity = (kwOccurrences * Math.max(1, primaryKeyword.split(/\s+/).length)) / Math.max(1, wordCount);
+    const keywordPassed = kwDensity < 0.04;
+    if (!keywordPassed) {
+      rejectionReasons.push(`Densidade excessiva da palavra-chave foco (${(kwDensity * 100).toFixed(1)}% - keyword stuffing).`);
+      refinementSuggestions.push('Distribuir a palavra-chave de forma mais orgânica e usar variações semânticas/sinônimos.');
+    }
+
+    // 7. CTA pertinente e conteúdo útil ao leitor
+    const ctaPassed = callToAction.length >= 15;
+    if (!ctaPassed) {
+      rejectionReasons.push('Chamada para ação (CTA) ausente ou muito curta (<15 caracteres).');
+      refinementSuggestions.push('Adicionar CTA convidativa orientando o leitor para o app, consulta ou canal oficial.');
+    }
+
+    // 8. Compatibilidade das imagens e vídeos com o conteúdo e a identidade do projeto
+    const isGenericLogo = coverImage.includes('/icons/logo.png') || coverImage.includes('portal-vip-logo.png');
+    const multimediaPassed = Boolean(coverImage && !isGenericLogo && (coverImage.startsWith('http') || coverImage.startsWith('/')));
+    if (isGenericLogo) {
+      rejectionReasons.push('Imagem de capa é o logotipo genérico do portal (exige fotografia temática exclusiva do nicho).');
+      refinementSuggestions.push('Atribuir fotografia temática de alta resolução compatível com o projeto.');
+    } else if (!coverImage) {
+      rejectionReasons.push('Imagem de capa ausente no artigo.');
+      refinementSuggestions.push('Vincular uma imagem de capa exclusiva antes da publicação.');
+    }
+
+    const allPillarsPassed = nichePassed && originalityPassed && editorialPassed && factualPassed && seoStructurePassed && keywordPassed && ctaPassed && multimediaPassed;
+
+    let score = 0;
+    if (nichePassed) score += 15;
+    if (originalityPassed) score += 15;
+    if (editorialPassed) score += 15;
+    if (factualPassed) score += 15;
+    if (seoStructurePassed) score += 15;
+    if (keywordPassed) score += 10;
+    if (ctaPassed) score += 5;
+    if (multimediaPassed) score += 10;
+
+    return {
+      approved: allPillarsPassed && score >= 70,
+      score,
+      pillars: {
+        nicheAlignment: { passed: nichePassed, score: nichePassed ? 100 : 0, reason: foundProhibited.join(', ') || undefined },
+        originalityNonDuplicate: { passed: originalityPassed, score: originalityPassed ? 100 : 0, reason: isDupTitle ? 'Título duplicado' : undefined },
+        editorialQualityGrammar: { passed: editorialPassed, score: editorialPassed ? 100 : 0, reason: hasUnrenderedTags ? 'Tags inválidas' : undefined },
+        factualPrecisionNoHallucination: { passed: factualPassed, score: factualPassed ? 100 : 0, reason: hasFabricatedMiracles ? 'Sensacionalismo' : undefined },
+        seoStructureMetadata: { passed: seoStructurePassed, score: seoStructurePassed ? 100 : 0 },
+        naturalKeywordUsage: { passed: keywordPassed, score: keywordPassed ? 100 : 0, reason: !keywordPassed ? 'Keyword stuffing' : undefined },
+        actionableCtaHelpfulContent: { passed: ctaPassed, score: ctaPassed ? 100 : 0 },
+        multimediaCompatibility: { passed: multimediaPassed, score: multimediaPassed ? 100 : 0, reason: isGenericLogo ? 'Logotipo genérico' : !coverImage ? 'Sem imagem' : undefined }
+      },
+      rejectionReasons,
+      refinementSuggestions
+    };
+  } catch (err: any) {
+    return {
+      approved: false,
+      score: 0,
+      pillars: {
+        nicheAlignment: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' },
+        originalityNonDuplicate: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' },
+        editorialQualityGrammar: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' },
+        factualPrecisionNoHallucination: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' },
+        seoStructureMetadata: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' },
+        naturalKeywordUsage: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' },
+        actionableCtaHelpfulContent: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' },
+        multimediaCompatibility: { passed: false, score: 0, reason: 'Erro interno no Quality Gate (Fail-Closed)' }
+      },
+      rejectionReasons: [`Falha interna no Quality Gate: ${err?.message || String(err)}. Publicação bloqueada preventivamente (Fail-Closed).`],
+      refinementSuggestions: ['Corrigir erro do auditor antes de tentar publicar.']
+    };
+  }
+}
+

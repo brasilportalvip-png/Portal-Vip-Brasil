@@ -47,6 +47,8 @@ import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso,
 import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './videoCatalog.js';
 import { runVideoRetryWorker, verifyCronAuthorization, getVideoRetryWorkerHealth } from './videoRetryWorker.js';
 import { runSocialPublicationWorker } from './socialPublicationWorker.js';
+import { inventoryAllArticlesFailClosed, recoverArticleBatch } from './articleRecoveryEngine.js';
+import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap } from './googleSearchConsole.js';
 
 const router = Router();
 
@@ -1931,6 +1933,38 @@ router.delete('/alma/memories/:id', requireAuth, asyncRoute(async (req: Authenti
 router.post('/portal/blog/heal-covers', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
   const result = await healAllStoredBlogCovers();
   res.json({ success: true, ...result });
+}));
+
+router.get('/portal/blog/inventory', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res: Response) => {
+  const result = await inventoryAllArticlesFailClosed();
+  res.json({ success: true, ...result });
+}));
+
+router.post('/portal/blog/recover-batch', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const result = await recoverArticleBatch({
+    batchSize: req.body?.batchSize,
+    userId: req.user?.id,
+    startCursor: req.body?.startCursor,
+    onlyNeedsAction: req.body?.onlyNeedsAction !== false
+  });
+  const status = result.error?.includes('Master OFF') ? 423 : 200;
+  res.status(status).json(result);
+}));
+
+router.get('/admin/google-search-console/status', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res: Response) => {
+  const status = await getGoogleSearchConsoleStatus();
+  res.json(status);
+}));
+
+router.get('/admin/google-search-console/sitemaps', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res: Response) => {
+  const sitemaps = await listSearchConsoleSitemaps();
+  res.json(sitemaps);
+}));
+
+router.post('/admin/google-search-console/sitemaps', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res: Response) => {
+  const feedpath = String(req.body?.feedpath || `${config.appUrl.replace(/\/$/, '')}/sitemap.xml`);
+  const result = await submitSearchConsoleSitemap(feedpath);
+  res.json(result);
 }));
 
 // Technical SEO endpoints

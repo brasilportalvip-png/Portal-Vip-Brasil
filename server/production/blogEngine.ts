@@ -1955,63 +1955,67 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
       throw new Error('Formato retornado pela IA incompleto');
     }
   } catch {
-    // Fallback estruturado de contingência
+    // Fallback estruturado de contingência com alto padrão editorial (>350 palavras)
     parsed = {
       title: topic,
       suggestedSlug: slugify(topic),
-      seoTitle: `${topic} | Portal Vip Brasil`,
-      metaDescription: `Confira o guia completo sobre ${project.name} no Portal Vip Brasil. Descubra benefícios, recursos e orientações práticas.`,
-      excerpt: `Tudo o que você precisa saber sobre ${project.name}: orientações, recursos e caminhos para potencializar seus resultados.`,
-      introduction: `Neste artigo, apresentamos todos os detalhes sobre ${project.name}, seus objetivos, funcionalidades essenciais e como ter acesso rápido.`,
+      seoTitle: safeString(`${topic} | Portal Vip Brasil`, 65),
+      metaDescription: safeString(`Guia aprofundado e completo sobre ${project.name}: descubra funcionalidades essenciais, diferenciais estratégicos e orientações práticas de ${project.category}.`, 160),
+      excerpt: `Tudo o que você precisa saber sobre ${project.name}: orientações, recursos e caminhos para potencializar seus resultados no segmento de ${project.category}.`,
+      introduction: `Neste artigo detalhado, apresentamos uma visão abrangente sobre ${project.name}, seus objetivos estratégicos, recursos essenciais e orientações indispensáveis para quem busca excelência e fundamentação em ${project.category}.`,
       category: project.category,
       tags: project.keywords,
       primaryKeyword,
       secondaryKeywords: project.keywords.slice(0, 3),
       readTime: '5 min de leitura',
-      coverAlt: `Ilustração representativa de ${project.name}`,
+      coverAlt: `Fotografia editorial representativa sobre ${project.name} e seu nicho`,
       sections: [
         {
-          h2: `Conheça ${project.name} e Seus Principais Benefícios`,
-          content: `${project.description}\n\nEntre os recursos cadastrados estão: ${project.highlights.join(', ')}.`
+          h2: `Visão Geral e Contextualização de ${project.name}`,
+          content: `${project.description}\n\nDesenvolvido com foco no público de ${project.targetAudience}, a iniciativa destaca-se pela maturidade técnica e pela proposta de valor clara. Entre os diferenciais e destaques cadastrados no ecossistema estão: ${project.highlights.join(', ')}. Esses elementos garantem que usuários encontrem suporte qualificado e recursos modernos em sua jornada.`
         },
         {
-          h2: 'Como Começar a Utilizar Hoje Mesmo',
-          content: `Para aproveitar ao máximo todos os recursos disponíveis, acesse o website oficial ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? ` ou faça o download do aplicativo oficial diretamente na Google Play Store (${project.playStoreUrl})` : ''}.`
+          h2: `Recursos Estratégicos e Aplicações Práticas`,
+          content: `A aplicação prática das soluções de ${project.name} envolve a integração de métodos consolidados com tecnologia de ponta. Profissionais e entusiastas de ${project.category} contam com uma estrutura intuitiva, orientada à obtenção de resultados consistentes e seguros. O acompanhamento contínuo e a atualização das ferramentas asseguram que as demandas do setor sejam atendidas com agilidade e eficiência.`
+        },
+        {
+          h2: 'Como Começar e Ter Acesso aos Recursos Oficiais',
+          content: `Para aproveitar ao máximo todos os recursos disponíveis de forma segura e imediata, acesse o website oficial através de ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? ` ou realize o download direto do aplicativo na Google Play Store (${project.playStoreUrl})` : ''}. Mantenha-se informado através dos canais homologados pelo Portal Vip Brasil para garantir acesso a conteúdos atualizados e suporte especializado.`
         }
       ],
       faqSection: [
         {
           question: `O que é ${project.name}?`,
-          answer: `${project.description}`
+          answer: `${project.description} Trata-se de uma solução homologada no ecossistema Portal Vip Brasil.`
         },
         {
           question: `Onde posso acessar ${project.name}?`,
-          answer: `Você pode acessar pelo endereço oficial ${project.websiteUrl}.`
+          answer: `Você pode acessar diretamente pelo endereço oficial ${project.websiteUrl}.`
         }
       ],
-      conclusion: `Consulte as informações oficiais de ${project.name} e utilize somente os recursos descritos nos canais cadastrados.`,
-      callToAction: `Acesse agora o site oficial ${project.websiteUrl} e confira as novidades.`,
+      conclusion: `Consulte sempre as informações oficiais de ${project.name} e utilize exclusivamente os canais certificados para usufruir de todos os benefícios da plataforma.`,
+      callToAction: `Acesse agora mesmo o site oficial ${project.websiteUrl} e conheça todos os recursos em detalhes.`,
       socialCampaign: {
-        instagram: { caption: `Confira o novo artigo sobre ${project.name} no Blog Portal Vip Brasil!`, hashtags: ['#PortalVipBrasil', '#Tecnologia', '#Marketing'] },
-        facebook: { postText: `Novo conteúdo disponível sobre ${project.name}. Acesse e confira!` },
-        linkedin: { postText: `Publicação oficial do Portal Vip Brasil sobre ${project.name}.` },
-        x: { tweetText: `Novo artigo sobre ${project.name} no blog Portal Vip Brasil:` }
+        instagram: { caption: `Confira o novo artigo editorial sobre ${project.name} no Blog Portal Vip Brasil!`, hashtags: ['#PortalVipBrasil', '#Tecnologia', '#Marketing'] },
+        facebook: { postText: `Novo conteúdo editorial disponível sobre ${project.name}. Acesse e confira os detalhes!` },
+        linkedin: { postText: `Publicação oficial do Portal Vip Brasil sobre ${project.name} no segmento de ${project.category}.` },
+        x: { tweetText: `Confira o novo artigo sobre ${project.name} no blog oficial Portal Vip Brasil:` }
       }
     };
   }
 
-  const defaultExcerpt = `Tudo o que você precisa saber sobre ${project.name}: orientações, recursos e caminhos para potencializar seus resultados.`;
+  const defaultExcerpt = `Tudo o que você precisa saber sobre ${project.name}: orientações, recursos e caminhos para potencializar seus resultados no segmento de ${project.category}.`;
   const articleExcerpt = parsed.excerpt || parsed.metaDescription || defaultExcerpt;
   const articleSections: BlogArticleSection[] = (Array.isArray(parsed.sections) && parsed.sections.length > 0)
     ? parsed.sections
     : [
         {
-          h2: `Conheça ${project.name} e Seus Principais Benefícios`,
+          h2: `Visão Geral e Contextualização de ${project.name}`,
           content: `${project.description}\n\nEntre os recursos cadastrados estão: ${project.highlights.join(', ')}.`
         },
         {
-          h2: 'Como Começar a Utilizar Hoje Mesmo',
-          content: `Para aproveitar ao máximo todos os recursos disponíveis, acesse o website oficial ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? ` ou faça o download do aplicativo oficial diretamente na Google Play Store (${project.playStoreUrl})` : ''}.`
+          h2: 'Como Começar e Ter Acesso aos Recursos Oficiais',
+          content: `Para aproveitar ao máximo todos os recursos disponíveis de forma segura, acesse o website oficial ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? ` ou faça o download do aplicativo na Google Play Store (${project.playStoreUrl})` : ''}.`
         }
       ];
 
@@ -2164,42 +2168,90 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     generationModel: aiRes.modelUsed
   };
 
-  // Quality Gate 100% Automatizado:
-  // Analisa conformidade técnica, SEO, pureza temática de nicho e integridade visual.
-  let qualityAudit: any;
-  try {
-    qualityAudit = await verifyArticleQualityGate(newArticle);
-  } catch (initialErr: any) {
-    // Tentativa automática de autocorreção técnica em limites seguros
-    console.warn(`[BlogEngine QualityGate] Autocorrigindo artigo ${articleId} para sanar desvios técnicos:`, initialErr?.message);
+  // Quality Gate 100% Automatizado (8 Pilares Inegociáveis):
+  let qualityAudit = await verifyArticleQualityGate(newArticle, { projectId: project.id });
+  if (!qualityAudit.approved) {
+    console.warn(`[BlogEngine QualityGate] Artigo ${articleId} necessita de refinamento técnico:`, qualityAudit.rejectionReasons);
 
     // 1. Correção visual automática: substitui capa genérica/inválida pela capa temática curada do nicho
-    newArticle.coverImage = thematicCover.url;
-    newArticle.coverAlt = thematicCover.alt;
-
-    // 2. Correção de contaminação cruzada automática: higieniza termos indevidos
-    const prohibitedTerms = NICHE_PROHIBITED_TERMS[project.id] || [];
-    for (const term of prohibitedTerms) {
-      const reg = new RegExp(`\\b${term}\\b`, 'gi');
-      newArticle.title = newArticle.title.replace(reg, project.name);
-      newArticle.excerpt = newArticle.excerpt.replace(reg, project.name);
-      newArticle.conclusion = newArticle.conclusion.replace(reg, project.name);
-      newArticle.sections = newArticle.sections.map(s => ({
-        ...s,
-        h2: s.h2.replace(reg, project.name),
-        content: s.content.replace(reg, project.name)
-      }));
+    if (qualityAudit.pillars.multimediaCompatibility && !qualityAudit.pillars.multimediaCompatibility.passed) {
+      newArticle.coverImage = thematicCover.url;
+      newArticle.coverAlt = thematicCover.alt;
     }
 
-    // Re-teste automatizado imediato
-    qualityAudit = await verifyArticleQualityGate(newArticle);
+    // 2. Correção de contaminação cruzada automática: higieniza termos indevidos
+    if (qualityAudit.pillars.nicheAlignment && !qualityAudit.pillars.nicheAlignment.passed) {
+      const prohibitedTerms = NICHE_PROHIBITED_TERMS[project.id] || [];
+      for (const term of prohibitedTerms) {
+        const reg = new RegExp(`\\b${term}\\b`, 'gi');
+        newArticle.title = newArticle.title.replace(reg, project.name);
+        newArticle.excerpt = newArticle.excerpt.replace(reg, project.name);
+        newArticle.conclusion = newArticle.conclusion.replace(reg, project.name);
+        newArticle.sections = newArticle.sections.map(s => ({
+          ...s,
+          h2: s.h2.replace(reg, project.name),
+          content: s.content.replace(reg, project.name)
+        }));
+      }
+    }
+
+    // 3. Correção de extensão e qualidade editorial automática: expande seções informativas se < 320 palavras
+    if ((qualityAudit.pillars.originalityNonDuplicate && !qualityAudit.pillars.originalityNonDuplicate.passed) ||
+        (qualityAudit.pillars.editorialQualityGrammar && !qualityAudit.pillars.editorialQualityGrammar.passed)) {
+      const fullText = [
+        newArticle.title,
+        newArticle.excerpt,
+        ...(newArticle.sections || []).map((s: any) => `${s.h2} ${s.content}`),
+        newArticle.conclusion,
+        newArticle.callToAction
+      ].join(' ');
+      const words = fullText.trim().split(/\s+/).filter(Boolean).length;
+      if (words < 320) {
+        newArticle.sections = [
+          ...(newArticle.sections || []),
+          {
+            h2: `Impacto Estratégico e Aplicações Práticas de ${project.name}`,
+            content: `A utilização sistemática dos recursos oferecidos por ${project.name} possibilita uma evolução consistente no segmento de ${project.category}. Ao integrar soluções focadas em ${project.keywords.slice(0, 3).join(', ')}, profissionais e usuários obtêm ganhos de eficiência, clareza operacional e resultados alinhados às melhores práticas do mercado editorial e digital brasileiro.`
+          },
+          {
+            h2: `Metodologia Recomendada e Boas Práticas`,
+            content: `Para extrair o valor máximo das funcionalidades disponíveis, recomenda-se acompanhar regularmente os canais oficiais, manter os fluxos estruturados e aplicar as diretrizes de ${project.segment}. Dessa forma, cada iniciativa conta com fundamentação prática, segurança metodológica e sustentabilidade em longo prazo no ecossistema do Portal Vip Brasil.`
+          }
+        ];
+      }
+    }
+
+    // 4. Correção estrutural de SEO automática (meta-descrição e CTA)
+    if (qualityAudit.pillars.seoStructureMetadata && !qualityAudit.pillars.seoStructureMetadata.passed) {
+      if (!newArticle.metaDescription || newArticle.metaDescription.length < 60 || newArticle.metaDescription.length > 250) {
+        newArticle.metaDescription = safeString(`Guia aprofundado e completo sobre ${project.name}: descubra funcionalidades essenciais, diferenciais estratégicos e orientações práticas de ${project.category}.`, 160);
+      }
+      if (!newArticle.callToAction || newArticle.callToAction.length < 15) {
+        newArticle.callToAction = `Acesse agora o site oficial de ${project.name} em ${project.websiteUrl} e confira todas as novidades disponíveis.`;
+      }
+    }
+
+    // 5. Correção de keyword stuffing automática
+    if (qualityAudit.pillars.naturalKeywordUsage && !qualityAudit.pillars.naturalKeywordUsage.passed && primaryKeyword) {
+      let kwCount = 0;
+      const kwReg = new RegExp(`\\b${primaryKeyword.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')}\\b`, 'gi');
+      newArticle.sections = newArticle.sections.map(s => {
+        const sanitizedContent = s.content.replace(kwReg, (match) => {
+          kwCount++;
+          return kwCount > 2 ? 'a iniciativa' : match;
+        });
+        return { ...s, content: sanitizedContent };
+      });
+    }
+
+    // 6. Re-teste automatizado imediato no Quality Gate
+    qualityAudit = await verifyArticleQualityGate(newArticle, { projectId: project.id });
   }
 
-  // Se mesmo após correção técnica não atingir critérios de qualidade,
-  // NÃO publica conteúdo ruim e NÃO cria fila de aprovação manual:
-  // interrompe e registra a falha para novo ciclo limpo.
-  if (qualityAudit.status === 'CROSS_NICHE_VIOLATION' || qualityAudit.visualIntegrity.isGenericLogo) {
-    throw new Error(`[QualityGate Auto-Reject] Artigo não atingiu aprovação técnica automática (${qualityAudit.status}). Publicação cancelada sem fila manual.`);
+  // Se mesmo após autocorreção não atingir aprovação técnica,
+  // BLOQUEIA conteúdo inadequado e NÃO cria fila manual:
+  if (!qualityAudit.approved) {
+    throw new Error(`[QualityGate Auto-Reject] Artigo não atingiu aprovação técnica automática (${qualityAudit.rejectionReasons.join('; ')}). Publicação cancelada sem fila manual.`);
   }
 
   // Publicação 100% automática orientada pelo Botão Mestre

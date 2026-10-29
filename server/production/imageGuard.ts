@@ -151,30 +151,50 @@ export async function checkImageUniqueness(
       };
     }
 
-    // 2. Consulta ao histórico completo indexado de impressões digitais visuais
-    // Não limita arbitrariamente a 40 itens; pesquisa o acervo do projeto e, se configurado, de outros projetos
-    let projectQuery = db.collection('projectImageFingerprints') as any;
-    if (!options.checkCrossProject) {
-      projectQuery = projectQuery.where('companyId', '==', companyId);
-    }
-
-    const fingerprintsSnap = await projectQuery.limit(500).get().catch(() => ({ docs: [] } as any));
-
+    // 2. Consulta histórica integral paginada por cursor sem limite de 500
     let minDistance = 64;
     let conflictingId: string | undefined;
     let conflictingCompany: string | undefined;
 
-    for (const doc of fingerprintsSnap.docs) {
-      const data = doc.data() as any;
-      if (data.perceptualHash) {
-        const dist = computeHammingDistance(pHash, data.perceptualHash);
-        if (dist < minDistance) {
-          minDistance = dist;
-          if (dist <= PERCEPTUAL_HASH_HAMMING_THRESHOLD) {
-            conflictingId = doc.id;
-            conflictingCompany = data.companyId;
+    const BATCH_SIZE = 500;
+    let lastDoc: any = null;
+    let hasMore = true;
+
+    while (hasMore) {
+      let q = db.collection('projectImageFingerprints') as any;
+      if (!options.checkCrossProject) {
+        q = q.where('companyId', '==', companyId);
+      }
+      q = q.limit(BATCH_SIZE);
+      if (lastDoc && typeof q.startAfter === 'function') {
+        q = q.startAfter(lastDoc);
+      }
+
+      // FAIL-CLOSED: Não engole erro de banco com .catch. Se falhar, vai para o catch do método.
+      const snap = await q.get();
+      if (!snap || !snap.docs || snap.docs.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      for (const doc of snap.docs) {
+        const data = doc.data() as any;
+        if (data.perceptualHash) {
+          const dist = computeHammingDistance(pHash, data.perceptualHash);
+          if (dist < minDistance) {
+            minDistance = dist;
+            if (dist <= PERCEPTUAL_HASH_HAMMING_THRESHOLD) {
+              conflictingId = doc.id;
+              conflictingCompany = data.companyId;
+            }
           }
         }
+      }
+
+      if (snap.docs.length < BATCH_SIZE) {
+        hasMore = false;
+      } else {
+        lastDoc = snap.docs[snap.docs.length - 1];
       }
     }
 
@@ -215,6 +235,7 @@ export async function checkImageUniqueness(
 
 /**
  * Registra o fingerprint da imagem no histórico indexado do projeto.
+ * Não silencia erros: falha na gravação impede que a publicação prossiga.
  */
 export async function recordImageFingerprint(options: {
   companyId: string;
@@ -228,31 +249,77 @@ export async function recordImageFingerprint(options: {
   const db = firestore();
   const docId = `${options.companyId}_${options.perceptualHash}`;
 
+  // Registra índice determinístico
+  await db.collection(COLLECTIONS.usedImageHashes)
+    .doc(`${options.companyId}_${options.sha256Hash}`.slice(0, 150))
+    .set({
+      companyId: options.companyId,
+      hash: options.sha256Hash,
+      contentItemId: options.contentItemId,
+      createdAt: nowIso()
+    }, { merge: true });
+
+  // Registra fingerprint perceptual no acervo completo indexado
+  await db.collection('projectImageFingerprints')
+    .doc(docId.slice(0, 150))
+    .set({
+      companyId: options.companyId,
+      userId: options.userId,
+      contentItemId: options.contentItemId,
+      sha256Hash: options.sha256Hash,
+      perceptualHash: options.perceptualHash,
+      imageUrl: options.imageUrl,
+      theme: options.theme || '',
+      createdAt: nowIso()
+    }, { merge: true });
+}
+
+/**
+ * Reserva atômica prévia de fingerprint para evitar race conditions
+ * onde duas tarefas tentam publicar a mesma imagem simultaneamente.
+ */
+export async function reserveImageFingerprintAtomically(options: {
+  companyId: string;
+  workerId: string;
+  sha256Hash: string;
+  perceptualHash?: string;
+  ttlSeconds?: number;
+}): Promise<{ reserved: boolean; reason?: string }> {
+  const db = firestore();
+  const reservationKey = `${options.companyId}_${options.sha256Hash}`.slice(0, 150);
+  const ref = db.collection(COLLECTIONS.schedulerLocks).doc(`imghash_${reservationKey}`);
+  const now = Date.now();
+  const ttlMs = (options.ttlSeconds || 60) * 1000;
+
   try {
-    // Registra índice determinístico
-    await db.collection(COLLECTIONS.usedImageHashes)
-      .doc(`${options.companyId}_${options.sha256Hash}`.slice(0, 150))
-      .set({
+    return await db.runTransaction(async (tx: any) => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() || {} : {};
+      const lockedUntil = typeof data.lockedUntil === 'number' ? data.lockedUntil : 0;
+
+      if (lockedUntil > now) {
+        return {
+          reserved: false,
+          reason: `Condição de corrida prevenida: imagem já está sendo reservada e publicada pelo worker ${data.workerId || 'ativo'}.`
+        };
+      }
+
+      tx.set(ref, {
         companyId: options.companyId,
-        hash: options.sha256Hash,
-        contentItemId: options.contentItemId,
-        createdAt: nowIso()
+        workerId: options.workerId,
+        sha256Hash: options.sha256Hash,
+        perceptualHash: options.perceptualHash || '',
+        lockedUntil: now + ttlMs,
+        reservedAt: nowIso()
       }, { merge: true });
 
-    // Registra fingerprint perceptual no acervo completo indexado
-    await db.collection('projectImageFingerprints')
-      .doc(docId.slice(0, 150))
-      .set({
-        companyId: options.companyId,
-        userId: options.userId,
-        contentItemId: options.contentItemId,
-        sha256Hash: options.sha256Hash,
-        perceptualHash: options.perceptualHash,
-        imageUrl: options.imageUrl,
-        theme: options.theme || '',
-        createdAt: nowIso()
-      }, { merge: true });
-  } catch (err) {
-    console.warn('[ImageGuard] Falha não impeditiva ao salvar fingerprint perceptual:', err);
+      return { reserved: true };
+    });
+  } catch (err: any) {
+    return {
+      reserved: false,
+      reason: `Falha na reserva atômica de imagem (Fail-Closed): ${err?.message || String(err)}`
+    };
   }
 }
+
