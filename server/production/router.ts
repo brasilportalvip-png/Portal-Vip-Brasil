@@ -39,7 +39,8 @@ import {
   INITIAL_SEEDED_ARTICLES,
   notifyIndexNow,
   serializeBlogArticleForPublic,
-  healAllStoredBlogCovers
+  healAllStoredBlogCovers,
+  rescueStuckDraftArticles
 } from './blogEngine.js';
 import multer from 'multer';
 
@@ -1950,6 +1951,11 @@ router.delete('/alma/memories/:id', requireAuth, asyncRoute(async (req: Authenti
 
 router.post('/portal/blog/heal-covers', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
   const result = await healAllStoredBlogCovers();
+  res.json({ success: true, ...result });
+}));
+
+router.post('/portal/blog/rescue-drafts', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  const result = await rescueStuckDraftArticles();
   res.json({ success: true, ...result });
 }));
 

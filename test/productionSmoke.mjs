@@ -85,7 +85,9 @@ for (const blockedPath of ['/alma', '/creditos']) {
 
 const projectsPayload = await json('/api/portal/projects');
 assert.ok(Array.isArray(projectsPayload.projects) && projectsPayload.projects.length > 0, 'API pública de projetos está vazia.');
-const activeProject = projectsPayload.projects.find((project) => project?.slug) || projectsPayload.projects[0];
+const activeProjects = projectsPayload.projects.filter((project) => project?.active !== false);
+assert.ok(activeProjects.length > 0, 'Nenhum projeto ativo encontrado na API pública de projetos.');
+const activeProject = activeProjects.find((project) => project?.slug) || activeProjects[0];
 assert.ok(activeProject?.slug, 'Nenhum projeto ativo possui slug válido.');
 
 const vitrinePayload = await json('/api/vitrine');
@@ -103,6 +105,7 @@ assert.match(projectHtml, /application\/ld\+json/i);
 const blogPayload = await json('/api/portal/blog/articles?limit=1');
 assert.ok(Array.isArray(blogPayload.articles), 'Blog não retornou articles.');
 assert.ok(blogPayload.articles.length > 0, 'O Blog público do Portal Vip Brasil está VAZIO! Pelo menos 1 artigo publicado deve estar visível.');
+assert.ok(Number(blogPayload.total || 0) > 0, `Existem ${activeProjects.length} projeto(s) ativo(s), mas o total de artigos publicados retornado pela API é 0.`);
 const article = blogPayload.articles[0];
 assert.ok(article.slug, 'Artigo retornado sem slug.');
 assert.ok(Array.isArray(article.keywords), 'Contrato público do Blog não retornou keywords.');

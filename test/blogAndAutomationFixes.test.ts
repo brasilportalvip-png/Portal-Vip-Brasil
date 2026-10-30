@@ -4,7 +4,9 @@ import {
   getBlogSettings,
   updateBlogSettings,
   listBlogArticles,
-  INITIAL_SEEDED_ARTICLES
+  INITIAL_SEEDED_ARTICLES,
+  acquireDailyBlogClaim,
+  rescueStuckDraftArticles
 } from '../server/production/blogEngine.js';
 import { verifyArticleQualityGate } from '../server/production/articleAuditor.js';
 import { runSocialPublicationWorker } from '../server/production/socialPublicationWorker.js';
@@ -13,7 +15,7 @@ import {
   getMasterAutomationControl,
   updateMasterAutomationControl
 } from '../server/production/autopilotMultimediaR8.js';
-import { resetMemoryDb, firestore, COLLECTIONS, nowIso } from '../server/production/store.js';
+import { resetMemoryDb, firestore, COLLECTIONS, nowIso, stableId } from '../server/production/store.js';
 
 test('1. BlogSettings auto-heals legacy approval mode to automatic without human queue', async () => {
   resetMemoryDb();
@@ -154,3 +156,92 @@ test('5. Scheduler: quando Master está OFF, retorna blocked_master_off com cust
   assert.equal(result.postsAttempted, 0);
   assert.equal(result.socialWorkerResult?.status, 'blocked_master_off');
 });
+
+test('6. acquireDailyBlogClaim re-acquires claim if previous claim was completed but article was not published', async () => {
+  resetMemoryDb();
+  const db = firestore();
+  const projectId = 'proj_magia_crencas';
+  const cycleDate = '2026-08-25';
+  const claimId = stableId(`portal-daily-blog:${projectId}:${cycleDate}`);
+
+  // Simula um claim marcado como 'completed' mas sem nenhum artigo gravado ou publicado
+  await db.collection(COLLECTIONS.idempotency).doc(claimId).set({
+    id: claimId,
+    kind: 'portal_daily_blog',
+    projectId,
+    date: cycleDate,
+    status: 'completed',
+    completedAt: nowIso(),
+    updatedAt: nowIso()
+  });
+
+  // O acquireDailyBlogClaim deve detectar que o artigo não está publicado e permitir nova aquisição!
+  const reacquiredRef = await acquireDailyBlogClaim(projectId, cycleDate);
+  assert.ok(reacquiredRef, 'Deve permitir re-aquisição quando o artigo não existe publicado');
+
+  // Agora simula o artigo gravado com status 'published'
+  const deterministicArticleId = 'daily-blog-' + stableId(cycleDate + ':' + projectId).slice(0, 48);
+  await db.collection(COLLECTIONS.blogArticles).doc(deterministicArticleId).set({
+    id: deterministicArticleId,
+    title: 'Artigo Oficial Publicado',
+    status: 'published',
+    publishedAt: nowIso()
+  });
+  await db.collection(COLLECTIONS.idempotency).doc(claimId).set({
+    status: 'completed',
+    articleId: deterministicArticleId,
+    completedAt: nowIso()
+  });
+
+  // Agora que o artigo realmente está publicado, não deve re-adquirir
+  const finalClaim = await acquireDailyBlogClaim(projectId, cycleDate);
+  assert.equal(finalClaim, null, 'Com o artigo já publicado, deve retornar null e respeitar a idempotência');
+});
+
+test('7. rescueStuckDraftArticles resgata e promove rascunhos para published sem fila humana', async () => {
+  resetMemoryDb();
+  const db = firestore();
+
+  const stuckId = 'art_stuck_draft_99';
+  await db.collection(COLLECTIONS.blogArticles).doc(stuckId).set({
+    id: stuckId,
+    title: 'Orações Diárias e Sabedoria Espiritual no Cotidiano',
+    slug: 'oracoes-diarias-e-sabedoria-espiritual-no-cotidiano',
+    metaDescription: 'Guia completo de orações diárias e práticas espirituais para harmonizar o lar, cultivar a fé e atrair prosperidade verdadeira em sua vida.',
+    sections: [
+      {
+        h2: 'O Hábito Sagrado da Oração Diária',
+        content: 'Dedicar os primeiros minutos do dia à oração e reflexão profunda estabelece uma sintonia imediata com a sabedoria superior. Esse momento de paz ancora a mente em pensamentos elevados e construtivos.',
+        h3s: [
+          {
+            h3: 'Práticas de Gratidão Matinal',
+            content: 'Agradecer pelas dádivas recebidas abre caminhos para bênçãos ainda mais abundantes em cada jornada.'
+          }
+        ]
+      },
+      {
+        h2: 'Integrando a Fé com Ações Conscientes',
+        content: 'A verdadeira espiritualidade se manifesta na conduta íntegra, na caridade genuína e na busca contínua por evolução moral no trabalho e na família. Cada atitude consciente reflete a luz das orações.'
+      }
+    ],
+    conclusion: 'A prática regular da oração transforma a percepção da vida e traz serenidade inabalável.',
+    callToAction: 'Conheça o aplicativo oficial do Magia das Crenças na Play Store e receba orações diárias no celular.',
+    coverImage: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1200&q=80',
+    coverAlt: 'Luz dourada do amanhecer iluminando livro de orações',
+    relatedProjectId: 'proj_magia_crencas',
+    relatedProjectName: 'Magia das Crenças',
+    primaryKeyword: 'orações diárias',
+    status: 'draft',
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  });
+
+  const rescueResult = await rescueStuckDraftArticles();
+  assert.ok(rescueResult.rescuedCount >= 1, 'Deve resgatar pelo menos 1 rascunho preso');
+  assert.ok(rescueResult.rescuedArticles.some((a) => a.id === stuckId), 'O rascunho preso deve constar nos resgatados');
+
+  const verifiedDoc = await db.collection(COLLECTIONS.blogArticles).doc(stuckId).get();
+  assert.equal(verifiedDoc.data()?.status, 'published', 'Status deve ter sido alterado para published');
+  assert.ok(verifiedDoc.data()?.publishedAt, 'publishedAt deve ter sido gravado');
+});
+
