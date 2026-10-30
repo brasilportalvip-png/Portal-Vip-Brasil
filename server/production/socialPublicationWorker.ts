@@ -14,11 +14,19 @@ export interface SocialPublicationTelemetry {
   remaining: number;
 }
 
+export type SocialWorkerStatus = 'success' | 'error' | 'timeout' | 'skipped_concurrent' | 'blocked_master_off' | 'no_due_posts';
+export type SocialExecutionMode = 'blocked_master_off' | 'idle_no_content' | 'published_success' | 'publication_failed';
+
 export interface SocialPublicationWorkerResult {
   success: boolean;
-  status: 'success' | 'error' | 'timeout' | 'skipped_concurrent';
+  status: SocialWorkerStatus;
+  executionMode?: SocialExecutionMode;
+  attempted?: number;
+  published?: number;
+  failed?: number;
   durationMs: number;
   telemetry: SocialPublicationTelemetry;
+  reason?: string;
   error?: string;
 }
 
@@ -65,12 +73,28 @@ export async function runSocialPublicationWorker(options: { timeoutMs?: number; 
 
   const isAutoEnabled = await isGlobalAutomationEnabled();
   if (!isAutoEnabled) {
-    return {
-      success: true,
-      status: 'skipped_concurrent',
+    const record = {
+      lastExecutionAt: new Date(startedAt).toISOString(),
+      status: 'blocked_master_off' as const,
+      executionMode: 'blocked_master_off' as const,
+      reason: 'master_off',
       durationMs: Date.now() - startedAt,
       telemetry,
-      error: 'Automação pausada no Botão Mestre (Zero Custos). Publicações automáticas suspensas.'
+      errorMessage: 'Automação pausada no Botão Mestre (Zero Custos). Publicações automáticas suspensas.',
+      updatedAt: nowIso()
+    };
+    await firestore().collection(COLLECTIONS.systemSettings).doc('social_publication_worker_telemetry').set(record, { merge: true });
+    return {
+      success: true,
+      status: 'blocked_master_off',
+      executionMode: 'blocked_master_off',
+      attempted: 0,
+      published: 0,
+      failed: 0,
+      durationMs: record.durationMs,
+      telemetry,
+      reason: 'master_off',
+      error: record.errorMessage
     };
   }
 
@@ -79,12 +103,12 @@ export async function runSocialPublicationWorker(options: { timeoutMs?: number; 
   const timeoutMs = options.timeoutMs || 70_000;
   const workerId = options.workerId || `social_worker_${startedAt}_${Math.random().toString(36).slice(2, 8)}`;
   const lock = await acquireLock(workerId, timeoutMs + 15_000);
-  if (!lock.acquired) return { success: false, status: 'skipped_concurrent', durationMs: Date.now() - startedAt, telemetry };
+  if (!lock.acquired) return { success: false, status: 'skipped_concurrent', durationMs: Date.now() - startedAt, telemetry, reason: 'concurrent_lock_active' };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   if (typeof timer.unref === 'function') timer.unref();
-  let status: SocialPublicationWorkerResult['status'] = 'success';
+  let status: SocialWorkerStatus = 'success';
   let error: string | undefined;
   try {
     telemetry.recovered = await recoverStalePublishingPostsR8(15, controller.signal);
@@ -117,7 +141,40 @@ export async function runSocialPublicationWorker(options: { timeoutMs?: number; 
     await releaseLock(workerId, lock.fencingToken);
   }
 
-  const record = { lastExecutionAt: new Date(startedAt).toISOString(), status, durationMs: Date.now() - startedAt, telemetry, errorMessage: error || null, updatedAt: nowIso() };
+  const executionMode: SocialExecutionMode = status === 'error' || status === 'timeout' || telemetry.failed > 0
+    ? 'publication_failed'
+    : telemetry.published > 0
+      ? 'published_success'
+      : 'idle_no_content';
+
+  const reason = executionMode === 'idle_no_content'
+    ? 'zero_content_scheduled'
+    : executionMode === 'published_success'
+      ? 'published_successfully'
+      : (error || 'publication_errors');
+
+  const record = {
+    lastExecutionAt: new Date(startedAt).toISOString(),
+    status,
+    executionMode,
+    reason,
+    durationMs: Date.now() - startedAt,
+    telemetry,
+    errorMessage: error || null,
+    updatedAt: nowIso()
+  };
   await firestore().collection(COLLECTIONS.systemSettings).doc('social_publication_worker_telemetry').set(record, { merge: true });
-  return { success: status === 'success', status, durationMs: record.durationMs, telemetry, ...(error ? { error } : {}) };
+  const finalWorkerStatus = (telemetry.attempted === 0 && telemetry.published === 0 && status === 'success') ? 'no_due_posts' : status;
+  return {
+    success: status === 'success',
+    status: finalWorkerStatus,
+    executionMode,
+    reason,
+    attempted: telemetry.attempted,
+    published: telemetry.published,
+    failed: telemetry.failed,
+    durationMs: record.durationMs,
+    telemetry,
+    ...(error ? { error } : {})
+  };
 }

@@ -611,14 +611,29 @@ export async function triggerUserAutopilot(userId: string, companyId: string): P
   return triggerUserAutopilotMultimediaR8(userId, companyId);
 }
 
-export async function processSchedulerTick(options: { trigger?: SchedulerTrigger; timeoutMs?: number } = {}) {
+export async function processSchedulerTick(options: { trigger?: SchedulerTrigger | string; timeoutMs?: number } = {}): Promise<any> {
   const isAutoOn = await isGlobalAutomationEnabled();
   if (!isAutoOn) {
     console.log('[Scheduler] processSchedulerTick ignorado: Automação desligada no Botão Mestre.');
-    return { skipped: true, reason: 'Automação global está DESLIGADA pelo Botão Master (Zero Custos). Nenhuma rotina agendada executada.' };
+    return {
+      skipped: true,
+      status: 'blocked_master_off',
+      reason: 'Automação global está DESLIGADA pelo Botão Master (Zero Custos). Nenhuma rotina agendada executada.',
+      articlesAttempted: 0,
+      postsAttempted: 0,
+      socialWorkerResult: {
+        status: 'blocked_master_off',
+        attempted: 0,
+        published: 0,
+        failed: 0,
+        executionMode: 'blocked_master_off',
+        reason: 'master_off'
+      }
+    };
   }
 
-  const lease = await acquireLock(options.trigger || 'internal');
+  const normalizedTrigger = knownTrigger(options.trigger) || 'internal';
+  const lease = await acquireLock(normalizedTrigger);
   if (!lease) return { skipped: true, reason: 'Outro ciclo já está em execução.' };
 
   const startTime = Date.now();
@@ -750,6 +765,23 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
       }
     } else {
       console.warn('[Scheduler] Limite de tempo do ciclo atingido; marketing diário postergado com segurança.');
+    }
+
+    // Fase 3.1: Publica imediatamente os novos agendamentos criados pelo ciclo diário de marketing e blog
+    if (hasTimeRemaining(1_500)) {
+      try {
+        const tPublish = Math.min(20_000, getRemainingBudgetMs());
+        const publishedFromDaily = await withControlledTimeout(
+          (signal) => processScheduledPosts({ signal, lease: leaseContext }),
+          tPublish,
+          'processScheduledPostsAfterDailyMarketing',
+          cycleAbortController.signal
+        );
+        scheduledPosts += publishedFromDaily;
+      } catch (err: any) {
+        errors.scheduledPostsAfterDailyMarketing = err?.message || String(err);
+        console.error('[Scheduler] Erro em processScheduledPosts após marketing diário:', err);
+      }
     }
 
     // Process pending video jobs (async AI/Veo processing)

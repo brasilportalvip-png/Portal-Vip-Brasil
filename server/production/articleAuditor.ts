@@ -687,11 +687,15 @@ export async function verifyArticleQualityGate(
     const lexicalRatio = bodyWordCount > 100 ? uniqueWords.size / bodyWordCount : 1.0;
     const isRepetitiveBabble = bodyWordCount >= 150 && lexicalRatio < 0.32;
 
-    // Avalia profundidade das seções: cada seção deve ter substância (>20 palavras)
+    // Avalia profundidade das seções: cada seção deve ter substância (>20 palavras incluindo subitens)
     let hasShallowSections = false;
     if (Array.isArray(article.sections) && article.sections.length > 0) {
       for (const s of article.sections) {
-        const sWords = String(s.content || '').trim().split(/\s+/).filter(Boolean);
+        let totalSectionText = String(s.content || '');
+        if (Array.isArray(s.h3s)) {
+          for (const h3 of s.h3s) totalSectionText += ' ' + String(h3.content || '');
+        }
+        const sWords = totalSectionText.trim().split(/\s+/).filter(Boolean);
         if (sWords.length < 20) {
           hasShallowSections = true;
           break;

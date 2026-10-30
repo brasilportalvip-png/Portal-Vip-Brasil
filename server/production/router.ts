@@ -222,9 +222,10 @@ function contentBodyFromArticle(article: any): string {
 
 // Health
 router.get('/health', asyncRoute(async (_req, res) => {
-  const [dbHealth, schedulerRuntime] = await Promise.all([
+  const [dbHealth, schedulerRuntime, masterControl] = await Promise.all([
     probeDatabaseHealth(),
-    getSchedulerPublicRuntime()
+    getSchedulerPublicRuntime(),
+    getMasterAutomationControl().catch(() => ({ globalEnabled: false, pauseAllExternalApis: true, mode: 'strict_off' }))
   ]);
   const statusCode = dbHealth.status === 'healthy' ? 200 : dbHealth.status === 'degraded' ? 200 : 503;
   res.status(statusCode).json({
@@ -242,7 +243,12 @@ router.get('/health', asyncRoute(async (_req, res) => {
       nativeCronConfigured: true,
       scheduleUtc: '0 13 * * *',
       timezone: 'America/Sao_Paulo',
-      execution: schedulerRuntime
+      execution: schedulerRuntime,
+      masterControl: {
+        globalEnabled: masterControl.globalEnabled === true,
+        pauseAllExternalApis: masterControl.pauseAllExternalApis === true,
+        mode: (masterControl as any).mode || (masterControl.globalEnabled ? 'active' : 'strict_off')
+      }
     },
     timestamp: nowIso()
   });
@@ -1753,6 +1759,18 @@ router.get('/cron/health', asyncRoute(async (req, res) => {
 }));
 
 router.get('/cron/process', asyncRoute(async (req, res) => {
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+
+  const userAgent = String(req.headers['user-agent'] || '');
+  const trigger = /vercel-cron\/1\.0/i.test(userAgent)
+    ? 'vercel_cron'
+    : 'authorized_api';
+  res.json(await processSchedulerTick({ trigger }));
+}));
+
+router.post('/cron/process', asyncRoute(async (req, res) => {
   const auth = String(req.headers.authorization || '');
   const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
   if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });

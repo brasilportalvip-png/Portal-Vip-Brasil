@@ -58,6 +58,8 @@ assert.equal(health?.automation?.cronSecretConfigured, true, 'CRON_SECRET deve e
 assert.equal(health?.automation?.nativeCronConfigured, true, 'Cron nativo Vercel deve estar configurado.');
 assert.equal(health?.automation?.scheduleUtc, '0 13 * * *', 'Agenda oficial do cron mudou inesperadamente.');
 assert.equal(health?.automation?.timezone, 'America/Sao_Paulo');
+assert.ok(health?.automation?.masterControl, 'health.automation deve expor o estado do masterControl.');
+assert.equal(typeof health.automation.masterControl.globalEnabled, 'boolean', 'globalEnabled deve ser booleano.');
 
 const healthResponse = await request('/api/health');
 assert.equal(healthResponse.status, 200, '/api/health não respondeu 200.');
@@ -100,23 +102,22 @@ assert.match(projectHtml, /application\/ld\+json/i);
 
 const blogPayload = await json('/api/portal/blog/articles?limit=1');
 assert.ok(Array.isArray(blogPayload.articles), 'Blog não retornou articles.');
-if (blogPayload.articles.length > 0) {
-  const article = blogPayload.articles[0];
-  assert.ok(article.slug, 'Artigo retornado sem slug.');
-  assert.ok(Array.isArray(article.keywords), 'Contrato público do Blog não retornou keywords.');
-  assert.ok(Array.isArray(article.faq), 'Contrato público do Blog não retornou faq.');
-  assert.ok(article.coverImageAlt, 'Contrato público do Blog não retornou coverImageAlt.');
-  assert.ok(article.relatedProjectSlug, 'Contrato público do Blog não retornou relatedProjectSlug.');
-  assert.equal(article.schemaJsonLd?.['@type'], 'Article', 'Contrato público do Blog não retornou Schema Article.');
-  assert.ok(Array.isArray(article.socialRepurpose?.twitter?.thread), 'Contrato público do Blog não retornou pacote social do X.');
+assert.ok(blogPayload.articles.length > 0, 'O Blog público do Portal Vip Brasil está VAZIO! Pelo menos 1 artigo publicado deve estar visível.');
+const article = blogPayload.articles[0];
+assert.ok(article.slug, 'Artigo retornado sem slug.');
+assert.ok(Array.isArray(article.keywords), 'Contrato público do Blog não retornou keywords.');
+assert.ok(Array.isArray(article.faq), 'Contrato público do Blog não retornou faq.');
+assert.ok(article.coverImageAlt, 'Contrato público do Blog não retornou coverImageAlt.');
+assert.ok(article.relatedProjectSlug, 'Contrato público do Blog não retornou relatedProjectSlug.');
+assert.equal(article.schemaJsonLd?.['@type'], 'Article', 'Contrato público do Blog não retornou Schema Article.');
+assert.ok(Array.isArray(article.socialRepurpose?.twitter?.thread), 'Contrato público do Blog não retornou pacote social do X.');
 
-  const articlePath = `/blog/${encodeURIComponent(article.slug)}`;
-  const articlePage = await request(articlePath);
-  assert.equal(articlePage.status, 200, `Página individual ${articlePath} não respondeu 200.`);
-  const articleHtml = await articlePage.text();
-  assert.match(articleHtml, new RegExp(articlePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(articleHtml, /og:type" content="article"/i);
-}
+const articlePath = `/blog/${encodeURIComponent(article.slug)}`;
+const articlePage = await request(articlePath);
+assert.equal(articlePage.status, 200, `Página individual ${articlePath} não respondeu 200.`);
+const articleHtml = await articlePage.text();
+assert.match(articleHtml, new RegExp(articlePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+assert.match(articleHtml, /og:type" content="article"/i);
 
 const sitemap = await request('/sitemap.xml');
 assert.equal(sitemap.status, 200, 'sitemap.xml não respondeu 200.');

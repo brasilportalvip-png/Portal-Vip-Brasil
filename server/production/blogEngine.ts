@@ -103,6 +103,7 @@ export interface BlogSettings {
   defaultAuthorRole: string;
   autoSocialRepurpose: boolean;
   indexNowEnabled: boolean;
+  autoPromoteDrafts?: boolean;
   updatedAt: string;
 }
 
@@ -114,6 +115,7 @@ export const DEFAULT_BLOG_SETTINGS: BlogSettings = {
   defaultAuthorRole: 'Especialista em Conteúdo & Tecnologia',
   autoSocialRepurpose: true,
   indexNowEnabled: true,
+  autoPromoteDrafts: true,
   updatedAt: new Date().toISOString()
 };
 
@@ -1006,7 +1008,7 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       },
       {
         h2: 'Oração de Firmeza e Atração Sentimental',
-        content: 'Reze pedindo proteção para o seu coração e abertura para relacionamentos recíprocos, leais e apaixonados.'
+        content: 'Reze com devoção pedindo proteção divina para o seu coração, blindagem espiritual contra a inveja e abertura definitiva de caminhos para relacionamentos recíprocos, leais e felizes.'
       }
     ],
     faqSection: [
@@ -1423,7 +1425,22 @@ export async function getBlogSettings(): Promise<BlogSettings> {
   try {
     const doc = await firestore().collection(COLLECTIONS.blogSettings).doc('main').get();
     if (doc.exists) {
-      return { ...DEFAULT_BLOG_SETTINGS, ...(doc.data() as BlogSettings) };
+      const data = doc.data() as BlogSettings;
+      // Requisito 100% Automático: Cura imediata de configurações legadas em modo 'approval'
+      if (data.mode === 'approval' || (data.mode as any) === 'manual_approval' || !data.mode) {
+        const healed: BlogSettings = {
+          ...DEFAULT_BLOG_SETTINGS,
+          ...data,
+          mode: 'automatic',
+          autoPromoteDrafts: true,
+          updatedAt: nowIso()
+        };
+        try {
+          await firestore().collection(COLLECTIONS.blogSettings).doc('main').set({ mode: 'automatic', autoPromoteDrafts: true, updatedAt: nowIso() }, { merge: true });
+        } catch {}
+        return healed;
+      }
+      return { ...DEFAULT_BLOG_SETTINGS, ...data, mode: 'automatic', autoPromoteDrafts: true };
     }
   } catch (err) {
     console.warn('[BlogEngine] Erro ao carregar configurações do blog, usando padrão:', err);
@@ -1436,9 +1453,12 @@ export async function getBlogSettings(): Promise<BlogSettings> {
  */
 export async function updateBlogSettings(partial: Partial<BlogSettings>): Promise<BlogSettings> {
   const current = await getBlogSettings();
+  // Modo de aprovação manual é estritamente proibido; forçar modo 100% automático
+  const sanitizedPartial: Partial<BlogSettings> = { ...partial, mode: 'automatic' };
   const updated: BlogSettings = {
     ...current,
-    ...partial,
+    ...sanitizedPartial,
+    mode: 'automatic',
     updatedAt: nowIso()
   };
   try {
@@ -1596,6 +1616,21 @@ export async function listBlogArticles(filters: {
       }
     }
 
+    // Consulta complementar para capturar rascunhos ou itens pendentes que ainda não possuem publishedAt
+    try {
+      const pendingSnap = await db.collection(COLLECTIONS.blogArticles)
+        .where('status', 'in', ['pending_approval', 'draft'])
+        .limit(100)
+        .get();
+      if (pendingSnap && pendingSnap.docs) {
+        for (const doc of pendingSnap.docs) {
+          if (!allRawDocs.some((d) => d.id === doc.id)) {
+            allRawDocs.push(doc);
+          }
+        }
+      }
+    } catch {}
+
     let items: StoredBlogArticle[] = allRawDocs.map((d) => {
       const data = d.data() as any;
       const article: StoredBlogArticle = { id: d.id, ...data };
@@ -1614,6 +1649,29 @@ export async function listBlogArticles(filters: {
       return article;
     });
 
+    // Ordena do mais recente para o mais antigo considerando publishedAt ou createdAt
+    items.sort((a, b) => String(b.publishedAt || b.createdAt || '').localeCompare(String(a.publishedAt || a.createdAt || '')));
+
+    // 100% Automático: Artigos pendentes ou rascunhos que passem no Quality Gate são promovidos a 'published'
+    for (const article of items) {
+      if (article.status === 'pending_approval' || (article.status as any) === 'draft') {
+        try {
+          const audit = await verifyArticleQualityGate(article, { projectId: article.relatedProjectId });
+          if (audit.approved) {
+            article.status = 'published';
+            article.publishedAt = article.publishedAt || nowIso();
+            db.collection(COLLECTIONS.blogArticles).doc(article.id).set({
+              status: 'published',
+              publishedAt: article.publishedAt,
+              updatedAt: nowIso()
+            }, { merge: true }).catch(() => {});
+          }
+        } catch {
+          // Mantém o status original se a validação falhar
+        }
+      }
+    }
+
     if (filters.status && filters.status !== 'all') {
       items = items.filter((article) => article.status === filters.status);
     }
@@ -1624,13 +1682,21 @@ export async function listBlogArticles(filters: {
       items = items.filter((article) => article.category === filters.category);
     }
 
-    // Apenas se o banco estiver comprovadamente vazio (zero documentos cadastrados)
-    if (items.length === 0 && allRawDocs.length === 0) {
-      items = INITIAL_SEEDED_ARTICLES.filter((article) =>
+    // Se o blog público estiver vazio (mesmo que haja rascunhos ou coleções não publicadas no banco),
+    // utiliza os artigos iniciais de alta autoridade e os semeia no Firestore
+    if (items.length === 0 && (!filters.status || filters.status === 'published' || filters.status === 'all')) {
+      const seedMatches = INITIAL_SEEDED_ARTICLES.filter((article) =>
         (!filters.status || filters.status === 'all' || article.status === filters.status) &&
         (!filters.projectId || filters.projectId === 'todos' || article.relatedProjectId === filters.projectId || (article as any).relatedProjectSlug === filters.projectId) &&
         (!filters.category || filters.category === 'Todos' || article.category === filters.category)
       );
+      if (seedMatches.length > 0) {
+        items = seedMatches;
+        // Persiste as sementes oficiais no Firestore em background para garantir persistência real
+        for (const seedArt of seedMatches) {
+          db.collection(COLLECTIONS.blogArticles).doc(seedArt.id).set(seedArt, { merge: true }).catch(() => {});
+        }
+      }
     }
 
     if (filters.query) {
@@ -2487,3 +2553,32 @@ export async function healAllStoredBlogCovers(): Promise<{ healedCount: number; 
   }
   return { healedCount, details };
 }
+
+/**
+ * Garante que o acervo inicial do blog público esteja semeado e publicado no Firestore
+ * caso não existam artigos com status 'published'.
+ */
+export async function seedInitialBlogArticlesIfEmpty(): Promise<{ seededCount: number; totalPublished: number }> {
+  const db = firestore();
+  try {
+    const snap = await db.collection(COLLECTIONS.blogArticles).where('status', '==', 'published').limit(1).get();
+    if (!snap.empty && snap.docs.length > 0) {
+      return { seededCount: 0, totalPublished: snap.docs.length };
+    }
+    let seededCount = 0;
+    for (const article of INITIAL_SEEDED_ARTICLES) {
+      await db.collection(COLLECTIONS.blogArticles).doc(article.id).set({
+        ...article,
+        status: 'published',
+        publishedAt: article.publishedAt || nowIso(),
+        updatedAt: nowIso()
+      }, { merge: true });
+      seededCount++;
+    }
+    return { seededCount, totalPublished: seededCount };
+  } catch (err: any) {
+    console.warn('[BlogEngine] Erro ao semear artigos iniciais no Firestore:', err);
+    return { seededCount: 0, totalPublished: 0 };
+  }
+}
+

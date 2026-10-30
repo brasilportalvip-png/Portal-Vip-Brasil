@@ -236,9 +236,13 @@ export async function assertAutomationAllowed(options?: {
  * Atualiza o controle mestre e replica para as chaves necessárias.
  */
 export async function updateMasterAutomationControl(
-  userId: string,
-  patch: Partial<MasterAutomationControl>
+  userIdOrPatch?: string | Partial<MasterAutomationControl>,
+  maybePatch?: Partial<MasterAutomationControl>
 ): Promise<MasterAutomationControl> {
+  const userId = typeof userIdOrPatch === 'string' ? userIdOrPatch : 'admin_system';
+  const patch: Partial<MasterAutomationControl> = typeof userIdOrPatch === 'object' && userIdOrPatch !== null
+    ? userIdOrPatch
+    : (maybePatch || {});
   const db = firestore();
   const current = await getMasterAutomationControl(userId);
   const now = nowIso();

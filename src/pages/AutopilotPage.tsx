@@ -145,15 +145,15 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
   const isRunningRef = useRef(false);
 
-  // Controle Mestre da Automação (Ligar/Desligar Global e Guardião de Custos)
+  // Controle Mestre da Automação (Ligar/Desligar Global e Guardião de Custos - Fail-closed: padrão desligado)
   const [masterControl, setMasterControl] = useState<MasterAutomationControl>({
-    globalEnabled: true,
+    globalEnabled: false,
     requireManualApproval: false,
     maxDailyVideos: 4,
     maxDailyImages: 10,
     maxDailyArticles: 10,
     monthlyBudgetCapBrl: 150,
-    pauseAllExternalApis: false,
+    pauseAllExternalApis: true,
     projectToggles: {}
   });
   const [costSummary, setCostSummary] = useState<CostSummary | null>(null);
@@ -161,13 +161,16 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   const [savingMaster, setSavingMaster] = useState(false);
 
   const loadMasterControl = async () => {
+    setLoadingMaster(true);
     try {
       const data = await apiRequest<{ control: MasterAutomationControl }>('/api/autopilot/master-control');
       if (data.control) {
         setMasterControl(data.control);
       }
-    } catch {
-      // Ignora erro
+    } catch (err: any) {
+      console.warn('[AutopilotPage] Falha ao carregar master-control:', err);
+    } finally {
+      setLoadingMaster(false);
     }
   };
 
