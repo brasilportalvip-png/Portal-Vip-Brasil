@@ -120,6 +120,36 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
   const [projectSaveSuccess, setProjectSaveSuccess] = useState<string | null>(null);
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const [runningScheduler, setRunningScheduler] = useState(false);
+  const [coverJob, setCoverJob] = useState<{ running: boolean; done: number; total: number; pending: number; message: string }>({ running: false, done: 0, total: 0, pending: 0, message: '' });
+  const coverStopRef = useRef(false);
+
+  const loadCoverStatus = async () => {
+    try {
+      const d = await apiRequest<{ total: number; done: number; pending: number }>('/api/portal/blog/covers/status');
+      setCoverJob((c) => ({ ...c, done: d.done, total: d.total, pending: d.pending }));
+    } catch { /* status é informativo */ }
+  };
+
+  const runCoverJob = async () => {
+    coverStopRef.current = false;
+    setCoverJob((c) => ({ ...c, running: true, message: 'Gerando capas fotográficas com IA…' }));
+    try {
+      for (let round = 0; round < 80 && !coverStopRef.current; round++) {
+        const d = await apiRequest<{ success: boolean; status: any; generated: number; failed: number; details: string[]; remaining: number }>('/api/portal/blog/covers/regenerate', { method: 'POST', body: { limit: 8 }, timeoutMs: 290_000 });
+        const st = d.status && typeof d.status === 'object' ? d.status : null;
+        if (st) setCoverJob((c) => ({ ...c, done: st.done, total: st.total, pending: st.pending }));
+        if (!d.success) { setCoverJob((c) => ({ ...c, message: (d.details && d.details[0]) || 'Lote interrompido.' })); break; }
+        setCoverJob((c) => ({ ...c, message: `Lote ${round + 1}: ${d.generated} capa(s) nova(s)${d.failed ? `, ${d.failed} falha(s)` : ''}.` }));
+        if (!st || st.pending <= 0 || (d.generated === 0 && d.failed === 0)) break;
+        if (d.generated === 0 && d.failed > 0) break;
+      }
+    } catch (e: any) {
+      setCoverJob((c) => ({ ...c, message: e?.message || 'Falha ao gerar capas.' }));
+    } finally {
+      setCoverJob((c) => ({ ...c, running: false }));
+      void loadCoverStatus();
+    }
+  };
   const projectFormRef = useRef<HTMLDivElement>(null);
   const firstProjectInputRef = useRef<HTMLInputElement>(null);
 
@@ -720,6 +750,24 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
 
     {tab==='support'&&<section className="froc-panel"><div className="mb-4 flex items-center justify-between"><h3 className="froc-section-title">Chamados</h3><span className="text-[10px] text-slate-500">{tickets.length} registros</span></div><div className="space-y-3">{tickets.length?tickets.map(t=><div key={t.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div className="text-sm font-bold text-white">{t.subject}</div><div className="mt-1 text-[10px] text-slate-500">{t.userEmail} · {new Date(t.createdAt).toLocaleString('pt-BR')}</div></div><select value={t.status} onChange={e=>void ticketStatus(t.id,e.target.value)} className="min-h-9 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs text-white"><option value="open">Aberto</option><option value="in_progress">Em atendimento</option><option value="resolved">Resolvido</option><option value="closed">Fechado</option></select></div><p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-slate-300">{t.message}</p></div>):<div className="text-xs text-slate-500">Nenhum chamado.</div>}</div></section>}
 
-    {tab==='blog'&&<><section className="froc-panel"><h3 className="froc-section-title flex items-center gap-2"><Sparkles size={15} className="text-cyan-400"/>Gerar rascunho editorial com IA</h3><p className="mt-2 text-xs text-slate-400">A IA cria um rascunho para revisão administrativa. Só considere publicado quando o backend confirmar a alteração de status.</p><div className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={topic} onChange={e=>setTopic(e.target.value)} className="froc-input flex-1" placeholder="Tema opcional; vazio usa pauta editorial segura"/><button type="button" disabled={generating} onClick={()=>void generate()} className="froc-primary shrink-0">{generating?'Gerando…':'Gerar rascunho'}</button></div></section><section className="froc-panel"><h3 className="froc-section-title mb-4">Artigos</h3><div className="space-y-3">{posts.length?posts.map(p=><div key={p.id} className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 lg:flex-row lg:items-center"><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-white">{p.title}</div><div className="mt-1 text-[10px] text-slate-500">/{p.slug} · {p.status}</div><p className="mt-1 line-clamp-2 text-xs text-slate-400">{p.summary}</p></div><div className="flex gap-2">{p.status!=='published'&&<button type="button" onClick={()=>void publish(p)} className="froc-primary inline-flex items-center gap-1"><CheckCircle2 size={13}/>Publicar</button>}{p.status!=='archived'&&<button type="button" onClick={()=>void archive(p)} className="froc-secondary">Arquivar</button>}</div></div>):<div className="text-xs text-slate-500">Nenhum artigo cadastrado.</div>}</div></section></>}
+    {tab==='blog'&&<><section className="froc-panel">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="froc-section-title flex items-center gap-2"><Sparkles size={15} className="text-amber-300"/>Capas fotográficas ultrarrealistas (IA)</h3>
+          <p className="mt-2 max-w-2xl text-xs text-slate-400">Refaz a capa de cada artigo publicado com uma fotografia realista do nicho certo (WebP leve, sem texto). Usa a chave Gemini e respeita o Botão Mestre e o teto de custos. Pode parar e continuar depois: o progresso fica salvo.</p>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button type="button" onClick={()=>void loadCoverStatus()} className="froc-secondary">Atualizar status</button>
+          {coverJob.running
+            ? <button type="button" onClick={()=>{coverStopRef.current=true;}} className="froc-secondary">Parar</button>
+            : <button type="button" onClick={()=>void runCoverJob()} className="froc-primary">Gerar capas agora</button>}
+        </div>
+      </div>
+      {coverJob.total>0&&<div className="mt-4">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-rose-500 transition-all duration-700" style={{width:`${Math.round((coverJob.done/Math.max(1,coverJob.total))*100)}%`}}/></div>
+        <div className="mt-2 text-[11px] text-slate-400">{coverJob.done} de {coverJob.total} artigos com capa nova · {coverJob.pending} pendentes</div>
+      </div>}
+      {coverJob.message&&<div className="mt-2 text-[11px] text-amber-200">{coverJob.message}</div>}
+    </section><section className="froc-panel"><h3 className="froc-section-title flex items-center gap-2"><Sparkles size={15} className="text-cyan-400"/>Gerar rascunho editorial com IA</h3><p className="mt-2 text-xs text-slate-400">A IA cria um rascunho para revisão administrativa. Só considere publicado quando o backend confirmar a alteração de status.</p><div className="mt-4 flex flex-col gap-3 sm:flex-row"><input value={topic} onChange={e=>setTopic(e.target.value)} className="froc-input flex-1" placeholder="Tema opcional; vazio usa pauta editorial segura"/><button type="button" disabled={generating} onClick={()=>void generate()} className="froc-primary shrink-0">{generating?'Gerando…':'Gerar rascunho'}</button></div></section><section className="froc-panel"><h3 className="froc-section-title mb-4">Artigos</h3><div className="space-y-3">{posts.length?posts.map(p=><div key={p.id} className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-950/50 p-4 lg:flex-row lg:items-center"><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold text-white">{p.title}</div><div className="mt-1 text-[10px] text-slate-500">/{p.slug} · {p.status}</div><p className="mt-1 line-clamp-2 text-xs text-slate-400">{p.summary}</p></div><div className="flex gap-2">{p.status!=='published'&&<button type="button" onClick={()=>void publish(p)} className="froc-primary inline-flex items-center gap-1"><CheckCircle2 size={13}/>Publicar</button>}{p.status!=='archived'&&<button type="button" onClick={()=>void archive(p)} className="froc-secondary">Arquivar</button>}</div></div>):<div className="text-xs text-slate-500">Nenhum artigo cadastrado.</div>}</div></section></>}
   </div>;
 };

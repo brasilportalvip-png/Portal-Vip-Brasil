@@ -6,6 +6,7 @@ import { generateMarketingImage } from './ai.js';
 import { getAdminAuth } from '../providers/firebaseAdmin.js';
 import { isGlobalAutomationEnabled, isProjectAutomationEnabled } from './automationGate.js';
 import { verifyArticleQualityGate, NICHE_PROHIBITED_TERMS } from './articleAuditor.js';
+import { generateArticleCoverPhoto, COVER_PHOTO_VERSION } from './coverPhotoEngine.js';
 
 function safeString(value: any, max = 5000): string {
   return String(value ?? '').trim().slice(0, max);
@@ -174,6 +175,7 @@ export interface StoredBlogArticle {
   coverAlt: string;
   coverImageStoragePath?: string;
   coverImageGenerated?: boolean;
+  coverPhotoVersion?: number;
   sections: BlogArticleSection[];
   faqSection: BlogFaqItem[];
   conclusion: string;
@@ -736,6 +738,23 @@ export function detectServerArticleNiche(meta: {
   const titleAndSlug = normalizeTextForNiche(`${meta.title || ''} ${meta.topic || ''} ${meta.slug || ''}`);
   const fullCorpus = normalizeTextForNiche(`${meta.title || ''} ${meta.topic || ''} ${meta.slug || ''} ${meta.category || ''}`);
   const proj = meta.projectId || '';
+
+  // O projeto do artigo manda (IDs reais do portfólio). O detector antigo usava IDs inexistentes
+  // (proj_froc_ia, proj_marketing_seo) e deixava palavras soltas do título decidirem o nicho.
+  const projectNiche: Record<string, string> = {
+    proj_maria_padilha: 'love_maria_padilha',
+    proj_exu_responde: 'exu_guardioes',
+    proj_manual_catolico: 'catolico_devocao',
+    proj_magia_crencas: 'prosperidade_crencas',
+    proj_oraculos_ts: 'tarot_oraculos',
+    proj_frocia2: 'ia_inteligencia_artificial',
+    proj_froc_marketing_engine: 'trafego_organico_growth',
+    proj_portal_vip_magazine: 'trafego_organico_growth'
+  };
+  if (projectNiche[proj]) {
+    if (projectNiche[proj] === 'tarot_oraculos' && /runa|viking|nordic|futhark/.test(titleAndSlug)) return 'runes_viking';
+    return projectNiche[proj];
+  }
 
   // === FASE 1: Detecção de Alta Precisão pelo TÍTULO e SLUG do artigo ===
   if (
@@ -2390,29 +2409,18 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
   let coverImageStoragePath: string | undefined;
   let coverImageGenerated = false;
   try {
-    const generatedCover = await generateMarketingImage({
-      userId: options?.userId || 'portal_vip_blog_automation',
-      company: {
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        category: project.category,
-        segment: project.segment,
-        targetAudience: project.targetAudience,
-        keywords: project.keywords || [],
-        website: project.websiteUrl,
-        websiteUrl: project.websiteUrl
-      },
-      theme: 'Imagem editorial temática original para o artigo "' + String(parsed.title || topic) + '". Contexto: ' + project.name + '. Palavra-chave principal: ' + primaryKeyword + '. Sem logotipos, sem marcas d\'água, sem texto sobre a foto. Fotografia de altíssima qualidade de acordo com o nicho.',
-      style: 'Fotografia editorial premium, realista, rica em detalhes, iluminação cinematográfica, relevante ao nicho do artigo e sem logotipos',
-      aspectRatio: '16:9',
-      resolution: '1K'
-    });
-    if (generatedCover?.imageUrl && !isInvalidOrLogoImage(generatedCover.imageUrl)) {
-      coverImage = generatedCover.imageUrl;
-      coverImageStoragePath = generatedCover.storagePath;
-      coverImageGenerated = true;
-    }
+    // Capa fotográfica ultrarrealista do nicho certo, guardada fora do artigo (WebP leve via rota de capa)
+    const photo = await generateArticleCoverPhoto({
+      id: articleId,
+      slug: finalSlug,
+      title: String(parsed.title || topic),
+      relatedProjectId: project.id,
+      relatedProjectName: project.name,
+      primaryKeyword
+    }, { userId: options?.userId, collection: COLLECTIONS.blogArticles });
+    coverImage = photo.coverUrl;
+    coverAlt = photo.coverAlt;
+    coverImageGenerated = true;
   } catch (coverError) {
     console.warn('[BlogEngine] Capa IA indisponível para ' + project.id + '; usando fotografia temática curada do nicho.', coverError);
   }
@@ -2470,6 +2478,7 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     coverAlt: safeString(coverAlt || parsed.coverAlt || 'Imagem editorial temática sobre ' + primaryKeyword, 240),
     coverImageStoragePath,
     coverImageGenerated,
+    ...(coverImageGenerated ? { coverPhotoVersion: COVER_PHOTO_VERSION } : {}),
     sections: articleSections,
     faqSection: Array.isArray(parsed.faqSection) ? parsed.faqSection : [],
     conclusion: parsed.conclusion || '',
