@@ -40,7 +40,9 @@ import {
   notifyIndexNow,
   serializeBlogArticleForPublic,
   healAllStoredBlogCovers,
-  rescueStuckDraftArticles
+  rescueStuckDraftArticles,
+  diagnoseBlogInventory,
+  isTemplateLikeArticle
 } from './blogEngine.js';
 import multer from 'multer';
 
@@ -1954,6 +1956,11 @@ router.post('/portal/blog/heal-covers', requireAdmin, asyncRoute(async (_req: Au
   res.json({ success: true, ...result });
 }));
 
+// Diagnóstico do acervo (somente leitura): mostra quantos posts existem por coleção/status
+router.get('/portal/blog/diagnostics', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  res.json({ success: true, ...(await diagnoseBlogInventory()) });
+}));
+
 router.post('/portal/blog/rescue-drafts', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
   const result = await rescueStuckDraftArticles();
   res.json({ success: true, ...result });
@@ -2084,7 +2091,7 @@ export async function buildSitemapXml(): Promise<string> {
   // Artigos de blog reais publicados
   for (const doc of blogDocs) {
     const item = doc.data() as any;
-    if (item.slug && item.noindex !== true) {
+    if (item.slug && item.noindex !== true && !isTemplateLikeArticle(item)) {
       urls.push({
         loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
         lastmod: item.updatedAt || item.publishedAt || latestContentDate,
@@ -2097,7 +2104,7 @@ export async function buildSitemapXml(): Promise<string> {
 
   for (const doc of articleDocs) {
     const item = doc.data() as any;
-    if (item.slug && item.noindex !== true && !urls.some((entry) => entry.loc.endsWith(`/blog/${encodeURIComponent(item.slug)}`))) {
+    if (item.slug && item.noindex !== true && !isTemplateLikeArticle(item) && !urls.some((entry) => entry.loc.endsWith(`/blog/${encodeURIComponent(item.slug)}`))) {
       urls.push({
         loc: `${base}/blog/${encodeURIComponent(item.slug)}`,
         lastmod: item.updatedAt || item.publishedAt || latestContentDate,
@@ -2160,6 +2167,17 @@ ${body}
 `;
 }
 
+/**
+ * Sitemap em texto puro (uma URL por linha), aceito por Google e Bing.
+ * Gerado a partir do sitemap XML para as duas versões nunca divergirem.
+ */
+export async function buildSitemapTxt(): Promise<string> {
+  const xml = await buildSitemapXml();
+  const urls = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)]
+    .map((match) => match[1].replace(/&amp;/g, '&').replace(/&apos;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+  return [...new Set(urls)].join('\n') + '\n';
+}
+
 export function buildRobotsTxt(): string {
   const blocked = [
     '/api/',
@@ -2196,6 +2214,7 @@ Allow: /apps-compliance
 ${blocked.map((path) => `Disallow: ${path}`).join('\n')}
 
 Sitemap: ${config.appUrl.replace(/\/$/, '')}/sitemap.xml
+Sitemap: ${config.appUrl.replace(/\/$/, '')}/sitemap.txt
 `;
 }
 

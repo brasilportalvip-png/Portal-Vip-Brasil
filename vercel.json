@@ -73,6 +73,10 @@
       "dest": "/api/index.ts"
     },
     {
+      "src": "^/sitemap\\.txt$",
+      "dest": "/api/index.ts"
+    },
+    {
       "src": "^/robots\\.txt$",
       "dest": "/api/index.ts"
     },
