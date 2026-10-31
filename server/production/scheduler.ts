@@ -727,7 +727,8 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
     // Fase 3: SEO orgânico primeiro: cria os artigos antes das tarefas pesadas de vídeo/marketing.
     if (hasTimeRemaining(2_000)) {
       try {
-        const t5 = Math.min(60_000, getRemainingBudgetMs());
+        // Texto (até 90s) + foto (até 75s) por projeto, todos em paralelo: precisa de ~170s.
+        const t5 = Math.min(170_000, getRemainingBudgetMs());
         const blogCycleRes = await withControlledTimeout(
           (signal) => (signal ? runDailyBlogCycle({ signal }) : runDailyBlogCycle()),
           t5,
