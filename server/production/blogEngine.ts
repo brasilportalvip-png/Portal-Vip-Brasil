@@ -1599,9 +1599,7 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
     category: article.category,
     targetAudience: knownProject?.targetAudience || '',
     searchIntent,
-    coverImage: isInvalidOrLogoImage(article.coverImage)
-      ? resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category).url
-      : article.coverImage,
+    coverImage: publicCoverUrl(article),
     coverImageAlt: article.coverAlt || resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category).alt,
     readingTimeMinutes: Number.parseInt(article.readTime || '', 10) || 5,
     readTime: article.readTime,
@@ -1620,11 +1618,7 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
       '@type': 'Article',
       headline: article.title,
       description: article.metaDescription || article.excerpt,
-      image: [
-        isInvalidOrLogoImage(article.coverImage)
-          ? resolveThematicCoverForProject(article.relatedProjectId, article.title).url
-          : article.coverImage
-      ],
+      image: [publicCoverUrl(article)],
       datePublished: article.publishedAt,
       dateModified: article.updatedAt || article.publishedAt,
       author: { '@type': 'Organization', name: article.author?.name || 'Portal Vip Brasil' },
@@ -1807,6 +1801,46 @@ export function sanitizeStoredArticle(article: any): StoredBlogArticle {
   } as StoredBlogArticle;
 }
 
+/**
+ * Capas geradas por IA foram gravadas como data URI (base64, ~1 MB cada) dentro do documento.
+ * Enviá-las na listagem gerava respostas de 13 MB (acima do limite da Vercel) e derrubava o blog.
+ * No conteúdo público, toda capa data: vira uma URL própria e leve, servida pela rota de capa.
+ */
+export function isDataUriImage(url: any): boolean {
+  return typeof url === 'string' && /^data:image\//i.test(url.trim());
+}
+
+export function publicCoverUrl(article: { slug?: string; coverImage?: string; relatedProjectId?: string; title?: string; id?: string; category?: string }): string {
+  const cover = String(article?.coverImage || '');
+  if (isDataUriImage(cover) && article?.slug) {
+    return `${config.appUrl.replace(/\/$/, '')}/api/portal/blog/articles/${encodeURIComponent(article.slug)}/cover`;
+  }
+  if (isInvalidOrLogoImage(cover)) {
+    return resolveThematicCoverForProject(article?.relatedProjectId || '', article?.title, article?.slug, article?.id, article?.category).url;
+  }
+  return cover;
+}
+
+export function decodeDataUriImage(url: string): { mime: string; buffer: Buffer } | null {
+  const match = String(url || '').trim().match(/^data:(image\/(?:png|jpe?g|webp|gif|avif));base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) return null;
+  try {
+    const buffer = Buffer.from(match[2].replace(/\s+/g, ''), 'base64');
+    return buffer.length > 0 ? { mime: match[1].toLowerCase().replace('image/jpg', 'image/jpeg'), buffer } : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeSanitizeArticle(id: string, build: () => any): StoredBlogArticle | null {
+  try {
+    return sanitizeStoredArticle(build());
+  } catch (err) {
+    console.warn('[BlogEngine] Artigo ignorado por formato inválido:', id, err);
+    return null;
+  }
+}
+
 // Cache curto por instância serverless: evita reler o acervo inteiro a cada visita.
 const PUBLISHED_CACHE_TTL_MS = 60_000;
 let publishedCache: { at: number; items: StoredBlogArticle[] } | null = null;
@@ -1835,26 +1869,15 @@ export async function loadAllPublishedBlogArticles(): Promise<StoredBlogArticle[
     ]);
     const bySlug = new Map<string, StoredBlogArticle>();
     for (const d of articlesSnap.docs || []) {
-      let article: StoredBlogArticle;
-      try {
-        article = sanitizeStoredArticle({ id: d.id, ...(d.data() as any) });
-      } catch (err) {
-        console.warn('[BlogEngine] Artigo ignorado por formato inválido:', d.id, err);
-        continue;
-      }
-      if (!article.slug) continue;
+      const article = safeSanitizeArticle(d.id, () => ({ id: d.id, ...(d.data() as any) }));
+      if (!article || !article.slug) continue;
       if ((article as any).noindex === true) continue;
       article.publishedAt = article.publishedAt || article.createdAt || article.updatedAt || '';
       if (!bySlug.has(article.slug)) bySlug.set(article.slug, article);
     }
     for (const d of legacySnap.docs || []) {
-      let article: StoredBlogArticle;
-      try {
-        article = sanitizeStoredArticle(normalizeLegacyBlogPost(d.id, d.data()));
-      } catch (err) {
-        console.warn('[BlogEngine] Post legado ignorado por formato inválido:', d.id, err);
-        continue;
-      }
+      const article = safeSanitizeArticle(d.id, () => normalizeLegacyBlogPost(d.id, d.data()));
+      if (!article) continue;
       if (!article.slug || bySlug.has(article.slug) || (article as any).noindex === true) continue;
       bySlug.set(article.slug, article);
     }

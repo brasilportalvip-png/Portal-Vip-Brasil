@@ -148,3 +148,27 @@ test('Robustez: documentos malformados não derrubam a listagem pública', async
     assert.ok(Array.isArray(pub.keywords));
   }
 });
+
+test('Desempenho: capa em base64 nunca vai na listagem pública; vira URL leve da rota de capa', async () => {
+  const db = fresh();
+  const pixel = 'data:image/png;base64,' + 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='.repeat(1);
+  const huge = pixel + 'A'.repeat(0);
+  await db.collection(COLLECTIONS.blogArticles).doc('b64').set({
+    id: 'b64', slug: 'artigo-capa-base64', title: 'Capa base64', excerpt: 'x', status: 'published', publishedAt: '2026-06-01', coverImage: huge
+  });
+  const list = await listBlogArticles({ status: 'published' });
+  const { serializeBlogArticleForPublic, decodeDataUriImage, publicCoverUrl } = await import('../server/production/blogEngine.js');
+  const pub = serializeBlogArticleForPublic(list.articles[0]);
+  const json = JSON.stringify(pub);
+  assert.equal(json.includes(';base64,'), false, 'Resposta pública não pode conter imagem embutida em base64');
+  assert.match(pub.coverImage, /\/api\/portal\/blog\/articles\/artigo-capa-base64\/cover$/);
+  assert.equal(pub.schemaJsonLd.image[0], pub.coverImage);
+  const decoded = decodeDataUriImage(huge);
+  assert.equal(decoded?.mime, 'image/png');
+  assert.ok((decoded?.buffer.length || 0) > 0);
+  assert.equal(publicCoverUrl({ slug: 's', coverImage: 'https://images.unsplash.com/photo-1?w=1200' }), 'https://images.unsplash.com/photo-1?w=1200');
+  const page = await renderPublicPage('/blog/artigo-capa-base64');
+  assert.equal(page.html.includes(';base64,'), false, 'HTML do artigo não pode embutir a capa em base64');
+  const txt = await buildSitemapTxt();
+  assert.equal(txt.includes(';base64,'), false);
+});
