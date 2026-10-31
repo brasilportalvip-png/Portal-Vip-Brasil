@@ -172,3 +172,50 @@ test('Desempenho: capa em base64 nunca vai na listagem pública; vira URL leve d
   const txt = await buildSitemapTxt();
   assert.equal(txt.includes(';base64,'), false);
 });
+
+test('Capas fotográficas: prompt ultrarrealista do nicho certo, sem texto, com alt descritivo', async () => {
+  const { buildCoverPhotoPrompt, pickCoverScene } = await import('../server/production/coverPhotoEngine.js');
+  const rosa = buildCoverPhotoPrompt({ id: 'a1', slug: 'oracao-de-maria-padilha', title: 'Oração de Maria Padilha para o amor', relatedProjectId: 'proj_maria_padilha' });
+  assert.match(rosa.prompt, /rose/i);
+  assert.match(rosa.prompt, /Ultra-realistic/);
+  assert.match(rosa.prompt, /NO text/);
+  assert.ok(rosa.alt.startsWith('Oração de Maria Padilha'));
+  const runas = pickCoverScene({ id: 'b', slug: 'significado-das-runas', title: 'Significado das runas nórdicas', relatedProjectId: 'proj_oraculos_ts' });
+  assert.match(runas.en, /rune/i);
+  const terco = pickCoverScene({ id: 'c', slug: 'como-rezar-o-terco', title: 'Como rezar o terço', relatedProjectId: 'proj_manual_catolico' });
+  assert.match(terco.en, /rosary/i);
+  for (const project of ['proj_exu_responde', 'proj_magia_crencas', 'proj_frocia2', 'proj_froc_marketing_engine', 'proj_portal_vip_magazine']) {
+    const { prompt } = buildCoverPhotoPrompt({ id: project, slug: project, title: 'Teste', relatedProjectId: project });
+    assert.ok(prompt.length > 300);
+  }
+});
+
+test('Capas fotográficas: lote respeita Botão Mestre desligado (custo zero) e não quebra com falhas', async () => {
+  const db = fresh();
+  await db.collection(COLLECTIONS.blogArticles).doc('c1').set({ id: 'c1', slug: 'capa-1', title: 'Capa 1', status: 'published', relatedProjectId: 'proj_maria_padilha', publishedAt: '2026-06-01' });
+  const { runCoverPhotoBatch, coverPhotoStatus } = await import('../server/production/coverPhotoEngine.js');
+  const off = await runCoverPhotoBatch({ limit: 2 });
+  assert.equal(off.status, 'master_off');
+  assert.equal(off.generated, 0);
+  const st = await coverPhotoStatus();
+  assert.equal(st.total, 1);
+  assert.equal(st.pending, 1);
+
+  await db.collection(COLLECTIONS.systemSettings).doc('master_control_global').set({ globalEnabled: true, pauseAllExternalApis: false });
+  const on = await runCoverPhotoBatch({ limit: 2, timeBudgetMs: 120_000 });
+  assert.equal(on.status, 'ok');
+  assert.equal(on.processed, 1);
+  assert.equal(on.generated + on.failed, 1);
+  const after = (await db.collection(COLLECTIONS.blogArticles).doc('c1').get()).data() as any;
+  if (on.failed) assert.equal(after.coverPhotoAttempts, 1, 'Falha registra tentativa para não gastar créditos em loop');
+});
+
+test('Capas fotográficas: capa guardada em blogCovers é carregada como imagem real', async () => {
+  const db = fresh();
+  const { loadStoredCover, BLOG_COVERS_COLLECTION } = await import('../server/production/coverPhotoEngine.js');
+  await db.collection(BLOG_COVERS_COLLECTION).doc('x1').set({ articleId: 'x1', mime: 'image/webp', data: Buffer.from('RIFFxxxxWEBP').toString('base64') });
+  const cover = await loadStoredCover('x1');
+  assert.equal(cover?.mime, 'image/webp');
+  assert.equal(cover?.buffer.toString(), 'RIFFxxxxWEBP');
+  assert.equal(await loadStoredCover('nao-existe'), null);
+});

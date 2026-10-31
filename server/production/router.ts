@@ -44,8 +44,10 @@ import {
   diagnoseBlogInventory,
   isTemplateLikeArticle,
   decodeDataUriImage,
-  publicCoverUrl
+  publicCoverUrl,
+  invalidatePublishedBlogCache
 } from './blogEngine.js';
+import { loadStoredCover, runCoverPhotoBatch, coverPhotoStatus } from './coverPhotoEngine.js';
 import multer from 'multer';
 
 import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso, probeDatabaseHealth, queryData, slugify, writeAdminLog } from './store.js';
@@ -567,6 +569,24 @@ router.post('/ai/video-jobs/:id/check', requireAuth, asyncRoute(async (req: Auth
 router.post('/ai/video-jobs/:id/retry', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const job = await manualRetryVideoJob(req.user!.id, req.params.id);
   res.json({ job });
+}));
+
+// Capas fotográficas do blog em lotes (GitHub Actions a cada 30 min). Respeita Botão Mestre e teto financeiro.
+router.post('/cron/blog-covers', asyncRoute(async (req, res) => {
+  if (!verifyCronAuthorization(req.headers.authorization)) {
+    return res.status(401).json({ error: 'Cron não autorizado.' });
+  }
+  const result = await runCoverPhotoBatch({ limit: 8, timeBudgetMs: 240_000 });
+  invalidatePublishedBlogCache();
+  res.json({
+    success: result.status === 'ok',
+    status: result.status,
+    processed: result.processed,
+    generated: result.generated,
+    failed: result.failed,
+    remaining: result.remaining,
+    details: result.details.slice(0, 20).map((line) => safeString(line, 200))
+  });
 }));
 
 router.post('/cron/video-retries', asyncRoute(async (req, res) => {
@@ -1958,6 +1978,18 @@ router.post('/portal/blog/heal-covers', requireAdmin, asyncRoute(async (_req: Au
   res.json({ success: true, ...result });
 }));
 
+// Capas fotográficas ultrarrealistas por IA: lote manual (admin) e status
+router.post('/portal/blog/covers/regenerate', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const limit = Number((req.body as any)?.limit || 8);
+  const result = await runCoverPhotoBatch({ limit, timeBudgetMs: 240_000, userId: req.user!.id });
+  invalidatePublishedBlogCache();
+  res.json({ success: result.status === 'ok', ...result, status: await coverPhotoStatus() });
+}));
+
+router.get('/portal/blog/covers/status', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  res.json({ success: true, ...(await coverPhotoStatus()) });
+}));
+
 // Diagnóstico do acervo (somente leitura): mostra quantos posts existem por coleção/status
 router.get('/portal/blog/diagnostics', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
   res.json({ success: true, ...(await diagnoseBlogInventory()) });
@@ -2329,6 +2361,13 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
 router.get('/portal/blog/articles/:slug/cover', asyncRoute(async (req: Request, res: Response) => {
   const article = await getBlogArticleBySlug(req.params.slug);
   if (!article) return res.status(404).json({ error: 'Artigo não encontrado.' });
+  const stored = await loadStoredCover(article.id).catch(() => null);
+  if (stored) {
+    res.set('Content-Type', stored.mime);
+    res.set('Cache-Control', 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400');
+    res.set('X-Content-Type-Options', 'nosniff');
+    return res.send(stored.buffer);
+  }
   const decoded = decodeDataUriImage(String(article.coverImage || ''));
   if (decoded) {
     res.set('Content-Type', decoded.mime);
@@ -2336,7 +2375,9 @@ router.get('/portal/blog/articles/:slug/cover', asyncRoute(async (req: Request, 
     res.set('X-Content-Type-Options', 'nosniff');
     return res.send(decoded.buffer);
   }
-  return res.redirect(302, publicCoverUrl({ ...article, coverImage: String(article.coverImage || '').startsWith('data:') ? '' : article.coverImage }));
+  const current = String(article.coverImage || '');
+  const isSelf = current.startsWith('data:') || current.includes('/api/portal/blog/articles/');
+  return res.redirect(302, publicCoverUrl({ ...article, coverImage: isSelf ? '' : current }));
 }));
 
 router.get('/portal/blog/articles/:slug', asyncRoute(async (req: Request, res: Response) => {

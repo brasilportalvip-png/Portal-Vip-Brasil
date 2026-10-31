@@ -851,6 +851,8 @@ export async function generateMarketingImage(data: {
   resolution?: '1K' | '2K' | '4K';
   executionId?: string;
   dateIso?: string;
+  /** Prompt fotográfico completo (ex.: capas do blog). Quando informado, substitui o prompt publicitário padrão. */
+  rawPrompt?: string;
 }): Promise<{
   imageUrl: string;
   storagePath: string;
@@ -875,7 +877,7 @@ export async function generateMarketingImage(data: {
 
   const nicheGuidance = resolveNicheVisualGuidance(data.company, theme, title);
 
-  const prompt = `${companyContext(data.company)}
+  const prompt = data.rawPrompt ? String(data.rawPrompt) : `${companyContext(data.company)}
 
 Projeto: ${project}
 Data: ${currentDate}
