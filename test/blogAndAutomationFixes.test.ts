@@ -43,7 +43,7 @@ test('1. BlogSettings auto-heals legacy approval mode to automatic without human
   assert.equal(updated.mode, 'automatic', 'updateBlogSettings não deve permitir modo manual/approval');
 });
 
-test('2. listBlogArticles promove rascunhos válidos que passam no Quality Gate e nunca deixa o blog vazio', async () => {
+test('2. listBlogArticles é somente leitura; rascunhos válidos são promovidos apenas no ciclo diário', async () => {
   resetMemoryDb();
   const db = firestore();
 
@@ -86,14 +86,16 @@ test('2. listBlogArticles promove rascunhos válidos que passam no Quality Gate 
     updatedAt: nowIso()
   });
 
-  // listBlogArticles deve avaliar o quality gate e auto-promover para published
+  // A listagem pública é SOMENTE LEITURA: não promove rascunhos nem grava no banco durante a visita
   const list = await listBlogArticles({ status: 'published', limit: 10, offset: 0 });
   assert.ok(list.articles.length > 0, 'O blog não pode ficar vazio');
-  const promoted = list.articles.find((a) => a.id === pendingId);
-  assert.ok(promoted, 'Artigo pendente válido deve ter sido promovido e retornado');
-  assert.equal(promoted?.status, 'published');
+  assert.equal(list.articles.some((a) => a.id === pendingId), false, 'Rascunho não pode aparecer no blog público');
+  const untouched = await db.collection(COLLECTIONS.blogArticles).doc(pendingId).get();
+  assert.equal(untouched.data()?.status, 'pending_approval', 'GET público não pode alterar o banco');
 
-  // Verifica no Firestore se o status foi atualizado para published com publishedAt
+  // A promoção acontece no ciclo diário (rescueStuckDraftArticles), validada pelo Quality Gate
+  const rescue = await rescueStuckDraftArticles();
+  assert.ok(rescue.rescuedArticles.some((a) => a.id === pendingId), 'Rascunho válido deve ser promovido no ciclo diário');
   const freshDoc = await db.collection(COLLECTIONS.blogArticles).doc(pendingId).get();
   assert.equal(freshDoc.data()?.status, 'published');
   assert.ok(freshDoc.data()?.publishedAt);
@@ -198,7 +200,7 @@ test('6. acquireDailyBlogClaim re-acquires claim if previous claim was completed
   assert.equal(finalClaim, null, 'Com o artigo já publicado, deve retornar null e respeitar a idempotência');
 });
 
-test('7. rescueStuckDraftArticles resgata e promove rascunhos para published sem fila humana', async () => {
+test('7. rescueStuckDraftArticles não publica rascunho raso inflado com texto genérico', async () => {
   resetMemoryDb();
   const db = firestore();
 
@@ -237,11 +239,11 @@ test('7. rescueStuckDraftArticles resgata e promove rascunhos para published sem
   });
 
   const rescueResult = await rescueStuckDraftArticles();
-  assert.ok(rescueResult.rescuedCount >= 1, 'Deve resgatar pelo menos 1 rascunho preso');
-  assert.ok(rescueResult.rescuedArticles.some((a) => a.id === stuckId), 'O rascunho preso deve constar nos resgatados');
-
+  // Rascunho curto NÃO pode ser inflado com texto genérico para passar no gate (conteúdo raso/duplicado)
+  assert.equal(rescueResult.rescuedArticles.some((a) => a.id === stuckId), false, 'Rascunho curto não pode ser publicado com enchimento');
   const verifiedDoc = await db.collection(COLLECTIONS.blogArticles).doc(stuckId).get();
-  assert.equal(verifiedDoc.data()?.status, 'published', 'Status deve ter sido alterado para published');
-  assert.ok(verifiedDoc.data()?.publishedAt, 'publishedAt deve ter sido gravado');
+  assert.equal(verifiedDoc.data()?.status, 'draft', 'Rascunho curto permanece como rascunho até reescrita real');
+  const body = JSON.stringify(verifiedDoc.data());
+  assert.equal(body.includes('Impacto Estratégico'), false, 'Nenhuma seção genérica pode ser injetada');
 });
 

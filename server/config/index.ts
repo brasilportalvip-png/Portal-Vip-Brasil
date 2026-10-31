@@ -80,6 +80,7 @@ export const config = {
   encryptionKey: env('TOKEN_ENCRYPTION_KEY', isTest ? 'test_token_encryption_key_32bytes_long!' : ''),
   cronSecret: env('CRON_SECRET', isTest ? 'test_cron_secret' : ''),
   indexNowKey: env('INDEXNOW_KEY'),
+  bingSiteVerification: env('BING_SITE_VERIFICATION'),
   adminBootstrap: {
     enabled: env('ADMIN_BOOTSTRAP_ENABLED', isProduction ? 'false' : 'true').toLowerCase() === 'true',
     key: env('ADMIN_BOOTSTRAP_KEY', isTest ? 'test_admin_bootstrap_key' : '')

@@ -4,7 +4,7 @@ import path from 'path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { config, assertProductionConfig } from './config/index.js';
-import productionRouter, { buildRobotsTxt, buildSitemapXml } from './production/router.js';
+import productionRouter, { buildRobotsTxt, buildSitemapTxt, buildSitemapXml } from './production/router.js';
 import { renderPrivateAppPage, renderPublicPage } from './production/publicPages.js';
 import { consumeRateLimit } from './production/store.js';
 import { triggerOpportunisticRetryCheck } from './production/videoRetryDaemon.js';
@@ -237,6 +237,14 @@ export function createApp() {
   app.get('/sitemap.xml', async (_req, res, next) => {
     try {
       res.type('application/xml').send(await buildSitemapXml());
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get('/sitemap.txt', async (_req, res, next) => {
+    try {
+      res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+      res.type('text/plain').send(await buildSitemapTxt());
     } catch (error) {
       next(error);
     }

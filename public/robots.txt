@@ -30,3 +30,4 @@ Disallow: /configuracoes
 Disallow: /suporte
 
 Sitemap: https://portal-vip-brasil.vercel.app/sitemap.xml
+Sitemap: https://portal-vip-brasil.vercel.app/sitemap.txt

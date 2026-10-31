@@ -113,12 +113,12 @@ test('P1: Recuperação de artigos sem boilerplate artificial e com checkpoint p
   const recoveryResult = await recoverArticleBatch({ batchSize: 5 });
   assert.equal(recoveryResult.success, true);
   assert.equal(recoveryResult.processedCount, 1);
-  assert.equal(recoveryResult.healedCount + recoveryResult.rewrittenCount, 1);
 
-  // Verifica que o texto não contém frases genéricas de preenchimento
+  // Artigo curto NÃO é inflado com texto padrão: texto preservado, capa corrigida, marcado para reescrita real
   const updatedDoc = (await db.collection(COLLECTIONS.blogArticles).doc('art_p1_sample').get()).data() as any;
-  assert.ok(!updatedDoc.content.includes('fillerWords'));
-  assert.ok(updatedDoc.content.length > 250);
+  assert.equal(updatedDoc.content, 'Pequeno texto inicial.');
+  assert.equal(updatedDoc.status, 'published', 'Recuperação nunca despublica artigos');
+  assert.equal(updatedDoc.needsEditorialRewrite, true);
   assert.notEqual(updatedDoc.coverImage, '/icons/logo.png');
 
   // Verifica checkpoint persistido no Firestore

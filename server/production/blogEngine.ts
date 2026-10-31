@@ -36,6 +36,7 @@ export async function rescueStuckDraftArticles(): Promise<{
       .get();
 
     for (const doc of draftsSnap.docs) {
+      try {
       const data = doc.data() as StoredBlogArticle;
       const article: StoredBlogArticle = { ...data, id: doc.id };
 
@@ -51,71 +52,28 @@ export async function rescueStuckDraftArticles(): Promise<{
       const projName = article.relatedProjectName || 'Portal Vip Brasil';
       for (const term of prohibitedTerms) {
         const reg = new RegExp(`\\b${term}\\b`, 'gi');
-        article.title = article.title.replace(reg, projName);
-        article.excerpt = article.excerpt.replace(reg, projName);
-        article.conclusion = article.conclusion.replace(reg, projName);
-        article.sections = (article.sections || []).map((s) => ({
+        // Campos podem estar ausentes em rascunhos antigos: nunca chamar .replace em undefined
+        article.title = String(article.title || '').replace(reg, projName);
+        if (typeof article.excerpt === 'string') article.excerpt = article.excerpt.replace(reg, projName);
+        if (typeof article.introduction === 'string') article.introduction = article.introduction.replace(reg, projName);
+        if (typeof article.conclusion === 'string') article.conclusion = article.conclusion.replace(reg, projName);
+        article.sections = (Array.isArray(article.sections) ? article.sections : []).map((s) => ({
           ...s,
-          h2: s.h2.replace(reg, projName),
-          content: s.content.replace(reg, projName)
+          h2: String(s?.h2 || '').replace(reg, projName),
+          content: String(s?.content || '').replace(reg, projName),
+          ...(Array.isArray(s?.h3s) ? { h3s: s.h3s.map((h) => ({ ...h, h3: String(h?.h3 || '').replace(reg, projName), content: String(h?.content || '').replace(reg, projName) })) } : {})
         }));
       }
 
-      // 3. Extensão e profundidade das seções (Quality Gate exige bodyWordCount >= 250 no corpo editorial)
-      let currentBody = '';
-      if (typeof (article as any).content === 'string') currentBody += ` ${(article as any).content}`;
-      if (typeof article.introduction === 'string') currentBody += ` ${article.introduction}`;
-      if (typeof article.conclusion === 'string') currentBody += ` ${article.conclusion}`;
-      if (Array.isArray(article.sections)) {
-        for (const sec of article.sections) {
-          currentBody += ` ${sec.h2 || ''} ${sec.content || ''}`;
-          if (Array.isArray(sec.h3s)) {
-            for (const h3 of sec.h3s) currentBody += ` ${h3.h3 || ''} ${h3.content || ''}`;
-          }
-        }
-      }
-      let currentBodyWords = currentBody.trim().split(/\s+/).filter(Boolean).length;
+      // 3. NÃO inventamos texto de enchimento. Parágrafos genéricos repetidos em centenas de
+      //    artigos são conteúdo raso/duplicado para o Google (Helpful Content) e derrubam o ranking.
+      //    Rascunhos curtos ficam como rascunho até serem reescritos com conteúdo real.
 
-      if (!article.introduction || article.introduction.length < 50) {
-        article.introduction = `Neste conteúdo editorial completo do Portal Vip Brasil, apresentamos uma análise detalhada e orientações práticas sobre ${projName}. Descubra como aplicar essas metodologias no cotidiano para obter clareza, desenvolvimento consistente e benefícios reais no segmento de ${article.category || 'inovação e tecnologia'}.`;
-        currentBody += ` ${article.introduction}`;
-        currentBodyWords = currentBody.trim().split(/\s+/).filter(Boolean).length;
-      }
-
-      if (currentBodyWords < 260) {
-        article.sections = [
-          ...(article.sections || []),
-          {
-            h2: `Impacto Estratégico e Aplicações Práticas de ${projName}`,
-            content: `A utilização metódica das ferramentas e princípios desenvolvidos por ${projName} possibilita uma evolução substancial e contínua no mercado digital brasileiro. Ao consolidar boas práticas em ${article.category || 'tecnologia'}, usuários e organizações constroem autoridade orgânica, refinam processos cotidianos e alcançam resultados mensuráveis de alta relevância técnica e editorial.`,
-            h3s: [
-              {
-                h3: `Benefícios Essenciais e Diferenciais de ${projName}`,
-                content: `Dentre os principais diferenciais da iniciativa, destacam-se a acessibilidade direta das informações, a precisão metodológica e o foco constante na experiência satisfatória do leitor e usuário final.`
-              },
-              {
-                h3: `Integração e Aplicação Prática no Dia a Dia`,
-                content: `Adotar essas diretrizes em etapas incrementais garante sustentabilidade a longo prazo, reduz atritos operacionais e maximiza a produtividade com segurança metodológica.`
-              }
-            ]
-          },
-          {
-            h2: `Recomendações Editoriais e Conclusões para o Sucesso`,
-            content: `Para assegurar o melhor aproveitamento das soluções de ${projName}, recomenda-se acompanhar com assiduidade os canais oficiais, manter-se atualizado com as novas versões e aplicar com disciplina os ensinamentos compartilhados neste guia especializado.`
-          }
-        ];
-      }
-
-      if (!article.conclusion || article.conclusion.length < 20) {
-        article.conclusion = `A jornada com ${projName} representa um passo seguro em direção à excelência e ao aprimoramento contínuo no ecossistema do Portal Vip Brasil.`;
-      }
-
-      // 4. Estrutura SEO
+      // 4. Meta description derivada do próprio texto do artigo (única por artigo)
       if (!article.metaDescription || article.metaDescription.length < 60 || article.metaDescription.length > 250) {
-        article.metaDescription = safeString(`Guia e análise detalhada sobre ${projName}: conheça diferenciais, funcionalidades essenciais e orientações práticas no Portal Vip Brasil.`, 160);
-      }
-      if (!article.callToAction || article.callToAction.length < 15) {
-        article.callToAction = `Acesse agora o site oficial de ${projName} e explore todas as soluções inovadoras.`;
+        const source = [article.excerpt, article.introduction, ...(article.sections || []).map((s) => s.content)]
+          .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+        if (source.length >= 60) article.metaDescription = safeString(source, 157).replace(/\s+\S*$/, '') + '…';
       }
 
       // 5. Avaliação do Quality Gate
@@ -132,6 +90,11 @@ export async function rescueStuckDraftArticles(): Promise<{
       } else {
         failedCount++;
         details.push(`Artigo "${article.title}" (${doc.id}) bloqueado no Quality Gate: ${audit.rejectionReasons.join('; ')}`);
+      }
+      } catch (itemErr: any) {
+        // Um rascunho malformado não pode interromper o resgate dos demais
+        failedCount++;
+        details.push(`Artigo ${doc.id} ignorado por erro: ${itemErr?.message || String(itemErr)}`);
       }
     }
   } catch (err: any) {
@@ -1709,7 +1672,152 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
 }
 
 /**
- * Lista artigos do Blog com filtros e paginação
+ * Converte um documento legado da coleção `blogPosts` (formato antigo: summary/content/featuredImageUrl)
+ * para o formato StoredBlogArticle usado pelo blog público. Nada é gravado no banco.
+ */
+export function normalizeLegacyBlogPost(id: string, data: any): StoredBlogArticle {
+  const content = String(data?.content || '');
+  const sections: BlogArticleSection[] = Array.isArray(data?.sections) && data.sections.length
+    ? data.sections
+    : content
+      .split(/\n(?=#{2}\s)/)
+      .map((block: string) => block.trim())
+      .filter(Boolean)
+      .map((block: string, index: number) => {
+        const match = block.match(/^#{2,3}\s+(.+)\n?([\s\S]*)$/);
+        return match
+          ? { h2: match[1].trim(), content: match[2].trim() }
+          : { h2: index === 0 ? '' : `Parte ${index + 1}`, content: block };
+      }) as any;
+  const excerpt = safeString(data?.excerpt || data?.summary || data?.seoDescription || content.replace(/[#*_>`]/g, ''), 300);
+  const created = data?.publishedAt || data?.createdAt || data?.updatedAt || '';
+  const authorName = typeof data?.author === 'object' ? data.author?.name : data?.author;
+  return {
+    ...data,
+    id,
+    slug: String(data?.slug || id),
+    title: String(data?.title || 'Artigo Portal Vip Brasil'),
+    seoTitle: String(data?.seoTitle || data?.title || ''),
+    metaDescription: safeString(data?.metaDescription || data?.seoDescription || excerpt, 180),
+    excerpt,
+    category: String(data?.category || 'Artigos'),
+    tags: Array.isArray(data?.tags) ? data.tags : [],
+    primaryKeyword: String(data?.primaryKeyword || ''),
+    secondaryKeywords: Array.isArray(data?.secondaryKeywords) ? data.secondaryKeywords : [],
+    searchIntent: data?.searchIntent || 'informational',
+    author: { name: authorName || 'Equipe Editorial Portal Vip Brasil', avatar: '', role: '' },
+    publishedAt: created,
+    updatedAt: data?.updatedAt || created,
+    readTime: data?.readTime || `${Math.max(2, Math.round(content.split(/\s+/).length / 200))} min`,
+    featured: Boolean(data?.featured),
+    coverImage: String(data?.coverImage || data?.featuredImageUrl || ''),
+    coverAlt: String(data?.coverAlt || data?.title || ''),
+    sections,
+    faqSection: Array.isArray(data?.faqSection) ? data.faqSection : [],
+    conclusion: String(data?.conclusion || ''),
+    callToAction: String(data?.callToAction || ''),
+    relatedProjectId: String(data?.relatedProjectId || data?.projectId || ''),
+    relatedProjectName: String(data?.relatedProjectName || 'Portal Vip Brasil'),
+    relatedProjectUrl: String(data?.relatedProjectUrl || config.appUrl),
+    hasApp: Boolean(data?.hasApp),
+    internalLinks: Array.isArray(data?.internalLinks) ? data.internalLinks : [],
+    status: 'published',
+    views: Number(data?.views || 0),
+    likes: Number(data?.likes || 0),
+    shares: Number(data?.shares || 0),
+    clicksWebsite: Number(data?.clicksWebsite || 0),
+    clicksPlayStore: Number(data?.clicksPlayStore || 0),
+    createdAt: data?.createdAt || created,
+    legacySource: 'blogPosts'
+  } as StoredBlogArticle;
+}
+
+// Títulos de seção do antigo texto-modelo/enchimento automático. Artigos que os contêm são
+// páginas quase idênticas entre si: ficam visíveis ao leitor, mas com noindex e fora do sitemap
+// até serem reescritos com conteúdo real.
+const TEMPLATE_SECTION_MARKERS = [
+  'Recursos Estratégicos e Aplicações Práticas',
+  'Como Começar e Ter Acesso aos Recursos Oficiais',
+  'Impacto Estratégico e Aplicações Práticas de',
+  'Metodologia Recomendada e Boas Práticas',
+  'Recomendações Editoriais e Conclusões para o Sucesso',
+  'Panorama e Contextualização:',
+  'Metodologia Prática e Aplicação Estratégica',
+  'Orientações Finais e Recursos Oficiais',
+  'e Seus Principais Benefícios',
+  'Como Começar a Utilizar Hoje Mesmo',
+  'Visão Geral e Contextualização de'
+];
+
+export function isTemplateLikeArticle(article: any): boolean {
+  if (!article || typeof article !== 'object') return false;
+  if (article.needsEditorialRewrite === true) return true;
+  const headings = (Array.isArray(article.sections) ? article.sections : []).map((sec: any) => String(sec?.h2 || ''));
+  const content = typeof article.content === 'string' ? article.content : '';
+  const hits = TEMPLATE_SECTION_MARKERS.filter((marker) => headings.some((h: string) => h.includes(marker)) || content.includes(marker)).length;
+  return hits >= 2;
+}
+
+// Cache curto por instância serverless: evita reler o acervo inteiro a cada visita.
+const PUBLISHED_CACHE_TTL_MS = 60_000;
+let publishedCache: { at: number; items: StoredBlogArticle[] } | null = null;
+
+export function invalidatePublishedBlogCache(): void {
+  publishedCache = null;
+}
+
+/**
+ * Carrega TODOS os artigos publicados (blogArticles + blogPosts legados), somente leitura.
+ * - Não usa orderBy no Firestore (orderBy exclui documentos sem o campo publishedAt).
+ * - Não grava nada no banco durante uma visita pública.
+ * - Não roda Quality Gate nem promove rascunhos durante a leitura.
+ */
+export async function loadAllPublishedBlogArticles(): Promise<StoredBlogArticle[]> {
+  const ttl = process.env.NODE_ENV === 'test' ? 0 : PUBLISHED_CACHE_TTL_MS;
+  if (publishedCache && Date.now() - publishedCache.at < ttl) return publishedCache.items;
+  const db = firestore();
+  try {
+    const [articlesSnap, legacySnap] = await Promise.all([
+      db.collection(COLLECTIONS.blogArticles).where('status', '==', 'published').get(),
+      db.collection(COLLECTIONS.blogPosts).where('status', '==', 'published').get().catch((err: any) => {
+        console.warn('[BlogEngine] Coleção legada blogPosts indisponível:', err?.message || err);
+        return { docs: [] };
+      })
+    ]);
+    const bySlug = new Map<string, StoredBlogArticle>();
+    for (const d of articlesSnap.docs || []) {
+      const article = { id: d.id, ...(d.data() as any) } as StoredBlogArticle;
+      if (!article.slug) continue;
+      if ((article as any).noindex === true) continue;
+      article.publishedAt = article.publishedAt || article.createdAt || article.updatedAt || '';
+      if (!bySlug.has(article.slug)) bySlug.set(article.slug, article);
+    }
+    for (const d of legacySnap.docs || []) {
+      const article = normalizeLegacyBlogPost(d.id, d.data());
+      if (!article.slug || bySlug.has(article.slug) || (article as any).noindex === true) continue;
+      bySlug.set(article.slug, article);
+    }
+    const items = [...bySlug.values()].map((article) => {
+      if (isInvalidOrLogoImage(article.coverImage)) {
+        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category);
+        return { ...article, coverImage: thematic.url, coverAlt: article.coverAlt || thematic.alt };
+      }
+      return article;
+    });
+    items.sort((a, b) => String(b.publishedAt || b.createdAt || '').localeCompare(String(a.publishedAt || a.createdAt || '')));
+    publishedCache = { at: Date.now(), items };
+    return items;
+  } catch (err) {
+    if (publishedCache) {
+      console.warn('[BlogEngine] Falha de leitura; servindo última lista válida em cache:', err);
+      return publishedCache.items;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Lista artigos públicos do Blog com filtros e paginação.
  */
 export async function listBlogArticles(filters: {
   category?: string;
@@ -1726,147 +1834,68 @@ export async function listBlogArticles(filters: {
   page: number;
   totalPages: number;
 }> {
+  let items: StoredBlogArticle[];
   try {
-    const db = firestore();
-    const allRawDocs: any[] = [];
-    const BATCH_SIZE = 500;
-    let lastDoc: any = null;
-    let hasMore = true;
-
-    while (hasMore) {
-      let q = db.collection(COLLECTIONS.blogArticles).orderBy('publishedAt', 'desc').limit(BATCH_SIZE);
-      if (lastDoc && typeof q.startAfter === 'function') {
-        q = q.startAfter(lastDoc);
-      }
-      const snap = await q.get();
-      if (!snap || !snap.docs || snap.docs.length === 0) {
-        hasMore = false;
-        break;
-      }
-      for (const d of snap.docs) {
-        allRawDocs.push(d);
-      }
-      if (snap.docs.length < BATCH_SIZE) {
-        hasMore = false;
-      } else {
-        lastDoc = snap.docs[snap.docs.length - 1];
-      }
-    }
-
-    // Consulta complementar para capturar rascunhos ou itens pendentes que ainda não possuem publishedAt
-    try {
-      const pendingSnap = await db.collection(COLLECTIONS.blogArticles)
-        .where('status', 'in', ['pending_approval', 'draft'])
-        .limit(100)
-        .get();
-      if (pendingSnap && pendingSnap.docs) {
-        for (const doc of pendingSnap.docs) {
-          if (!allRawDocs.some((d) => d.id === doc.id)) {
-            allRawDocs.push(doc);
-          }
-        }
-      }
-    } catch {}
-
-    let items: StoredBlogArticle[] = allRawDocs.map((d) => {
-      const data = d.data() as any;
-      const article: StoredBlogArticle = { id: d.id, ...data };
-      if (isInvalidOrLogoImage(article.coverImage)) {
-        const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category);
-        article.coverImage = thematic.url;
-        article.coverAlt = article.coverAlt || thematic.alt;
-        try {
-          db.collection(COLLECTIONS.blogArticles).doc(d.id).set({
-            coverImage: thematic.url,
-            coverAlt: article.coverAlt,
-            updatedAt: nowIso()
-          }, { merge: true }).catch(() => {});
-        } catch {}
-      }
-      return article;
-    });
-
-    // Ordena do mais recente para o mais antigo considerando publishedAt ou createdAt
-    items.sort((a, b) => String(b.publishedAt || b.createdAt || '').localeCompare(String(a.publishedAt || a.createdAt || '')));
-
-    // 100% Automático: Artigos pendentes ou rascunhos que passem no Quality Gate são promovidos a 'published'
-    for (const article of items) {
-      if (article.status === 'pending_approval' || (article.status as any) === 'draft') {
-        try {
-          const audit = await verifyArticleQualityGate(article, { projectId: article.relatedProjectId });
-          if (audit.approved) {
-            article.status = 'published';
-            article.publishedAt = article.publishedAt || nowIso();
-            db.collection(COLLECTIONS.blogArticles).doc(article.id).set({
-              status: 'published',
-              publishedAt: article.publishedAt,
-              updatedAt: nowIso()
-            }, { merge: true }).catch(() => {});
-          }
-        } catch {
-          // Mantém o status original se a validação falhar
-        }
-      }
-    }
-
-    if (filters.status && filters.status !== 'all') {
-      items = items.filter((article) => article.status === filters.status);
-    }
-    if (filters.projectId && filters.projectId !== 'todos') {
-      items = items.filter((article) => article.relatedProjectId === filters.projectId || (article as any).relatedProjectSlug === filters.projectId);
-    }
-    if (filters.category && filters.category !== 'Todos') {
-      items = items.filter((article) => article.category === filters.category);
-    }
-
-    // Se o blog público estiver vazio (mesmo que haja rascunhos ou coleções não publicadas no banco),
-    // utiliza os artigos iniciais de alta autoridade e os semeia no Firestore
-    if (items.length === 0 && (!filters.status || filters.status === 'published' || filters.status === 'all')) {
-      const seedMatches = INITIAL_SEEDED_ARTICLES.filter((article) =>
-        (!filters.status || filters.status === 'all' || article.status === filters.status) &&
-        (!filters.projectId || filters.projectId === 'todos' || article.relatedProjectId === filters.projectId || (article as any).relatedProjectSlug === filters.projectId) &&
-        (!filters.category || filters.category === 'Todos' || article.category === filters.category)
-      );
-      if (seedMatches.length > 0) {
-        items = seedMatches;
-        // Persiste as sementes oficiais no Firestore em background para garantir persistência real
-        for (const seedArt of seedMatches) {
-          db.collection(COLLECTIONS.blogArticles).doc(seedArt.id).set(seedArt, { merge: true }).catch(() => {});
-        }
-      }
-    }
-
-    if (filters.query) {
-      const q = filters.query.toLowerCase().trim();
-      items = items.filter((art) =>
-        art.title.toLowerCase().includes(q) ||
-        art.excerpt.toLowerCase().includes(q) ||
-        art.tags?.some((t) => t.toLowerCase().includes(q)) ||
-        art.primaryKeyword?.toLowerCase().includes(q) ||
-        art.secondaryKeywords?.some((keyword) => keyword.toLowerCase().includes(q)) ||
-        ((art as any).relatedProjectName && String((art as any).relatedProjectName).toLowerCase().includes(q))
-      );
-    }
-
-    items.sort((a, b) => String(b.publishedAt || b.createdAt || '').localeCompare(String(a.publishedAt || a.createdAt || '')));
-    const total = items.length;
-    const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
-    const offset = Math.max(Number(filters.offset || 0), 0);
-    const page = Math.floor(offset / limit) + 1;
-    const totalPages = Math.max(1, Math.ceil(total / limit));
-    return {
-      articles: items.slice(offset, offset + limit),
-      total,
-      limit,
-      offset,
-      page,
-      totalPages
-    };
+    items = [...await loadAllPublishedBlogArticles()];
   } catch (err) {
-    // REGRA DE OURO: Nunca mascarar erro de leitura real do Firestore apresentando artigos iniciais falsos
-    console.error('[BlogEngine] Erro de leitura no Firestore ao listar artigos (Fail-Closed):', err);
+    console.error('[BlogEngine] Erro de leitura no Firestore ao listar artigos:', err);
     throw new Error(`Falha ao carregar artigos do banco de dados: ${err instanceof Error ? err.message : String(err)}`);
   }
+
+  // Banco realmente vazio: mostra os artigos oficiais iniciais (somente leitura, sem gravar).
+  if (items.length === 0) items = INITIAL_SEEDED_ARTICLES.filter((article) => article.status === 'published');
+
+  if (filters.projectId && filters.projectId !== 'todos') {
+    items = items.filter((article) => article.relatedProjectId === filters.projectId || (article as any).relatedProjectSlug === filters.projectId);
+  }
+  if (filters.category && filters.category !== 'Todos') {
+    items = items.filter((article) => article.category === filters.category);
+  }
+  if (filters.query) {
+    const q = filters.query.toLowerCase().trim();
+    items = items.filter((art) =>
+      String(art.title || '').toLowerCase().includes(q) ||
+      String(art.excerpt || '').toLowerCase().includes(q) ||
+      (art.tags || []).some((t) => String(t).toLowerCase().includes(q)) ||
+      String(art.primaryKeyword || '').toLowerCase().includes(q) ||
+      (art.secondaryKeywords || []).some((keyword) => String(keyword).toLowerCase().includes(q)) ||
+      String((art as any).relatedProjectName || '').toLowerCase().includes(q)
+    );
+  }
+
+  const total = items.length;
+  const limit = Math.min(Math.max(Number(filters.limit || 50), 1), 200);
+  const offset = Math.max(Number(filters.offset || 0), 0);
+  const page = Math.floor(offset / limit) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  return { articles: items.slice(offset, offset + limit), total, limit, offset, page, totalPages };
+}
+
+/**
+ * Diagnóstico administrativo do acervo: quantos artigos existem em cada coleção e status.
+ * Somente leitura. Serve para confirmar onde estão os posts antigos.
+ */
+export async function diagnoseBlogInventory(): Promise<Record<string, any>> {
+  const db = firestore();
+  const result: Record<string, any> = {};
+  for (const col of [COLLECTIONS.blogArticles, COLLECTIONS.blogPosts]) {
+    const snap = await db.collection(col).get();
+    const byStatus: Record<string, number> = {};
+    let withoutPublishedAt = 0;
+    let withoutSlug = 0;
+    let templateLike = 0;
+    for (const d of snap.docs) {
+      const data = d.data() as any;
+      if (isTemplateLikeArticle(data)) templateLike++;
+      const status = String(data?.status || 'sem_status');
+      byStatus[status] = (byStatus[status] || 0) + 1;
+      if (!data?.publishedAt) withoutPublishedAt++;
+      if (!data?.slug) withoutSlug++;
+    }
+    result[col] = { total: snap.docs.length, byStatus, withoutPublishedAt, withoutSlug, templateLikeNoindex: templateLike };
+  }
+  result.publicVisible = (await loadAllPublishedBlogArticles()).length;
+  return result;
 }
 
 /**
@@ -1888,18 +1917,19 @@ export async function getBlogArticleBySlug(slug: string): Promise<StoredBlogArti
         const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category);
         article.coverImage = thematic.url;
         article.coverAlt = article.coverAlt || thematic.alt;
-        try {
-          firestore().collection(COLLECTIONS.blogArticles).doc(publishedDoc.id).set({
-            coverImage: thematic.url,
-            coverAlt: article.coverAlt,
-            updatedAt: nowIso()
-          }, { merge: true }).catch(() => {});
-        } catch {}
       }
       return article;
     }
   } catch (err) {
     console.warn('[BlogEngine] Erro ao buscar artigo por slug no Firestore:', err);
+  }
+  // Coleção legada blogPosts (posts antigos), aceitando o slug original sem normalização.
+  try {
+    const legacy = await firestore().collection(COLLECTIONS.blogPosts).where('slug', 'in', [...new Set([slug, clean])]).limit(5).get();
+    const legacyDoc = (legacy.docs || []).find((doc: any) => String((doc.data() as any)?.status || '') === 'published');
+    if (legacyDoc) return normalizeLegacyBlogPost(legacyDoc.id, legacyDoc.data());
+  } catch (err) {
+    console.warn('[BlogEngine] Erro ao buscar artigo legado por slug:', err);
   }
   return INITIAL_SEEDED_ARTICLES.find((a) => a.slug === clean || a.id === slug);
 }
@@ -2145,8 +2175,10 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     prompt,
     systemInstruction: 'Você é a IA Editorial do Portal Vip Brasil. Produza artigos ricos, verídicos, otimizados para SEO e com profundo valor para os leitores.',
     jsonOutput: true,
-    maxTokens: 4000,
-    timeoutMs: 2500
+    maxTokens: 8000,
+    // Um artigo completo leva dezenas de segundos para ser gerado. Com 2,5s TODA geração caía no
+    // texto-modelo de contingência e o blog publicava centenas de páginas quase idênticas.
+    timeoutMs: 55000
   });
 
   let parsed: any;
@@ -2158,7 +2190,12 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
       throw new Error('Formato retornado pela IA incompleto');
     }
   } catch {
-    // Fallback estruturado de contingência com alto padrão editorial (>350 palavras)
+    // Em produção NUNCA publicamos o texto-modelo: páginas quase idênticas são conteúdo duplicado
+    // para Google/Bing e derrubam a reputação do domínio inteiro. Sem IA, o ciclo tenta de novo amanhã.
+    if (process.env.NODE_ENV !== 'test') {
+      throw new Error(`[BlogEngine] IA não retornou artigo válido para ${project.name}; nada foi publicado (texto-modelo bloqueado).`);
+    }
+    // Somente em testes automatizados: estrutura de contingência para validar o fluxo.
     parsed = {
       title: topic,
       suggestedSlug: slugify(topic),
@@ -2398,36 +2435,14 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
       }
     }
 
-    // 3. Correção de extensão e qualidade editorial automática: expande seções informativas se < 320 palavras
-    if ((qualityAudit.pillars.originalityNonDuplicate && !qualityAudit.pillars.originalityNonDuplicate.passed) ||
-        (qualityAudit.pillars.editorialQualityGrammar && !qualityAudit.pillars.editorialQualityGrammar.passed)) {
-      const fullText = [
-        newArticle.title,
-        newArticle.excerpt,
-        ...(newArticle.sections || []).map((s: any) => `${s.h2} ${s.content}`),
-        newArticle.conclusion,
-        newArticle.callToAction
-      ].join(' ');
-      const words = fullText.trim().split(/\s+/).filter(Boolean).length;
-      if (words < 320) {
-        newArticle.sections = [
-          ...(newArticle.sections || []),
-          {
-            h2: `Impacto Estratégico e Aplicações Práticas de ${project.name}`,
-            content: `A utilização sistemática dos recursos oferecidos por ${project.name} possibilita uma evolução consistente no segmento de ${project.category}. Ao integrar soluções focadas em ${project.keywords.slice(0, 3).join(', ')}, profissionais e usuários obtêm ganhos de eficiência, clareza operacional e resultados alinhados às melhores práticas do mercado editorial e digital brasileiro.`
-          },
-          {
-            h2: `Metodologia Recomendada e Boas Práticas`,
-            content: `Para extrair o valor máximo das funcionalidades disponíveis, recomenda-se acompanhar regularmente os canais oficiais, manter os fluxos estruturados e aplicar as diretrizes de ${project.segment}. Dessa forma, cada iniciativa conta com fundamentação prática, segurança metodológica e sustentabilidade em longo prazo no ecossistema do Portal Vip Brasil.`
-          }
-        ];
-      }
-    }
+    // 3. Sem texto de enchimento: artigo curto é reprovado e regenerado, nunca inflado com parágrafos padrão.
 
     // 4. Correção estrutural de SEO automática (meta-descrição e CTA)
     if (qualityAudit.pillars.seoStructureMetadata && !qualityAudit.pillars.seoStructureMetadata.passed) {
       if (!newArticle.metaDescription || newArticle.metaDescription.length < 60 || newArticle.metaDescription.length > 250) {
-        newArticle.metaDescription = safeString(`Guia aprofundado e completo sobre ${project.name}: descubra funcionalidades essenciais, diferenciais estratégicos e orientações práticas de ${project.category}.`, 160);
+        const source = [newArticle.excerpt, newArticle.introduction, ...(newArticle.sections || []).map((s: any) => s.content)]
+          .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+        if (source.length >= 60) newArticle.metaDescription = safeString(source, 157).replace(/\s+\S*$/, '') + '…';
       }
       if (!newArticle.callToAction || newArticle.callToAction.length < 15) {
         newArticle.callToAction = `Acesse agora o site oficial de ${project.name} em ${project.websiteUrl} e confira todas as novidades disponíveis.`;

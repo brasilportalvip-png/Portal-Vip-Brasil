@@ -253,40 +253,15 @@ export async function recoverArticleBatch(options: {
       }
     }
 
-    // Garante meta-descrição Yoast adequada (80 a 160 caracteres)
+    // Meta description derivada do próprio conteúdo (nunca um texto padrão repetido em todos os artigos)
     if (!candidateArticle.metaDescription || candidateArticle.metaDescription.length < 60) {
-      candidateArticle.metaDescription = `Confira o guia editorial completo de ${candidateArticle.title} com dicas, análises e fundamentos exclusivos do ${projectName}.`;
-      candidateArticle.excerpt = candidateArticle.metaDescription;
+      const source = [candidateArticle.excerpt, candidateArticle.introduction, ...(Array.isArray(candidateArticle.sections) ? candidateArticle.sections.map((s: any) => s?.content) : []), typeof candidateArticle.content === 'string' ? candidateArticle.content : '']
+        .filter(Boolean).join(' ').replace(/[#*_>`]/g, '').replace(/\s+/g, ' ').trim();
+      if (source.length >= 60) candidateArticle.metaDescription = source.slice(0, 157).replace(/\s+\S*$/, '') + '…';
     }
 
-    // Garante CTA consistente
-    if (!candidateArticle.callToAction || String(candidateArticle.callToAction).length < 15) {
-      candidateArticle.callToAction = `Acesse o aplicativo e o site oficial do ${projectName} para explorar conteúdos e serviços exclusivos.`;
-    }
-
-    // Garante subtítulos estruturados e extensão mínima (> 300 palavras no corpo) com reescrita editorial substantiva
-    const highlightsText = (project?.highlights || []).length > 0
-      ? `Entre os diferenciais cadastrados no ecossistema oficial estão: ${project.highlights.join(', ')}.`
-      : `O ecossistema oficial reúne ferramentas dedicadas a atender as necessidades do público de ${project.targetAudience}.`;
-
-    if (!candidateArticle.sections || !Array.isArray(candidateArticle.sections) || candidateArticle.sections.length < 2 || String(candidateArticle.content || '').length < 300) {
-      const topicTitle = candidateArticle.title || 'Guia Editorial Especializado';
-      candidateArticle.sections = [
-        {
-          h2: `Panorama e Contextualização: ${topicTitle}`,
-          content: `Compreender a fundo os temas relacionados a ${topicTitle} é fundamental para quem busca clareza conceitual e prática no segmento de ${projectSegment}. No âmbito de ${projectName}, cada orientação é estruturada com base nas melhores referências do setor, proporcionando aos leitores uma perspectiva informada, segura e alinhada às demandas contemporâneas.`
-        },
-        {
-          h2: `Metodologia Prática e Aplicação Estratégica`,
-          content: `A aplicação concreta dos conceitos abordados exige consistência e acompanhamento estruturado. Ao adotar as recomendações de ${projectName}, profissionais e membros da comunidade contam com diretrizes comprovadas para otimizar seus resultados em ${projectSegment}. ${highlightsText} Essa abordagem assegura que cada etapa seja executada com critério técnico e valor duradouro.`
-        },
-        {
-          h2: 'Orientações Finais e Recursos Oficiais',
-          content: `Para aprofundar seus conhecimentos e acompanhar novidades regulares, acesse o endereço oficial em ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? ` ou baixe o aplicativo oficial na Google Play Store (${project.playStoreUrl})` : ''}. Mantenha-se conectado aos canais certificados pelo Portal Vip Brasil para garantir acesso contínuo a conteúdos auditados e de alta credibilidade.`
-        }
-      ];
-      candidateArticle.content = candidateArticle.sections.map((s: any) => `## ${s.h2}\n${s.content}`).join('\n\n');
-    }
+    // Não injetamos seções/CTA genéricos: texto padrão repetido em centenas de páginas é
+    // conteúdo duplicado para o Google. Artigos rasos são reprovados no gate e ficam para reescrita real.
 
     // 3. Validação no Quality Gate Obrigatório (8 Pilares)
     const gateEval = await verifyArticleQualityGate(candidateArticle, {
@@ -325,7 +300,23 @@ export async function recoverArticleBatch(options: {
         healedAt: nowIso()
       });
     } else {
-      // Quality Gate Reprovou: PRESERVA O ARTIGO ORIGINAL no banco e registra motivos
+      // Quality Gate Reprovou: preserva o TEXTO original (sem enchimento) e aplica somente correções seguras
+      // de metadados/capa, marcando o artigo para reescrita editorial real. Nunca despublica.
+      const safeFixes: Record<string, any> = {
+        lastHealedAt: nowIso(),
+        healedVersionId: backupVersionId,
+        needsEditorialRewrite: true,
+        editorialRewriteReasons: gateEval.rejectionReasons.slice(0, 10),
+        updatedAt: nowIso()
+      };
+      if (candidateArticle.coverImage && candidateArticle.coverImage !== art.coverImage) {
+        safeFixes.coverImage = candidateArticle.coverImage;
+        safeFixes.coverAlt = candidateArticle.coverAlt;
+      }
+      if (candidateArticle.metaDescription && candidateArticle.metaDescription !== art.metaDescription) {
+        safeFixes.metaDescription = candidateArticle.metaDescription;
+      }
+      await db.collection(targetCol).doc(art.id).set(safeFixes, { merge: true });
       failedCount++;
       items.push({
         articleId: art.id,
@@ -338,7 +329,7 @@ export async function recoverArticleBatch(options: {
         newScore: gateEval.score,
         backupVersionId,
         beforeSnippet,
-        afterSnippet: 'Nenhuma alteração aplicada: reprovado no Quality Gate.',
+        afterSnippet: 'Texto preservado (sem enchimento); capa/metadados corrigidos e artigo marcado para reescrita editorial.',
         qualityGateApproved: false,
         rejectionReasons: gateEval.rejectionReasons,
         healedAt: nowIso()
