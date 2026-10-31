@@ -219,3 +219,17 @@ test('Capas fotográficas: capa guardada em blogCovers é carregada como imagem 
   assert.equal(cover?.buffer.toString(), 'RIFFxxxxWEBP');
   assert.equal(await loadStoredCover('nao-existe'), null);
 });
+
+test('Novos artigos: slug curto no padrão Yoast (sem stopwords, sem datas)', async () => {
+  const { buildSeoSlug } = await import('../server/production/blogEngine.js');
+  assert.equal(buildSeoSlug('Oração de Maria Padilha para o amor voltar 2026-10-30'), 'oracao-maria-padilha-amor-voltar');
+  assert.equal(buildSeoSlug('Como jogar runas nórdicas: guia completo para iniciantes'), 'como-jogar-runas-nordicas-guia-completo');
+  assert.ok(buildSeoSlug('de da do').length >= 3);
+});
+
+test('Novos artigos: resumo rápido (keyTakeaways) chega ao frontend', async () => {
+  const { serializeBlogArticleForPublic, sanitizeStoredArticle } = await import('../server/production/blogEngine.js');
+  const art = sanitizeStoredArticle({ id: 'k', slug: 'k', title: 'K', status: 'published', keyTakeaways: ['Ponto 1', '', 'Ponto 2', 3] });
+  const pub = serializeBlogArticleForPublic(art);
+  assert.deepEqual(pub.keyTakeaways, ['Ponto 1', 'Ponto 2']);
+});

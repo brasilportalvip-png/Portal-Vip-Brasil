@@ -157,6 +157,7 @@ export interface StoredBlogArticle {
   metaDescription: string;
   excerpt: string;
   introduction?: string;
+  keyTakeaways?: string[];
   category: string;
   tags: string[];
   primaryKeyword: string;
@@ -1624,7 +1625,7 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
     readTime: article.readTime,
     contentMarkdown: words.join('\n\n'),
     sections: article.sections || [],
-    keyTakeaways: [],
+    keyTakeaways: Array.isArray(article.keyTakeaways) ? article.keyTakeaways.filter((item) => typeof item === 'string' && item.trim()).slice(0, 6) : [],
     faq: article.faqSection || [],
     relatedProjectId: article.relatedProjectId,
     relatedProjectName: article.relatedProjectName,
@@ -2167,6 +2168,28 @@ function buildDynamicTopicR81(
 /**
  * Gera 1 artigo inédito com IA para um projeto específico
  */
+const SLUG_STOPWORDS = new Set(['de', 'da', 'do', 'das', 'dos', 'e', 'o', 'a', 'os', 'as', 'para', 'pra', 'com', 'em', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'por', 'que', 'sua', 'seu', 'ao', 'aos']);
+
+/** Slug curto no padrão Yoast: 3 a 6 palavras, sem stopwords nem datas. */
+export function buildSeoSlug(text: string): string {
+  const base = slugify(String(text || '').replace(/\d{4}-\d{2}-\d{2}/g, ' ').replace(/\b(?:19|20)\d{2}\b/g, ' '));
+  const words = base.split('-').filter((w) => w && !SLUG_STOPWORDS.has(w));
+  const short = words.slice(0, 6).join('-');
+  return short.length >= 3 ? short : base.slice(0, 60).replace(/-+$/, '');
+}
+
+async function withTimeout<T>(ms: number, label: string, run: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      run(),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`Tempo esgotado (${Math.round(ms / 1000)}s) em ${label}.`)), ms); })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function generateArticleForProject(
   project: PortalProjectItem,
   options?: {
@@ -2208,66 +2231,95 @@ export async function generateArticleForProject(
   const cycleDate = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit'
   }).format(new Date());
-  let chosenTopicItem = pool.find((item) => !pastTitles.some((t) => t.toLowerCase() === item.topic.toLowerCase()));
+  const poolTopicItem = pool.find((item) => !pastTitles.some((t) => t.toLowerCase() === item.topic.toLowerCase()));
+  // Quando as pautas cadastradas acabam, a IA escolhe o melhor ângulo de busca real a partir de uma
+  // semente (palavra-chave + intenção). O título montado por template NUNCA é publicado literalmente:
+  // era ele que gerava títulos como "Como X se conecta a X em X: guia prático 2026-10-30".
+  let chosenTopicItem = poolTopicItem;
   if (!chosenTopicItem) chosenTopicItem = buildDynamicTopicR81(project, pastTitles, cycleDate);
+  const aiChoosesTopic = !options?.customTopic && !poolTopicItem;
 
   const topic = options?.customTopic || chosenTopicItem.topic;
   const primaryKeyword = chosenTopicItem.primaryKeyword || project.keywords[0] || project.name;
   const searchIntent = options?.customIntent || chosenTopicItem.searchIntent || 'educational';
 
 
-  // 3. Prompt de Engenharia Editorial para o Gemini com JSON estruturado
-  const prompt = `Você é o Redator-Chefe e Especialista em SEO do Portal Vip Brasil.
-Crie um artigo completo, original, aprofundado e altamente relevante para o Blog Oficial do Portal Vip Brasil.
+  // 3. Prompt editorial: SEO Yoast completo + E-E-A-T + persuasão ética + JSON estruturado
+  const recentTitles = pastTitles.slice(-60);
+  const appLine = project.hasApp && project.playStoreUrl
+    ? `- Aplicativo oficial na Google Play: ${project.playStoreUrl} (${project.appTitle || project.name})`
+    : '- Produto 100% web (NÃO diga que existe aplicativo na Play Store).';
+  const pautaBlock = aiChoosesTopic
+    ? `PAUTA (você escolhe o ângulo):
+- Semente de palavra-chave: "${primaryKeyword}" | intenção sugerida: ${searchIntent}.
+- Escolha UMA dúvida real que brasileiros digitam no Google sobre este nicho (cauda longa, ex.: "como fazer…", "o que significa…", "oração para…", "qual o melhor…", "passo a passo…").
+- A palavra-chave foco deve ser essa busca real, natural, com 2 a 6 palavras. NÃO use o nome do projeto como palavra-chave foco.
+- O título NÃO pode repetir o nome do projeto mais de uma vez nem conter datas.`
+    : `PAUTA DEFINIDA:
+- Tema: ${topic}
+- Palavra-chave foco: ${primaryKeyword}
+- Intenção de busca: ${searchIntent}`;
 
-DADOS REAIS DO PROJETO:
+  const prompt = `Você é redator-chefe sênior, especialista em SEO (padrão Yoast SEO verde em todos os itens) e em copywriting persuasivo ético, escrevendo em português do Brasil para o blog do Portal Vip Brasil.
+
+PROJETO (dados reais — nunca invente recursos, números, depoimentos ou estatísticas):
 - Nome: ${project.name}
-- Categoria: ${project.category}
-- Segmento: ${project.segment}
-- Website Oficial: ${project.websiteUrl}
-${project.hasApp && project.playStoreUrl ? `- Possui Aplicativo na Play Store: ${project.playStoreUrl} (${project.appTitle})` : '- Produto 100% Web / Plataforma Digital (NÃO INVENTAR QUE TEM APLICATIVO NA PLAY STORE)'}
-- Diferenciais Reais: ${project.highlights.join(' | ')}
-- Palavras-chave do Projeto: ${project.keywords.join(', ')}
+- Categoria: ${project.category} | Segmento: ${project.segment}
+- Público: ${project.targetAudience || 'brasileiros interessados no tema'}
+- Site oficial: ${project.websiteUrl}
+${appLine}
+- Diferenciais reais: ${(project.highlights || []).join(' | ')}
+- Palavras-chave do projeto: ${(project.keywords || []).join(', ')}
 
-DIRETRIZES DA PAUTA:
-- Tema do Artigo: ${topic}
-- Palavra-Chave Principal: ${primaryKeyword}
-- Intenção de Busca: ${searchIntent}
-- Títulos já utilizados anteriormente (EVITE DUPLICAR): ${pastTitles.join(' | ') || 'Nenhum'}
+${pautaBlock}
 
-REQUISITOS OBRIGATÓRIOS:
-1. Título atraente, claro e sem clickbait falso.
-2. Slug limpo em minúsculas com hífens.
-3. SEO Title (máx 65 caracteres) e Meta Description rica (140 a 160 caracteres).
-4. Resumo (Excerpt) de 2 frases.
-5. Pelo menos 3 Seções ricas (H2) com subtópicos (H3) quando apropriado. Conteúdo com profundidade real e valor prático.
-6. Seção de Perguntas Frequentes (FAQ) com 2 a 3 perguntas e respostas diretas e úteis.
-7. Conclusão inspiradora e Chamada para Ação (CTA) clara direcionando para o site oficial (${project.websiteUrl}) ${project.hasApp ? `e para baixar o aplicativo na Play Store (${project.playStoreUrl})` : ''}.
-8. Pacote de Repurposing para Redes Sociais: legendas prontas para Instagram, Facebook, LinkedIn e X com UTM links.
+TÍTULOS JÁ PUBLICADOS (não repita tema, ângulo nem palavra-chave foco): ${recentTitles.join(' | ') || 'nenhum'}
 
-RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
+OBJETIVO: o leitor deve sentir nos primeiros segundos que encontrou EXATAMENTE o que procurava, confiar no conteúdo e terminar querendo acessar o site/app oficial.
+
+REGRAS YOAST SEO (todas obrigatórias):
+1. seoTitle com até 60 caracteres, palavra-chave foco no INÍCIO, termina com " | Portal Vip Brasil" somente se couber.
+2. metaDescription entre 120 e 156 caracteres, contém a palavra-chave foco e termina com um convite à ação.
+3. suggestedSlug com 3 a 5 palavras, minúsculas, hífens, sem acentos, sem datas, sem stopwords (de, da, do, e, para, com, em, o, a).
+4. introduction: a PRIMEIRA frase contém a palavra-chave foco e já responde a dúvida de forma direta (40 a 60 palavras, ideal para trecho em destaque do Google); depois 1 ou 2 frases de gancho emocional (curiosidade + promessa do que o leitor vai descobrir).
+5. Corpo com 1.200 a 1.800 palavras no total, em 5 a 7 seções H2. Use a palavra-chave foco ou sinônimo em 2 ou 3 H2 (NUNCA em todos) e de forma natural no texto (densidade 0,8% a 1,5%, sem repetir em sequência).
+6. Cada seção H2 com 150 a 300 palavras; use H3 quando houver passos, listas ou variações. Parágrafos curtos (até 3 frases), frases com até 20 palavras na maioria, palavras de transição (além disso, por isso, ou seja, por exemplo, em seguida) em pelo menos 30% das frases, voz ativa.
+7. Inclua pelo menos uma seção prática em passo a passo ou lista numerada, e uma seção "erros comuns" ou "cuidados".
+8. secondaryKeywords: 4 a 6 variações semânticas e perguntas relacionadas ("as pessoas também perguntam").
+9. faqSection: 4 a 6 perguntas reais de busca com respostas diretas de 40 a 80 palavras.
+10. keyTakeaways: 4 a 5 frases curtas com os pontos-chave (resumo rápido para quem tem pressa).
+
+PERSUASÃO ÉTICA (sem promessas falsas):
+- Desperte curiosidade (pergunta ou fato intrigante), identificação (a dor/desejo do leitor), autoridade (explicação clara e segura) e desejo (o que muda na vida dele).
+- Inclua 1 micro-chamada natural no meio do texto apontando para ${project.name} e uma conclusão que acolhe e motiva.
+- callToAction: 1 ou 2 frases fortes, específicas e acolhedoras, com o link ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? ` e o convite para baixar o app (${project.playStoreUrl})` : ''}.
+- Proibido: garantias de resultado (amor, dinheiro, cura), diagnósticos médicos/jurídicos/financeiros, sensacionalismo, termos de outros nichos, desrespeito a qualquer religião. Temas espirituais com respeito e linguagem acolhedora.
+
+REDES SOCIAIS:
+- instagram.caption com gancho na 1ª linha, 2-4 linhas de valor e CTA; hashtags: 10 a 15 misturando amplas, de nicho, de cauda longa em português e #PortalVipBrasil.
+- facebook, linkedin e x adaptados ao tom de cada rede (x com até 240 caracteres).
+
+RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
 {
-  "title": "string",
+  "title": "título H1 natural e irresistível (50 a 70 caracteres)",
   "suggestedSlug": "string",
   "seoTitle": "string",
   "metaDescription": "string",
-  "excerpt": "string",
+  "primaryKeyword": "palavra-chave foco",
+  "secondaryKeywords": ["string"],
+  "searchIntent": "informational | educational | tutorial | guide | commercial | navigational",
+  "excerpt": "2 frases que dão vontade de ler",
+  "introduction": "string",
+  "keyTakeaways": ["string"],
   "category": "${project.category}",
-  "tags": ["tag1", "tag2", "tag3"],
-  "primaryKeyword": "${primaryKeyword}",
-  "secondaryKeywords": ["termo1", "termo2"],
-  "readTime": "5 min de leitura",
-  "coverAlt": "Descrição da imagem da capa",
-  "sections": [
-    { "h2": "string", "content": "string", "h3s": [{ "h3": "string", "content": "string" }] }
-  ],
-  "faqSection": [
-    { "question": "string", "answer": "string" }
-  ],
+  "tags": ["string"],
+  "readTime": "X min de leitura",
+  "sections": [{ "h2": "string", "content": "string", "h3s": [{ "h3": "string", "content": "string" }] }],
+  "faqSection": [{ "question": "string", "answer": "string" }],
   "conclusion": "string",
   "callToAction": "string",
   "socialCampaign": {
-    "instagram": { "caption": "string", "hashtags": ["#tag1", "#tag2"] },
+    "instagram": { "caption": "string", "hashtags": ["#tag"] },
     "facebook": { "postText": "string" },
     "linkedin": { "postText": "string" },
     "x": { "tweetText": "string" }
@@ -2276,12 +2328,12 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
 
   const aiRes = await executeAiWith2SecAntiFall({
     prompt,
-    systemInstruction: 'Você é a IA Editorial do Portal Vip Brasil. Produza artigos ricos, verídicos, otimizados para SEO e com profundo valor para os leitores.',
+    systemInstruction: 'Você é a IA Editorial do Portal Vip Brasil: redator sênior brasileiro, especialista em SEO Yoast, E-E-A-T e copywriting ético. Escreve conteúdo original, verdadeiro, profundo e envolvente, e responde somente com JSON válido.',
     jsonOutput: true,
-    maxTokens: 8000,
+    maxTokens: 12000,
     // Um artigo completo leva dezenas de segundos para ser gerado. Com 2,5s TODA geração caía no
     // texto-modelo de contingência e o blog publicava centenas de páginas quase idênticas.
-    timeoutMs: 55000
+    timeoutMs: 90000
   });
 
   let parsed: any;
@@ -2363,7 +2415,11 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
       ];
 
   const articleId = options?.articleId || newId('blog_art');
-  let finalSlug = slugify(parsed.suggestedSlug || parsed.title || topic);
+  // Em produção, artigo sem título/seções suficientes não é publicado (nunca cai no texto da pauta-semente)
+  if (process.env.NODE_ENV !== 'test' && (!parsed?.title || !Array.isArray(parsed?.sections) || parsed.sections.length < 3)) {
+    throw new Error(`[BlogEngine] IA retornou artigo incompleto para ${project.name}; nada foi publicado.`);
+  }
+  let finalSlug = buildSeoSlug(parsed.suggestedSlug || parsed.title || topic);
   try {
     const slugSnap = await db.collection(COLLECTIONS.blogArticles).where('slug', '==', finalSlug).limit(5).get();
     const collision = slugSnap.docs.some((doc) => doc.id !== articleId);
@@ -2410,14 +2466,14 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
   let coverImageGenerated = false;
   try {
     // Capa fotográfica ultrarrealista do nicho certo, guardada fora do artigo (WebP leve via rota de capa)
-    const photo = await generateArticleCoverPhoto({
+    const photo = await withTimeout(75_000, 'capa fotográfica', () => generateArticleCoverPhoto({
       id: articleId,
       slug: finalSlug,
       title: String(parsed.title || topic),
       relatedProjectId: project.id,
       relatedProjectName: project.name,
       primaryKeyword
-    }, { userId: options?.userId, collection: COLLECTIONS.blogArticles });
+    }, { userId: options?.userId, collection: COLLECTIONS.blogArticles }));
     coverImage = photo.coverUrl;
     coverAlt = photo.coverAlt;
     coverImageGenerated = true;
@@ -2460,11 +2516,12 @@ RESPONDA EXCLUSIVAMENTE EM FORMATO JSON com a seguinte estrutura:
     metaDescription: safeString(parsed.metaDescription || articleExcerpt, 160),
     excerpt: articleExcerpt,
     introduction: parsed.introduction || undefined,
+    keyTakeaways: (Array.isArray(parsed.keyTakeaways) ? parsed.keyTakeaways : []).map((item: any) => safeString(item, 220)).filter(Boolean).slice(0, 6),
     category: parsed.category || project.category,
     tags: Array.from(new Set<string>((Array.isArray(parsed.tags) && parsed.tags.length > 0 ? parsed.tags : project.keywords).map((item: any) => String(item || '').trim()).filter((item: string) => item.length > 0))).slice(0, 12),
     primaryKeyword: safeString(parsed.primaryKeyword || primaryKeyword, 160),
     secondaryKeywords: Array.from(new Set<string>((Array.isArray(parsed.secondaryKeywords) ? parsed.secondaryKeywords : chosenTopicItem.secondaryKeywords || []).map((item: any) => String(item || '').trim()).filter((item: string) => item.length > 0))).slice(0, 12),
-    searchIntent,
+    searchIntent: (['informational', 'educational', 'commercial', 'navigational', 'tutorial', 'guide'].includes(parsed.searchIntent) ? parsed.searchIntent : searchIntent) as StoredBlogArticle['searchIntent'],
     author: {
       name: settings.defaultAuthorName,
       avatar: PORTAL_VIP_OFFICIAL_ASSETS.logoUrl,
@@ -2766,7 +2823,8 @@ export async function runDailyBlogCycle(userIdOrOptions?: string | { userId?: st
     }
   };
 
-  const concurrency = Math.min(3, projectsToProcess.length);
+  // Todos os projetos em paralelo: cada artigo leva até ~165s (texto + foto); em série o ciclo estourava o tempo.
+  const concurrency = Math.min(8, projectsToProcess.length);
   if (concurrency > 0) {
     await Promise.all(Array.from({ length: concurrency }, () => worker()));
   }
