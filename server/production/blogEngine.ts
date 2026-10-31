@@ -1758,6 +1758,55 @@ export function isTemplateLikeArticle(article: any): boolean {
   return hits >= 2;
 }
 
+/**
+ * Garante tipos seguros em qualquer artigo vindo do banco (documentos antigos podem ter campos
+ * ausentes, nulos ou em formato diferente). Um único documento malformado não pode derrubar o blog.
+ */
+export function sanitizeStoredArticle(article: any): StoredBlogArticle {
+  const str = (v: any) => (typeof v === 'string' ? v : v == null ? '' : String(v));
+  const arr = (v: any) => (Array.isArray(v) ? v.filter((x) => x != null) : []);
+  const sections = arr(article?.sections)
+    .filter((sec: any) => typeof sec === 'object')
+    .map((sec: any) => ({
+      ...sec,
+      h2: str(sec.h2),
+      content: str(sec.content),
+      h3s: arr(sec.h3s).filter((h: any) => typeof h === 'object').map((h: any) => ({ ...h, h3: str(h.h3), content: str(h.content) }))
+    }));
+  const authorRaw = article?.author;
+  return {
+    ...article,
+    id: str(article?.id),
+    slug: str(article?.slug),
+    title: str(article?.title) || 'Artigo Portal Vip Brasil',
+    seoTitle: str(article?.seoTitle),
+    metaDescription: str(article?.metaDescription || article?.seoDescription),
+    excerpt: str(article?.excerpt || article?.summary || article?.metaDescription),
+    introduction: str(article?.introduction),
+    conclusion: str(article?.conclusion),
+    callToAction: str(article?.callToAction),
+    category: str(article?.category) || 'Artigos',
+    tags: arr(article?.tags).map(str),
+    primaryKeyword: str(article?.primaryKeyword),
+    secondaryKeywords: arr(article?.secondaryKeywords).map(str),
+    sections,
+    faqSection: arr(article?.faqSection).filter((f: any) => typeof f === 'object'),
+    internalLinks: arr(article?.internalLinks).filter((l: any) => typeof l === 'object'),
+    author: typeof authorRaw === 'object' && authorRaw
+      ? { name: str(authorRaw.name), avatar: str(authorRaw.avatar), role: str(authorRaw.role) }
+      : { name: str(authorRaw) || 'Equipe Editorial Portal Vip Brasil', avatar: '', role: '' },
+    coverImage: str(article?.coverImage || article?.featuredImageUrl),
+    coverAlt: str(article?.coverAlt || article?.coverImageAlt),
+    relatedProjectId: str(article?.relatedProjectId || article?.projectId),
+    relatedProjectName: str(article?.relatedProjectName),
+    relatedProjectUrl: str(article?.relatedProjectUrl),
+    readTime: str(article?.readTime),
+    publishedAt: str(article?.publishedAt || article?.createdAt || article?.updatedAt),
+    updatedAt: str(article?.updatedAt || article?.publishedAt || article?.createdAt),
+    createdAt: str(article?.createdAt || article?.publishedAt)
+  } as StoredBlogArticle;
+}
+
 // Cache curto por instância serverless: evita reler o acervo inteiro a cada visita.
 const PUBLISHED_CACHE_TTL_MS = 60_000;
 let publishedCache: { at: number; items: StoredBlogArticle[] } | null = null;
@@ -1786,14 +1835,26 @@ export async function loadAllPublishedBlogArticles(): Promise<StoredBlogArticle[
     ]);
     const bySlug = new Map<string, StoredBlogArticle>();
     for (const d of articlesSnap.docs || []) {
-      const article = { id: d.id, ...(d.data() as any) } as StoredBlogArticle;
+      let article: StoredBlogArticle;
+      try {
+        article = sanitizeStoredArticle({ id: d.id, ...(d.data() as any) });
+      } catch (err) {
+        console.warn('[BlogEngine] Artigo ignorado por formato inválido:', d.id, err);
+        continue;
+      }
       if (!article.slug) continue;
       if ((article as any).noindex === true) continue;
       article.publishedAt = article.publishedAt || article.createdAt || article.updatedAt || '';
       if (!bySlug.has(article.slug)) bySlug.set(article.slug, article);
     }
     for (const d of legacySnap.docs || []) {
-      const article = normalizeLegacyBlogPost(d.id, d.data());
+      let article: StoredBlogArticle;
+      try {
+        article = sanitizeStoredArticle(normalizeLegacyBlogPost(d.id, d.data()));
+      } catch (err) {
+        console.warn('[BlogEngine] Post legado ignorado por formato inválido:', d.id, err);
+        continue;
+      }
       if (!article.slug || bySlug.has(article.slug) || (article as any).noindex === true) continue;
       bySlug.set(article.slug, article);
     }
@@ -1912,7 +1973,7 @@ export async function getBlogArticleBySlug(slug: string): Promise<StoredBlogArti
 
     const publishedDoc = snap.docs.find((doc) => String((doc.data() as any)?.status || '') === 'published');
     if (publishedDoc) {
-      const article: StoredBlogArticle = { id: publishedDoc.id, ...(publishedDoc.data() as any) };
+      const article: StoredBlogArticle = sanitizeStoredArticle({ id: publishedDoc.id, ...(publishedDoc.data() as any) });
       if (isInvalidOrLogoImage(article.coverImage)) {
         const thematic = resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category);
         article.coverImage = thematic.url;

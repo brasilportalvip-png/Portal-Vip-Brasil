@@ -2295,8 +2295,20 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
   }
 
   const result = await listBlogArticles({ category, projectId, query, status, limit, offset });
-  const projectMap = new Map((await listAllPortalProjectsFromDb()).map((project) => [project.id, project]));
-  const articles = result.articles.map((article) => serializeBlogArticleForPublic(article, projectMap.get(article.relatedProjectId)));
+  const projectList = await listAllPortalProjectsFromDb().catch((err: any) => {
+    console.warn('[Blog] Projetos indisponíveis ao listar artigos; seguindo sem enriquecimento:', err?.message || err);
+    return [] as any[];
+  });
+  const projectMap = new Map(projectList.map((project: any) => [project.id, project]));
+  // Um artigo com dado inesperado é pulado (e registrado), nunca derruba a lista inteira
+  const articles = result.articles.flatMap((article) => {
+    try {
+      return [serializeBlogArticleForPublic(article, projectMap.get(article.relatedProjectId))];
+    } catch (err) {
+      console.warn('[Blog] Falha ao serializar artigo público:', article?.id, err);
+      return [];
+    }
+  });
   res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
   res.json({
     ...result,

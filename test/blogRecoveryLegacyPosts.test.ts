@@ -129,3 +129,22 @@ test('SEO: artigo gerado por texto-modelo fica visível mas com noindex e fora d
   const realPage = await renderPublicPage('/blog/artigo-real');
   assert.doesNotMatch(realPage.html, /noindex/);
 });
+
+test('Robustez: documentos malformados não derrubam a listagem pública', async () => {
+  const db = fresh();
+  await db.collection(COLLECTIONS.blogArticles).doc('ruim').set({
+    id: 'ruim', slug: 'artigo-ruim', status: 'published', title: 123, tags: 'nao-e-lista',
+    sections: [null, 'texto solto', { h2: null, content: 42, h3s: 'x' }], author: null, faqSection: {}
+  });
+  await db.collection(COLLECTIONS.blogArticles).doc('bom').set({
+    id: 'bom', slug: 'artigo-bom', status: 'published', title: 'Bom', excerpt: 'ok', publishedAt: '2026-06-01'
+  });
+  const list = await listBlogArticles({ status: 'published' });
+  assert.equal(list.total, 2);
+  const { serializeBlogArticleForPublic } = await import('../server/production/blogEngine.js');
+  for (const article of list.articles) {
+    const pub = serializeBlogArticleForPublic(article);
+    assert.ok(pub.slug);
+    assert.ok(Array.isArray(pub.keywords));
+  }
+});
