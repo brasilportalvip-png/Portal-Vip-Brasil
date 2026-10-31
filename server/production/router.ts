@@ -42,7 +42,9 @@ import {
   healAllStoredBlogCovers,
   rescueStuckDraftArticles,
   diagnoseBlogInventory,
-  isTemplateLikeArticle
+  isTemplateLikeArticle,
+  decodeDataUriImage,
+  publicCoverUrl
 } from './blogEngine.js';
 import multer from 'multer';
 
@@ -2097,7 +2099,7 @@ export async function buildSitemapXml(): Promise<string> {
         lastmod: item.updatedAt || item.publishedAt || latestContentDate,
         changefreq: 'monthly',
         priority: '0.80',
-        image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
+        image: item.coverImage ? { url: publicCoverUrl(item), title: item.title || item.slug } : undefined
       });
     }
   }
@@ -2110,7 +2112,7 @@ export async function buildSitemapXml(): Promise<string> {
         lastmod: item.updatedAt || item.publishedAt || latestContentDate,
         changefreq: 'weekly',
         priority: '0.90',
-        image: item.coverImage ? { url: item.coverImage, title: item.title || item.slug } : undefined
+        image: item.coverImage ? { url: publicCoverUrl(item), title: item.title || item.slug } : undefined
       });
     }
   }
@@ -2282,6 +2284,8 @@ router.get('/portal/antifall-status', requireAuth, requireAdmin, asyncRoute(asyn
 // BLOG AUTOMÁTICO & TRÁFEGO ORGÂNICO ENDPOINTS
 // ==========================================
 
+type BlogProjectItem = Awaited<ReturnType<typeof listAllPortalProjectsFromDb>>[number];
+
 router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Response) => {
   const category = req.query.category ? String(req.query.category) : undefined;
   const projectId = req.query.projectId ? String(req.query.projectId) : undefined;
@@ -2295,8 +2299,20 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
   }
 
   const result = await listBlogArticles({ category, projectId, query, status, limit, offset });
-  const projectMap = new Map((await listAllPortalProjectsFromDb()).map((project) => [project.id, project]));
-  const articles = result.articles.map((article) => serializeBlogArticleForPublic(article, projectMap.get(article.relatedProjectId)));
+  const projectList: BlogProjectItem[] = await listAllPortalProjectsFromDb().catch((err: any) => {
+    console.warn('[Blog] Projetos indisponíveis ao listar artigos; seguindo sem enriquecimento:', err?.message || err);
+    return [] as BlogProjectItem[];
+  });
+  const projectMap = new Map<string, BlogProjectItem>(projectList.map((project) => [project.id, project] as [string, BlogProjectItem]));
+  // Um artigo com dado inesperado é pulado (e registrado), nunca derruba a lista inteira
+  const articles = result.articles.flatMap((article) => {
+    try {
+      return [serializeBlogArticleForPublic(article, projectMap.get(article.relatedProjectId))];
+    } catch (err) {
+      console.warn('[Blog] Falha ao serializar artigo público:', article?.id, err);
+      return [];
+    }
+  });
   res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
   res.json({
     ...result,
@@ -2307,6 +2323,20 @@ router.get('/portal/blog/articles', asyncRoute(async (req: Request, res: Respons
     limit: result.limit,
     offset: result.offset
   });
+}));
+
+// Capa de artigo gravada como data URI: servida como imagem real (leve para listagem, SEO e redes sociais)
+router.get('/portal/blog/articles/:slug/cover', asyncRoute(async (req: Request, res: Response) => {
+  const article = await getBlogArticleBySlug(req.params.slug);
+  if (!article) return res.status(404).json({ error: 'Artigo não encontrado.' });
+  const decoded = decodeDataUriImage(String(article.coverImage || ''));
+  if (decoded) {
+    res.set('Content-Type', decoded.mime);
+    res.set('Cache-Control', 'public, max-age=86400, s-maxage=604800, immutable');
+    res.set('X-Content-Type-Options', 'nosniff');
+    return res.send(decoded.buffer);
+  }
+  return res.redirect(302, publicCoverUrl({ ...article, coverImage: String(article.coverImage || '').startsWith('data:') ? '' : article.coverImage }));
 }));
 
 router.get('/portal/blog/articles/:slug', asyncRoute(async (req: Request, res: Response) => {
