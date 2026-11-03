@@ -205,3 +205,54 @@ img, svg, video, canvas { max-width: 100%; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===== Froc (tela inicial) — dourado, preto, rosa, verde e branco ===== */
+.pvf-gold-text {
+  background: linear-gradient(90deg, #f5d67a, #d4a937 45%, #fff3c4 60%, #d4a937);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: pvf-shimmer 6s linear infinite;
+}
+.pvf-screen {
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(212, 169, 55, 0.16), transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(236, 72, 153, 0.10), transparent 45%),
+    radial-gradient(ellipse at 0% 100%, rgba(34, 197, 94, 0.08), transparent 45%),
+    #050505;
+}
+.pvf-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 9999px;
+  border: 2px solid var(--pvf-glow, #22c55e);
+  box-shadow: 0 0 24px -2px var(--pvf-glow, #22c55e);
+  opacity: 0.85;
+  transition: border-color .25s, box-shadow .25s;
+}
+.pvf-ring.is-listening { animation: pvf-pulse 1.6s ease-in-out infinite; }
+.pvf-ring.is-thinking { border-style: dashed; animation: pvf-spin 3s linear infinite; }
+.pvf-eye {
+  position: absolute;
+  width: 26%;
+  height: 26%;
+  left: 37%;
+  top: 31%;
+  border-radius: 9999px;
+  background: radial-gradient(circle, var(--pvf-glow, #22c55e) 0%, transparent 70%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  transition: opacity .12s;
+}
+.pvf-bubble-froc { background: rgba(212, 169, 55, 0.08); border: 1px solid rgba(212, 169, 55, 0.28); }
+.pvf-bubble-user { background: rgba(236, 72, 153, 0.12); border: 1px solid rgba(236, 72, 153, 0.35); }
+.pvf-scroll { scrollbar-width: thin; scrollbar-color: rgba(212,169,55,.35) transparent; }
+@keyframes pvf-shimmer { to { background-position: 200% center; } }
+@keyframes pvf-pulse { 50% { transform: scale(1.06); opacity: .55; } }
+@keyframes pvf-spin { to { transform: rotate(360deg); } }
+@keyframes pvf-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.pvf-rise { animation: pvf-rise .35s ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .pvf-gold-text, .pvf-ring.is-listening, .pvf-ring.is-thinking, .pvf-rise { animation: none; }
+}
