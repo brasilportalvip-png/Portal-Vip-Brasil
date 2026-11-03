@@ -4,6 +4,7 @@ import path from 'path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { config, assertProductionConfig } from './config/index.js';
+import frocRouter from './production/frocRouter.js';
 import productionRouter, { buildRobotsTxt, buildSitemapTxt, buildSitemapXml } from './production/router.js';
 import { renderPrivateAppPage, renderPublicPage } from './production/publicPages.js';
 import { consumeRateLimit } from './production/store.js';
@@ -84,7 +85,7 @@ function contentSecurityPolicy(): string {
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https:",
     "media-src 'self' blob: https:",
-    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com wss://*.firebaseio.com",
+    "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebaseapp.com wss://*.firebaseio.com wss://generativelanguage.googleapis.com",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
     'upgrade-insecure-requests'
@@ -134,7 +135,7 @@ export function createApp() {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(self), geolocation=()');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
@@ -314,6 +315,9 @@ export function createApp() {
     const page = renderPrivateAppPage(req.path);
     res.status(page.status).type('text/html').send(page.html);
   });
+
+  // Froc: conversa da tela inicial (visitante com limite de gasto; dono com as ferramentas).
+  app.use('/api', frocRouter);
 
   app.use('/api', (req, _res, next) => {
     // Auxílio oportunista secundário restrito exclusivamente à API privada (nunca em rotas públicas ou estáticas)

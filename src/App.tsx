@@ -32,6 +32,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SupportPage } from './pages/SupportPage';
 import { LegalPage } from './pages/LegalPage';
 import { AdminPage } from './pages/AdminPage';
+import { FrocHome } from './components/froc/FrocHome';
 import { AlmaAgentsPage } from './pages/AlmaAgentsPage';
 
 import type { Campaign, Company, ContentItem, ScheduledPost, User } from './types';
@@ -354,31 +355,65 @@ export function App() {
     )
   );
 
-  // Home view is the Portal Vip Brasil Blog & Magazine
-  if (guardedTab === 'home' || guardedTab === 'blog') {
-    return (
-      <div className="min-h-screen bg-[#070B14] text-slate-100 selection:bg-cyan-500 selection:text-black">
-        <OfflineBanner />
-        <PwaInstallPrompt />
-        <AnalyticsConsentBanner />
-        <BlogPortalPage onNavigate={navigate} onOpenAuth={() => setAuthOpen(true)} user={user} />
-        <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} onSuccess={authSuccess} />
-        <TermsConsentModal isOpen={needsTermsConsent} onConsentSuccess={authSuccess} onLogout={logout} />
-      </div>
+  const openProject = (slug: string) => {
+    const target = `/vitrine/${encodeURIComponent(slug)}`;
+    if (window.location.pathname !== target) window.history.pushState({ tab: 'vitrine', slug }, '', target);
+    setCurrentTab('vitrine');
+    // A vitrine já aberta escuta o popstate para trocar de projeto.
+    window.setTimeout(() => window.dispatchEvent(new PopStateEvent('popstate', { state: { tab: 'vitrine', slug } })), 0);
+  };
+
+  // Froc: tela inicial estilo ChatGPT; nas outras telas vira uma barra flutuante (a conversa continua).
+  const froc = (
+    <FrocHome
+      isOwner={isAdmin}
+      isLoggedIn={!!user}
+      ownerName={user?.name ? user.name.split(' ')[0] : null}
+      userId={user?.id || null}
+      getToken={async () => (auth.currentUser ? auth.currentUser.getIdToken() : null)}
+      page={guardedTab}
+      selectedProjectId={selectedCompany?.id || null}
+      onNavigate={navigate}
+      onOpenProject={openProject}
+      onLogin={() => setAuthOpen(true)}
+      onLogout={logout}
+    />
+  );
+
+  /**
+   * Mesma estrutura em todas as telas: assim o Froc (sempre na mesma posição) NÃO é recriado
+   * ao trocar de tela — a conversa, a voz e o microfone continuam.
+   */
+  const shell = (className: string, body: React.ReactNode) => (
+    <div className={className}>
+      <OfflineBanner />
+      <PwaInstallPrompt />
+      <AnalyticsConsentBanner />
+      <React.Fragment key="page">{body}</React.Fragment>
+      {froc}
+      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} onSuccess={authSuccess} />
+      <TermsConsentModal isOpen={needsTermsConsent} onConsentSuccess={authSuccess} onLogout={logout} />
+    </div>
+  );
+
+  // Tela inicial = conversa com o Froc (o blog continua em /blog)
+  if (guardedTab === 'home') {
+    return shell('min-h-screen bg-[#050505] text-slate-100', null);
+  }
+
+  // Blog & Magazine do Portal Vip Brasil
+  if (guardedTab === 'blog') {
+    return shell(
+      'min-h-screen bg-[#070B14] text-slate-100 selection:bg-cyan-500 selection:text-black',
+      <BlogPortalPage onNavigate={navigate} onOpenAuth={() => setAuthOpen(true)} user={user} />
     );
   }
 
   // Vitrine view is the 7 projects catalog
   if (guardedTab === 'vitrine') {
-    return (
-      <div className="min-h-screen bg-[#070B14] text-slate-100 selection:bg-cyan-500 selection:text-black">
-        <OfflineBanner />
-        <PwaInstallPrompt />
-        <AnalyticsConsentBanner />
-        <VitrinePage onNavigate={navigate} />
-        <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} onSuccess={authSuccess} />
-        <TermsConsentModal isOpen={needsTermsConsent} onConsentSuccess={authSuccess} onLogout={logout} />
-      </div>
+    return shell(
+      'min-h-screen bg-[#070B14] text-slate-100 selection:bg-cyan-500 selection:text-black',
+      <VitrinePage onNavigate={navigate} />
     );
   }
 
@@ -530,11 +565,9 @@ export function App() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#070B14] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-black">
-      <OfflineBanner />
-      <PwaInstallPrompt />
-      <AnalyticsConsentBanner />
+  return shell(
+    'min-h-screen bg-[#070B14] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-black',
+    <>
 
       {/* Desktop Sidebar */}
       <div className="hidden lg:block">
@@ -595,10 +628,7 @@ export function App() {
 
       {/* Mobile Bottom Navigation */}
       <BottomNav currentTab={guardedTab} onNavigate={navigate} />
-
-      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} onSuccess={authSuccess} />
-      <TermsConsentModal isOpen={needsTermsConsent} onConsentSuccess={authSuccess} onLogout={logout} />
-    </div>
+    </>
   );
 }
 
