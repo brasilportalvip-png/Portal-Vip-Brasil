@@ -1117,6 +1117,8 @@ export interface VideoJobData {
   id: string;
   userId: string;
   companyId: string;
+  /** Avisar no celular para postar no Kwai quando o vídeo ficar pronto (Autopilot com Kwai marcado). */
+  kwaiReminder?: boolean;
   projectId?: string;
   destinations?: string[];
   scheduledDate?: string;
@@ -1453,6 +1455,7 @@ export async function startVideoGenerationJob(data: {
   mood?: string;
   autoPublishPlatforms?: string[];
   autoPublishProviderOptions?: { youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
+  kwaiReminder?: boolean;
 }): Promise<VideoJobData> {
   await assertAutomationAllowed({ userId: data.userId, projectId: data.company?.id });
   const preset: VideoPreset = data.preset === 'cinema_4k' ? 'cinema_4k' : data.preset === 'pro_1080p' ? 'pro_1080p' : 'demo_720p';
@@ -1489,6 +1492,7 @@ export async function startVideoGenerationJob(data: {
       ? { autoPublishPlatforms: data.autoPublishPlatforms.map((item) => String(item)).filter(Boolean).slice(0, 10) }
       : {}),
     ...(data.autoPublishProviderOptions ? { autoPublishProviderOptions: data.autoPublishProviderOptions } : {}),
+    ...(data.kwaiReminder ? { kwaiReminder: true } : {}),
     status: 'queued',
     pipelineState: 'provider_starting',
     progressPct: 2,
@@ -2489,6 +2493,20 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
         });
       } catch (notificationError) {
         console.warn('[Froc AI Video Notification] Vídeo concluído; notificação será tentada posteriormente:', notificationError);
+      }
+      if (completedJob.kwaiReminder && completedJob.contentItemId) {
+        try {
+          const { queueKwaiReminder } = await import('./kwaiReminders.js');
+          await queueKwaiReminder({
+            key: `video:${completedJob.id}`,
+            userId: completedJob.userId,
+            companyId: completedJob.companyId,
+            contentItemId: completedJob.contentItemId,
+            title: completedJob.title || 'Vídeo do dia'
+          });
+        } catch (kwaiError) {
+          console.warn('[Froc AI Video] Vídeo pronto; aviso do Kwai não pôde ser agendado:', kwaiError);
+        }
       }
     }
     return completedJob;

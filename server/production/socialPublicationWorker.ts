@@ -1,4 +1,5 @@
 import { COLLECTIONS, firestore, nowIso } from './store.js';
+import { processDueKwaiReminders } from './kwaiReminders.js';
 import { recoverStalePublishingPostsR8, processScheduledPostsR8 } from './scheduledPublisherR8.js';
 import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { isGlobalAutomationEnabled } from './automationGate.js';
@@ -70,6 +71,14 @@ export async function runSocialPublicationWorker(options: { timeoutMs?: number; 
     deferred: 0,
     remaining: 0
   };
+
+  // Avisos do Kwai no celular: custo zero, saem mesmo com o Botão Mestre desligado.
+  try {
+    const kwai = await processDueKwaiReminders();
+    if (kwai.sent > 0) console.info(`[SocialPublicationWorker] ${kwai.sent} aviso(s) do Kwai enviado(s) (${kwai.pushed} no celular).`);
+  } catch (kwaiError) {
+    console.warn('[SocialPublicationWorker] Falha ao enviar avisos do Kwai:', sanitizeSecretText(kwaiError));
+  }
 
   const isAutoEnabled = await isGlobalAutomationEnabled();
   if (!isAutoEnabled) {
