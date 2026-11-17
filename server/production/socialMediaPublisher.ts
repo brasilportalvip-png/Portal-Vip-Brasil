@@ -3,10 +3,8 @@ import { isIP } from 'node:net';
 import { config } from '../config/index.js';
 import { COLLECTIONS, firestore, nowIso } from './store.js';
 import {
-  createPinterestPin,
   ensureValidSocialAccessToken,
   findSocialConnection,
-  getPinterestBoards,
   normalizeProvider,
   publishInstagramMedia,
   publishText,
@@ -18,14 +16,12 @@ const MEDIA_FETCH_TIMEOUT_MS = 30_000;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 128 * 1024 * 1024;
 const LINKEDIN_VIDEO_CHUNK_BYTES = 4 * 1024 * 1024;
-const X_VIDEO_CHUNK_BYTES = 4 * 1024 * 1024;
 const TIKTOK_MULTI_CHUNK_BYTES = 32 * 1024 * 1024;
 const TIKTOK_WHOLE_UPLOAD_MAX_BYTES = 64 * 1024 * 1024;
 
 export type MediaRequirement = 'none' | 'image_or_video' | 'video';
 
 export interface ScheduledProviderOptions {
-  pinterestBoardId?: string;
   youtubePrivacyStatus?: 'private' | 'unlisted' | 'public';
 }
 
@@ -303,7 +299,7 @@ export function isUniversalAutoPublishSupported(provider: string): boolean {
 export function mediaRequirementForProvider(provider: string): MediaRequirement | null {
   const normalized = normalizeProvider(provider);
   if (!normalized) return null;
-  if (normalized === 'instagram' || normalized === 'tiktok' || normalized === 'pinterest') return 'image_or_video';
+  if (normalized === 'instagram' || normalized === 'tiktok') return 'image_or_video';
   if (normalized === 'youtube') return 'video';
   return 'none';
 }
@@ -327,13 +323,7 @@ export function validateScheduledContentForProvider(
   if (normalized === 'youtube' && !hasVideo) {
     return 'YouTube exige um vídeo MP4 concluído e salvo na Biblioteca de Conteúdos.';
   }
-  if (normalized === 'pinterest' && !hasImage && !hasVideo) {
-    return 'Pinterest exige imagem ou vídeo.';
-  }
-  if (normalized === 'pinterest' && hasVideo && !hasImage) {
-    return 'Pinterest exige uma imagem de capa quando o conteúdo selecionado é vídeo.';
-  }
-  if ((normalized === 'facebook' || normalized === 'linkedin' || normalized === 'x') && !hasText && !hasImage && !hasVideo) {
+  if ((normalized === 'facebook' || normalized === 'linkedin') && !hasText && !hasImage && !hasVideo) {
     return `${normalized} exige texto, imagem ou vídeo para publicação.`;
   }
   return null;
@@ -520,103 +510,6 @@ async function publishLinkedInMedia(data: {
   }
 }
 
-async function xUploadImage(token: string, imageUrl: string): Promise<string> {
-  const media = await downloadMedia(imageUrl, 'image');
-  const response = await providerFetch('https://api.x.com/2/media/upload', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      media: media.buffer.toString('base64'),
-      media_category: 'tweet_image',
-      media_type: media.contentType === 'image/png' ? 'image/png' : media.contentType === 'image/webp' ? 'image/webp' : 'image/jpeg',
-      shared: false
-    })
-  });
-  const json = await response.json().catch(() => ({} as any));
-  if (!response.ok || !json?.data?.id) throw new Error(json?.detail || json?.title || `Falha ao enviar imagem ao X (HTTP ${response.status}).`);
-  return String(json.data.id);
-}
-
-async function xUploadVideo(token: string, videoUrl: string): Promise<string> {
-  const media = await downloadMedia(videoUrl, 'video');
-  const init = await providerFetch('https://api.x.com/2/media/upload/initialize', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ media_category: 'tweet_video', media_type: 'video/mp4', total_bytes: media.size, shared: false })
-  });
-  const initJson = await init.json().catch(() => ({} as any));
-  const mediaId = String(initJson?.data?.id || '');
-  if (!init.ok || !mediaId) throw new Error(initJson?.detail || `Falha ao iniciar vídeo no X (HTTP ${init.status}).`);
-
-  let segmentIndex = 0;
-  for (let start = 0; start < media.size; start += X_VIDEO_CHUNK_BYTES) {
-    const chunk = media.buffer.subarray(start, Math.min(start + X_VIDEO_CHUNK_BYTES, media.size));
-    const form = new FormData();
-    const chunkBytes = Uint8Array.from(chunk);
-    form.set('media', new Blob([chunkBytes.buffer], { type: 'video/mp4' }), `part-${segmentIndex}.mp4`);
-    form.set('segment_index', String(segmentIndex));
-    const append = await providerFetch(`https://api.x.com/2/media/upload/${encodeURIComponent(mediaId)}/append`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: form
-    }, 60_000);
-    if (!append.ok) throw new Error(`Falha ao enviar parte ${segmentIndex} do vídeo ao X (HTTP ${append.status}).`);
-    segmentIndex += 1;
-  }
-
-  const finalize = await providerFetch(`https://api.x.com/2/media/upload/${encodeURIComponent(mediaId)}/finalize`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  const finalizeJson = await finalize.json().catch(() => ({} as any));
-  if (!finalize.ok) throw new Error(finalizeJson?.detail || `Falha ao finalizar vídeo no X (HTTP ${finalize.status}).`);
-
-  let state = String(finalizeJson?.data?.processing_info?.state || 'succeeded');
-  for (let attempt = 0; state && state !== 'succeeded' && state !== 'failed' && attempt < 12; attempt += 1) {
-    const delay = Math.min(5_000, Math.max(1_000, Number(finalizeJson?.data?.processing_info?.check_after_secs || 1) * 1000));
-    await wait(delay);
-    const statusUrl = new URL('https://api.x.com/2/media/upload');
-    statusUrl.searchParams.set('media_id', mediaId);
-    const statusRes = await providerFetch(statusUrl, { headers: { Authorization: `Bearer ${token}` } });
-    const statusJson = await statusRes.json().catch(() => ({} as any));
-    if (!statusRes.ok) throw new Error(`Falha ao consultar processamento do vídeo no X (HTTP ${statusRes.status}).`);
-    state = String(statusJson?.data?.processing_info?.state || 'succeeded');
-    if (state === 'failed') throw new Error(statusJson?.data?.processing_info?.error?.message || 'O X falhou ao processar o vídeo.');
-  }
-  if (state !== 'succeeded') throw new Error('O X não concluiu o processamento do vídeo dentro do tempo seguro.');
-  return mediaId;
-}
-
-async function publishXMedia(data: {
-  userId: string;
-  companyId: string;
-  text: string;
-  imageUrl?: string;
-  videoUrl?: string;
-}): Promise<UniversalPublishResult> {
-  if (!data.imageUrl && !data.videoUrl) {
-    const textResult = await publishText({ userId: data.userId, companyId: data.companyId, provider: 'x', text: data.text });
-    return { ...textResult, externalId: textResult.externalId ?? null, success: textResult.externalState === 'confirmed_success', ...(textResult.externalState === 'confirmed_success' ? { deliveryMode: 'published' as const } : {}) };
-  }
-  try {
-    const { token } = await getConnection(data.userId, data.companyId, 'x');
-    const mediaId = data.videoUrl ? await xUploadVideo(token, data.videoUrl) : await xUploadImage(token, data.imageUrl!);
-    const response = await providerFetch('https://api.x.com/2/tweets', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: data.text.slice(0, 280), media: { media_ids: [mediaId] } })
-    });
-    const json = await response.json().catch(() => ({} as any));
-    if (response.status >= 500) return unknown('x', `Erro interno do X após upload da mídia (HTTP ${response.status}).`, response.status);
-    if (!response.ok) return failure('x', json?.detail || json?.title || `X rejeitou o post (HTTP ${response.status}).`, response.status !== 401, response.status);
-    return json?.data?.id ? success('x', String(json.data.id)) : unknown('x', 'X aceitou o post com mídia sem retornar data.id.', response.status);
-  } catch (error: any) {
-    return /timeout|fetch failed|network/i.test(String(error?.message || error))
-      ? unknown('x', error)
-      : failure('x', error?.message || String(error), false);
-  }
-}
-
 async function publishTikTokDraft(data: {
   userId: string;
   companyId: string;
@@ -776,127 +669,6 @@ async function publishYouTubeVideo(data: {
   }
 }
 
-async function publishPinterestVideo(data: {
-  userId: string;
-  companyId: string;
-  boardId?: string;
-  title: string;
-  text: string;
-  link?: string;
-  imageUrl?: string;
-  videoUrl: string;
-}): Promise<UniversalPublishResult> {
-  if (!data.imageUrl) return failure('pinterest', 'Pinterest exige uma imagem de capa para publicar vídeo.', false);
-  try {
-    const media = await downloadMedia(data.videoUrl, 'video');
-    const { token } = await getConnection(data.userId, data.companyId, 'pinterest');
-    let boardId = String(data.boardId || '');
-    if (!boardId) {
-      const boards = await getPinterestBoards({ userId: data.userId, companyId: data.companyId });
-      boardId = String(boards[0]?.id || '');
-    }
-    if (!boardId) return failure('pinterest', 'Nenhuma pasta do Pinterest disponível para receber o Pin.', false);
-
-    const register = await providerFetch('https://api.pinterest.com/v5/media', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ media_type: 'video' })
-    });
-    const regJson = await register.json().catch(() => ({} as any));
-    const mediaId = String(regJson?.media_id || '');
-    const uploadUrl = String(regJson?.upload_url || '');
-    const uploadParameters = regJson?.upload_parameters;
-    if (!register.ok || !mediaId || !uploadUrl || !uploadParameters) {
-      return failure('pinterest', regJson?.message || `Falha ao registrar vídeo no Pinterest (HTTP ${register.status}).`, register.status !== 401, register.status);
-    }
-
-    const form = new FormData();
-    if (Array.isArray(uploadParameters)) {
-      for (const item of uploadParameters) {
-        if (item?.key !== undefined && item?.value !== undefined) form.append(String(item.key), String(item.value));
-        else if (item?.name !== undefined && item?.value !== undefined) form.append(String(item.name), String(item.value));
-      }
-    } else {
-      for (const [key, value] of Object.entries(uploadParameters)) form.append(key, String(value));
-    }
-    const videoBytes = Uint8Array.from(media.buffer);
-    form.append('file', new Blob([videoBytes.buffer], { type: 'video/mp4' }), 'portal-vip-video.mp4');
-    const upload = await providerFetch(uploadUrl, { method: 'POST', body: form }, 120_000);
-    if (![200, 201, 204].includes(upload.status)) return failure('pinterest', `Falha ao enviar vídeo para o armazenamento do Pinterest (HTTP ${upload.status}).`, true, upload.status);
-
-    let mediaStatus = 'processing';
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const check = await providerFetch(`https://api.pinterest.com/v5/media/${encodeURIComponent(mediaId)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const checkJson = await check.json().catch(() => ({} as any));
-      if (!check.ok) return failure('pinterest', checkJson?.message || `Falha ao consultar vídeo no Pinterest (HTTP ${check.status}).`, true, check.status);
-      mediaStatus = String(checkJson?.status || '').toLowerCase();
-      if (['succeeded', 'success', 'available'].includes(mediaStatus)) break;
-      if (['failed', 'error'].includes(mediaStatus)) return failure('pinterest', checkJson?.failure_reason || 'Pinterest falhou ao processar o vídeo.', false);
-      await wait(1_500);
-    }
-    if (!['succeeded', 'success', 'available'].includes(mediaStatus)) return unknown('pinterest', 'Pinterest ainda está processando o vídeo; não é seguro criar o Pin sem confirmação.');
-
-    const pinBody: any = {
-      board_id: boardId,
-      title: data.title.slice(0, 100),
-      description: data.text.slice(0, 800),
-      media_source: { source_type: 'video_id', cover_image_url: data.imageUrl, media_id: mediaId }
-    };
-    if (data.link) pinBody.link = data.link;
-    const pin = await providerFetch('https://api.pinterest.com/v5/pins', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(pinBody)
-    });
-    const pinJson = await pin.json().catch(() => ({} as any));
-    if (pin.status >= 500) return unknown('pinterest', `Erro interno do Pinterest (HTTP ${pin.status}).`, pin.status);
-    if (!pin.ok || !pinJson?.id) return failure('pinterest', pinJson?.message || `Pinterest rejeitou o Pin de vídeo (HTTP ${pin.status}).`, pin.status !== 401, pin.status);
-    return success('pinterest', String(pinJson.id));
-  } catch (error: any) {
-    return /timeout|fetch failed|network/i.test(String(error?.message || error))
-      ? unknown('pinterest', error)
-      : failure('pinterest', error?.message || String(error), false);
-  }
-}
-
-async function publishPinterestMedia(data: {
-  userId: string;
-  companyId: string;
-  title: string;
-  text: string;
-  link?: string;
-  imageUrl?: string;
-  videoUrl?: string;
-  boardId?: string;
-}): Promise<UniversalPublishResult> {
-  if (data.videoUrl) return publishPinterestVideo({ ...data, videoUrl: data.videoUrl });
-  if (!data.imageUrl) return failure('pinterest', 'Pinterest exige imagem ou vídeo.', false);
-  try {
-    let boardId = String(data.boardId || '');
-    if (!boardId) {
-      const boards = await getPinterestBoards({ userId: data.userId, companyId: data.companyId });
-      boardId = String(boards[0]?.id || '');
-    }
-    if (!boardId) return failure('pinterest', 'Nenhuma pasta do Pinterest disponível para receber o Pin.', false);
-    const result = await createPinterestPin({
-      userId: data.userId,
-      companyId: data.companyId,
-      boardId,
-      title: data.title,
-      description: data.text,
-      link: data.link,
-      imageUrl: data.imageUrl
-    });
-    return success('pinterest', result.externalId);
-  } catch (error: any) {
-    return /timeout|fetch failed|network/i.test(String(error?.message || error))
-      ? unknown('pinterest', error)
-      : failure('pinterest', error?.message || String(error), false);
-  }
-}
-
 export async function publishScheduledContent(data: {
   userId: string;
   companyId: string;
@@ -927,8 +699,6 @@ export async function publishScheduledContent(data: {
       }
     case 'linkedin':
       return publishLinkedInMedia({ userId: data.userId, companyId: data.companyId, text, imageUrl, videoUrl });
-    case 'x':
-      return publishXMedia({ userId: data.userId, companyId: data.companyId, text, imageUrl, videoUrl });
     case 'tiktok':
       return publishTikTokDraft({ userId: data.userId, companyId: data.companyId, title, text, imageUrl, videoUrl });
     case 'youtube':
@@ -939,17 +709,6 @@ export async function publishScheduledContent(data: {
         text,
         videoUrl,
         privacyStatus: data.providerOptions?.youtubePrivacyStatus || 'unlisted'
-      });
-    case 'pinterest':
-      return publishPinterestMedia({
-        userId: data.userId,
-        companyId: data.companyId,
-        title,
-        text,
-        link: data.link,
-        imageUrl,
-        videoUrl,
-        boardId: data.providerOptions?.pinterestBoardId
       });
   }
 }
@@ -969,9 +728,6 @@ export async function assertUniversalConnectionReady(userId: string, companyId: 
   if (provider === 'tiktok' && allScopes.length > 0 && !hasScope('video.upload')) {
     throw new Error('A conexão do TikTok não possui o escopo video.upload. Reconecte a conta.');
   }
-  if (provider === 'x' && allScopes.length > 0 && !hasScope('media.write')) {
-    throw new Error('A conexão do X não possui o escopo media.write necessário para imagem e vídeo. Reconecte a conta X.');
-  }
 }
 
 export async function checkUniversalConnectionReady(userId: string, companyId: string, provider: SocialProvider): Promise<boolean> {
@@ -988,10 +744,8 @@ export function universalProviderSummary(): Record<SocialProvider, { automatic: 
     facebook: { automatic: true, media: 'text_image_video', note: 'Publicação em Página via Graph API.' },
     instagram: { automatic: true, media: 'image_video_reel', note: 'Conta profissional; imagem ou Reel.' },
     linkedin: { automatic: true, media: 'text_image_video', note: 'Posts API + Images/Videos API.' },
-    x: { automatic: true, media: 'text_image_video', note: 'Posts API + Media Upload API.' },
     tiktok: { automatic: true, media: 'image_video_draft', note: 'Automação envia rascunho; conclusão ocorre no TikTok conforme regra oficial.' },
-    youtube: { automatic: true, media: 'video', note: 'Upload resumível de vídeo; padrão não listado.' },
-    pinterest: { automatic: true, media: 'image_video', note: 'Pin de imagem ou vídeo; usa pasta selecionada ou a primeira disponível.' }
+    youtube: { automatic: true, media: 'video', note: 'Upload resumível de vídeo; padrão não listado.' }
   };
 }
 

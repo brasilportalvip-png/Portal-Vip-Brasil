@@ -78,6 +78,66 @@ const SCENES: Record<string, Scene[]> = {
 };
 SCENES.proj_portal_vip_magazine = SCENES.proj_froc_marketing_engine;
 
+// Projetos criados depois pelo Admin (ids dinâmicos): o tema é reconhecido pelo nome/título.
+SCENES.tema_mobilidade = [
+  { lens: '35mm f/1.8', en: 'Modern car driving through a Brazilian city avenue at blue hour, glowing street lights and traffic light trails, driver\'s hands on the steering wheel seen from the back seat, realistic and safe', pt: 'carro rodando por avenida iluminada da cidade ao anoitecer' },
+  { lens: '50mm f/1.8', en: 'Passenger holding a smartphone showing a generic ride map with a route line (no readable text, no logos) inside a clean car, warm city bokeh outside the window', pt: 'passageiro com celular mostrando rota de corrida dentro do carro' },
+  { lens: '85mm f/2', en: 'Friendly driver opening the car door for a passenger on a sidewalk at golden hour, faces turned away or out of focus, sense of trust and fair price', pt: 'motorista abrindo a porta do carro para passageiro ao entardecer' },
+  { lens: '24mm f/2.8', en: 'Aerial-like high view of a busy Brazilian city crossroads at night with car light trails, sense of mobility and many rides', pt: 'cruzamento movimentado da cidade à noite com rastros de luz dos carros' }
+];
+SCENES.tema_sobrenatural = [
+  { lens: '24mm f/2.8', en: 'Old abandoned colonial mansion hallway at night lit only by a flashlight beam cutting through dust and faint mist, eerie but not gory', pt: 'corredor de casarão abandonado à noite iluminado por lanterna' },
+  { lens: '50mm f/1.8', en: 'Hand holding a vintage handheld paranormal detector device with small glowing lights (no readable text) in a dark room, shallow depth of field', pt: 'mão segurando detector paranormal com luzes acesas em quarto escuro' },
+  { lens: '35mm f/2', en: 'Wrought iron gate of an old cemetery covered in fog under moonlight, cinematic cold blue tones, mysterious atmosphere', pt: 'portão de cemitério antigo coberto de névoa sob a lua' },
+  { lens: '85mm f/1.8', en: 'Single candle burning on a dusty wooden table in a dark old room, a faint translucent white curtain moving by the window, suspenseful mood', pt: 'vela acesa em sala antiga e escura com cortina se movendo' }
+];
+SCENES.tema_bruxaria = [
+  { lens: '50mm f/1.8', en: 'Ancient leather-bound grimoire open on a dark wooden altar with burning candles, dried herbs and an old brass key, mystical warm light', pt: 'grimório antigo aberto em altar com velas, ervas secas e chave' },
+  { lens: '85mm f/2', en: 'Weathered fortune-telling cards spread in a cross on a dark cloth beside a lit black candle and smoke, close-up, no readable text on the cards', pt: 'cartas de adivinhação dispostas em cruz ao lado de vela acesa' },
+  { lens: '35mm f/2', en: 'Old iron cauldron with herbs and gentle steam over embers in a rustic stone room, candlelight and shadows, folk magic atmosphere', pt: 'caldeirão de ferro com ervas e vapor sobre brasas' },
+  { lens: '50mm f/2', en: 'Hands of a wise old sorcerer arranging candles and crystals on a table at night, face hidden in shadow, respectful and mysterious', pt: 'mãos de bruxo arrumando velas e cristais sobre a mesa à noite' }
+];
+SCENES.proj_oraculos_ts.push(
+  { lens: '50mm f/2', en: 'Cowrie shells (búzios) scattered on a woven straw mat for divination, beads and a white candle, warm natural light, respectful Afro-Brazilian tradition', pt: 'búzios espalhados sobre esteira de palha para consulta' }
+);
+
+/** Grupo de cenas pelo tema do texto (usado quando o projeto não tem cenas próprias). */
+export function coverSceneGroupFor(article: { title?: string; slug?: string; relatedProjectId?: string; projectId?: string; relatedProjectName?: string }): string {
+  const project = String(article?.relatedProjectId || article?.projectId || '');
+  if (SCENES[project]) return project;
+  const text = normalize(`${article?.title || ''} ${article?.slug || ''} ${article?.relatedProjectName || ''}`).replace(/-/g, ' ');
+  if (/corrida|motorista|uber|\b99\b|passageiro|carona|mobilidade|froc x|transporte por app|app de transporte/.test(text)) return 'tema_mobilidade';
+  if (/fantasma|sobrenatural|assombra|paranormal|cacador de|caca fantasma|detector/.test(text)) return 'tema_sobrenatural';
+  if (/cipriano|bruxo|bruxa|bruxaria|feitico|grimorio/.test(text)) return 'tema_bruxaria';
+  if (/padilha|pombagira|amor|seducao/.test(text)) return 'proj_maria_padilha';
+  if (/\bexu\b|umbanda|encruzilhada/.test(text)) return 'proj_exu_responde';
+  if (/catolic|novena|terco|santo|oracao|biblia|nossa senhora|dogma/.test(text)) return 'proj_manual_catolico';
+  if (/tarot|taro|cigano|runa|oraculo|buzios|planetari|astrolog|signo|horoscopo/.test(text)) return 'proj_oraculos_ts';
+  if (/inteligencia artificial|\bia\b|froc/.test(text)) return 'proj_frocia2';
+  if (/marketing|seo|trafego|vendas|vender|produtos digitais|landing page|anuncio/.test(text)) return 'proj_froc_marketing_engine';
+  return 'proj_magia_crencas';
+}
+
+/** Regra antiga (antes de reconhecer mobilidade/sobrenatural/bruxaria): só para achar capas a refazer. */
+function legacySceneGroupFor(article: { title?: string; slug?: string; relatedProjectId?: string; projectId?: string }): string {
+  const project = String(article?.relatedProjectId || article?.projectId || '');
+  if (['proj_maria_padilha', 'proj_exu_responde', 'proj_manual_catolico', 'proj_magia_crencas', 'proj_oraculos_ts', 'proj_frocia2', 'proj_froc_marketing_engine', 'proj_portal_vip_magazine'].includes(project)) return project;
+  const text = normalize(`${article?.title || ''} ${article?.slug || ''}`);
+  if (/padilha|pombagira|amor|seducao/.test(text)) return 'proj_maria_padilha';
+  if (/\bexu\b|umbanda|encruzilhada/.test(text)) return 'proj_exu_responde';
+  if (/catolic|novena|terco|santo|oracao|biblia/.test(text)) return 'proj_manual_catolico';
+  if (/tarot|taro|cigano|runa|oraculo/.test(text)) return 'proj_oraculos_ts';
+  if (/inteligencia artificial|\bia\b|froc/.test(text)) return 'proj_frocia2';
+  if (/marketing|seo|trafego|vendas/.test(text)) return 'proj_froc_marketing_engine';
+  return 'proj_magia_crencas';
+}
+
+/** A capa atual foi feita com um tema diferente do certo (ex.: artigo de corrida com foto de ritual). */
+export function coverNeedsThemeFix(article: { title?: string; slug?: string; relatedProjectId?: string; projectId?: string; relatedProjectName?: string; coverSceneGroup?: string }): boolean {
+  const used = String(article?.coverSceneGroup || legacySceneGroupFor(article));
+  return used !== coverSceneGroupFor(article);
+}
+
 function hashString(value: string): number {
   let h = 2166136261;
   for (let i = 0; i < value.length; i++) {
@@ -92,29 +152,20 @@ function normalize(text: string): string {
 }
 
 /** Escolhe a cena: projeto primeiro; palavras do título refinam dentro do nicho (ex.: runas em Oráculos). */
-export function pickCoverScene(article: { id?: string; slug?: string; title?: string; relatedProjectId?: string; projectId?: string }): Scene {
-  const project = String(article?.relatedProjectId || article?.projectId || '');
-  const text = normalize(`${article?.title || ''} ${article?.slug || ''}`);
-  let list = SCENES[project];
-  if (!list) {
-    if (/padilha|pombagira|amor|seducao/.test(text)) list = SCENES.proj_maria_padilha;
-    else if (/\bexu\b|umbanda|encruzilhada/.test(text)) list = SCENES.proj_exu_responde;
-    else if (/catolic|novena|terco|santo|oracao|biblia/.test(text)) list = SCENES.proj_manual_catolico;
-    else if (/tarot|taro|cigano|runa|oraculo/.test(text)) list = SCENES.proj_oraculos_ts;
-    else if (/inteligencia artificial|\bia\b|froc/.test(text)) list = SCENES.proj_frocia2;
-    else if (/marketing|seo|trafego|vendas/.test(text)) list = SCENES.proj_froc_marketing_engine;
-    else list = SCENES.proj_magia_crencas;
-  }
+export function pickCoverScene(article: { id?: string; slug?: string; title?: string; relatedProjectId?: string; projectId?: string; relatedProjectName?: string }): Scene {
+  const text = normalize(`${article?.title || ''} ${article?.slug || ''}`).replace(/-/g, ' ');
+  const list = SCENES[coverSceneGroupFor(article)] || SCENES.proj_magia_crencas;
   if (list === SCENES.proj_oraculos_ts) {
     if (/runa|viking|nordic/.test(text)) return list[3];
     if (/cigano|lenormand/.test(text)) return list[2];
-    if (/astrolog|signo|horoscopo/.test(text)) return list[4];
+    if (/astrolog|signo|horoscopo|planetari/.test(text)) return list[4];
+    if (/buzios/.test(text)) return list[5];
   }
   if (list === SCENES.proj_manual_catolico && /terco|rosario/.test(text)) return list[1];
   return list[hashString(`${article?.id || ''}|${article?.slug || ''}`) % list.length];
 }
 
-export function buildCoverPhotoPrompt(article: { id?: string; slug?: string; title?: string; relatedProjectId?: string; projectId?: string; primaryKeyword?: string }): { prompt: string; alt: string } {
+export function buildCoverPhotoPrompt(article: { id?: string; slug?: string; title?: string; relatedProjectId?: string; projectId?: string; relatedProjectName?: string; primaryKeyword?: string }): { prompt: string; alt: string } {
   const scene = pickCoverScene(article);
   const topic = String(article?.title || '').replace(/["“”]/g, '').slice(0, 160);
   const keyword = String(article?.primaryKeyword || '').slice(0, 80);
@@ -160,7 +211,7 @@ export async function generateArticleCoverPhoto(article: {
   relatedProjectId?: string;
   relatedProjectName?: string;
   primaryKeyword?: string;
-}, options: { userId?: string; collection?: string } = {}): Promise<{ coverUrl: string; coverAlt: string }> {
+}, options: { userId?: string; collection?: string } = {}): Promise<{ coverUrl: string; coverAlt: string; sceneGroup: string }> {
   if (!article?.id || !article?.slug) throw new Error('Artigo sem id/slug para gerar capa.');
   const { prompt, alt } = buildCoverPhotoPrompt(article);
   const generated = await generateMarketingImage({
@@ -190,7 +241,7 @@ export async function generateArticleCoverPhoto(article: {
     version: COVER_PHOTO_VERSION,
     createdAt: nowIso()
   });
-  return { coverUrl: coverRouteUrl(article.slug), coverAlt: alt };
+  return { coverUrl: coverRouteUrl(article.slug), coverAlt: alt, sceneGroup: coverSceneGroupFor(article) };
 }
 
 export async function loadStoredCover(articleId: string): Promise<{ mime: string; buffer: Buffer } | null> {
@@ -229,7 +280,8 @@ export async function runCoverPhotoBatch(options: { limit?: number; timeBudgetMs
     for (const d of snap.docs || []) {
       const data = d.data() as any;
       if (!data?.slug) continue;
-      if (Number(data.coverPhotoVersion || 0) >= COVER_PHOTO_VERSION) continue;
+      const themeFix = Number(data.coverPhotoVersion || 0) >= COVER_PHOTO_VERSION && coverNeedsThemeFix({ ...data, relatedProjectId: data.relatedProjectId || data.projectId });
+      if (Number(data.coverPhotoVersion || 0) >= COVER_PHOTO_VERSION && !themeFix) continue;
       if (Number(data.coverPhotoAttempts || 0) >= MAX_ATTEMPTS) continue;
       pending.push({ id: d.id, collection: col, data });
     }
@@ -261,6 +313,7 @@ export async function runCoverPhotoBatch(options: { limit?: number; timeBudgetMs
         coverAlt: result.coverAlt,
         coverImageGenerated: true,
         coverPhotoVersion: COVER_PHOTO_VERSION,
+        coverSceneGroup: result.sceneGroup,
         coverPhotoUpdatedAt: nowIso(),
         coverPhotoError: null
       }, { merge: true });
@@ -288,7 +341,7 @@ export async function coverPhotoStatus(): Promise<{ total: number; done: number;
       const data = d.data() as any;
       if (!data?.slug) continue;
       total++;
-      if (Number(data.coverPhotoVersion || 0) >= COVER_PHOTO_VERSION) done++;
+      if (Number(data.coverPhotoVersion || 0) >= COVER_PHOTO_VERSION && !coverNeedsThemeFix({ ...data, relatedProjectId: data.relatedProjectId || data.projectId })) done++;
       else if (Number(data.coverPhotoAttempts || 0) >= MAX_ATTEMPTS) failedPermanently++;
     }
   }

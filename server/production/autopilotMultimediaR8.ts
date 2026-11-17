@@ -1,7 +1,7 @@
 import { generateAutopilotPost, generateMarketingImage, startVideoGenerationJob } from './ai.js';
 import { getPortalProjectFromDb, listAllPortalProjectsFromDb } from './almaPortfolio.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
-import { normalizeProvider, type SocialProvider } from './social.js';
+import { isManualPublishChannel, normalizeProvider, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported } from './socialMediaPublisher.js';
 import {
   isGlobalAutomationEnabled,
@@ -15,7 +15,7 @@ import {
 import { calculateFinancialCostSummary } from './financialGuardian.js';
 
 export const DEFAULT_AUTOPILOT_TARGET_PLATFORMS = [
-  'Facebook', 'Instagram', 'LinkedIn', 'X', 'TikTok', 'YouTube', 'Pinterest'
+  'Facebook', 'Instagram', 'LinkedIn', 'Kwai', 'TikTok', 'YouTube'
 ];
 
 export type AutopilotJobStatus = 'pending' | 'processing' | 'video_processing' | 'completed' | 'failed';
@@ -389,6 +389,9 @@ export async function executeAutopilotJob(
     const company = projectContext(ap.userId, project);
     const mode = ap.mode === 'automatic' ? 'automatic' : 'manual_approval';
     const rawTargets = normalizeTargets(ap.targetPlatforms);
+    // Kwai não tem API de publicação: quando selecionado, o vídeo vertical é gerado e fica na
+    // Biblioteca de Conteúdos pronto para postar no app do Kwai (sem publicação automática).
+    const kwaiSelected = Array.isArray(ap.targetPlatforms) && ap.targetPlatforms.some((p: unknown) => isManualPublishChannel(String(p || '')));
     const targets = rawTargets.length > 0 ? rawTargets : [{ label: 'Instagram', provider: 'instagram' as SocialProvider }];
 
     // Verificação resiliente de conexões prontas para publicação automática
@@ -422,10 +425,9 @@ export async function executeAutopilotJob(
 
     // O mesmo MP4 vertical é distribuído a todas as redes selecionadas que
     // possuem publicação de vídeo implementada no publicador universal.
-    const videoProviders = new Set<SocialProvider>(['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest', 'linkedin', 'x']);
+    const videoProviders = new Set<SocialProvider>(['youtube', 'tiktok', 'facebook', 'instagram', 'linkedin']);
     const videoTargets = targets.filter((target) => videoProviders.has(target.provider));
     const youtubeSelected = videoTargets.some((target) => target.provider === 'youtube');
-    const pinterestVideoSelected = videoTargets.some((target) => target.provider === 'pinterest');
     const imageTargets = targets.filter((target) => !videoProviders.has(target.provider));
     let contentId: string | undefined;
     let scheduleId: string | undefined;
@@ -434,7 +436,7 @@ export async function executeAutopilotJob(
     let imageCredits = 0;
 
     // 2. Imagem gerada se houver canais de imagem ou para revisão
-    if (imageTargets.length > 0 || pinterestVideoSelected || mode !== 'automatic') {
+    if (imageTargets.length > 0 || mode !== 'automatic') {
       const visualTheme = String(generated.result.visualPrompt || generated.result.headline || generated.result.body || `Criativo para ${company.name}`);
       const executionId = newId('exec');
       const dateIso = nowIso().slice(0, 10);
@@ -569,7 +571,7 @@ export async function executeAutopilotJob(
     }
 
     // 3. Vídeo Veo assíncrono (não aguarda renderização)
-    if (videoTargets.length > 0 && !options?.signal?.aborted) {
+    if ((videoTargets.length > 0 || kwaiSelected) && !options?.signal?.aborted) {
       try {
         const videoPrompt = [
           generated.result.visualPrompt,
@@ -577,12 +579,7 @@ export async function executeAutopilotJob(
           generated.result.body,
           generated.result.cta
         ].filter(Boolean).join('. ');
-        const readyVideoTargets = videoTargets.filter((target) => {
-          if (!readyTargets.some((rt) => rt.provider === target.provider)) return false;
-          // A API de vídeo do Pinterest exige capa; sem uma imagem válida,
-          // preserva o job para as outras redes sem criar uma falha conjunta.
-          return target.provider !== 'pinterest' || Boolean(videoCoverImageUrl);
-        });
+        const readyVideoTargets = videoTargets.filter((target) => readyTargets.some((rt) => rt.provider === target.provider));
         const videoJob = await startVideoGenerationJob({
           userId: ap.userId,
           company,

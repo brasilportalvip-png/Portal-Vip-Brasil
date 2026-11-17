@@ -86,7 +86,8 @@ test('Comitê final: contrato público do Blog entrega todos os campos usados pe
   assert.ok(article.relatedProjectSlug);
   assert.ok(article.canonicalUrl.endsWith(`/blog/${stored.slug}`));
   assert.equal(article.schemaJsonLd?.['@type'], 'Article');
-  assert.ok(Array.isArray(article.socialRepurpose?.twitter?.thread));
+  assert.ok(Array.isArray(article.socialRepurpose?.kwai?.videoScript));
+  assert.equal((article.socialRepurpose as any)?.twitter, undefined);
   assert.ok(article.socialRepurpose?.facebook?.utmUrl);
   assert.ok(typeof article.author?.bio === 'string' && article.author.bio.length > 0);
 });

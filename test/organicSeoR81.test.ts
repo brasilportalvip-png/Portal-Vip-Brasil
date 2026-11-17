@@ -57,7 +57,7 @@ test('R8.1 SEO: contratos de crescimento orgânico permanecem ativos no código'
   assert.match(blog, /url: '\/vitrine\/' \+ project\.slug/);
   assert.match(blog, /daily_blog_seo/);
   assert.match(blog, /PHOTO\/PULL_FROM_URL exige domínio\/URL verificado/);
-  assert.match(blog, /new Set\(\['facebook', 'instagram', 'linkedin', 'x', 'pinterest'\]\)/);
+  assert.match(blog, /new Set\(\['facebook', 'instagram', 'linkedin'\]\)/);
   assert.match(blog, /Array\.from\(new Set<string>\(/);
 
   const publicPages = source('server/production/publicPages.ts');

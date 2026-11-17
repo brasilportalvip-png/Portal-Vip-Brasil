@@ -44,9 +44,8 @@ export const CreateImagePage: React.FC<Props> = ({
   const [generatedImage, setGeneratedImage] = useState<GeneratedImage | null>(null);
 
   const aspectRatio = useMemo(() => {
-    if (platform.includes('9:16') || platform.includes('Stories') || platform.includes('Reels') || platform.includes('TikTok')) return '9:16';
+    if (platform.includes('9:16') || platform.includes('Stories') || platform.includes('Reels') || platform.includes('TikTok') || platform.includes('Kwai')) return '9:16';
     if (platform.includes('16:9') || platform.includes('YouTube') || platform.includes('Site')) return '16:9';
-    if (platform.includes('2:3') || platform.includes('Pinterest')) return '2:3';
     if (platform.includes('4:5')) return '4:5';
     return '1:1';
   }, [platform]);
@@ -208,10 +207,9 @@ export const CreateImagePage: React.FC<Props> = ({
                 className="froc-input mt-1.5"
               >
                 <option>Instagram Feed (1:1)</option>
-                <option>Stories / Reels / TikTok (9:16)</option>
+                <option>Stories / Reels / TikTok / Kwai (9:16)</option>
                 <option>Vídeo / Site / YouTube (16:9)</option>
                 <option>Instagram Retrato (4:5)</option>
-                <option>Pinterest Pin (2:3)</option>
               </select>
             </div>
 

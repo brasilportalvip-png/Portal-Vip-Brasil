@@ -120,6 +120,34 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
   const [projectSaveSuccess, setProjectSaveSuccess] = useState<string | null>(null);
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const [runningScheduler, setRunningScheduler] = useState(false);
+  const [mediaAudit, setMediaAudit] = useState<{ checkedAt: string; checkedUrls: number; ok: boolean; totals: Record<string, number>; issues: Array<{ area: string; severity: 'alta' | 'media' | 'baixa'; item: string; problem: string; url?: string }> } | null>(null);
+  const [mediaAuditRunning, setMediaAuditRunning] = useState(false);
+  const [mediaAuditError, setMediaAuditError] = useState('');
+  const [coverFixRunning, setCoverFixRunning] = useState(false);
+  const runMediaAudit = async () => {
+    setMediaAuditRunning(true);
+    setMediaAuditError('');
+    try {
+      const data = await apiRequest<{ report: NonNullable<typeof mediaAudit> }>('/api/admin/media-audit', { timeoutMs: 290_000 });
+      setMediaAudit(data.report);
+    } catch (err: any) {
+      setMediaAuditError(err?.message || 'Não foi possível rodar a auditoria agora.');
+    } finally {
+      setMediaAuditRunning(false);
+    }
+  };
+  const fixBlogCovers = async () => {
+    setCoverFixRunning(true);
+    setMediaAuditError('');
+    try {
+      await apiRequest('/api/portal/blog/covers/regenerate', { method: 'POST', body: { limit: 8 }, timeoutMs: 290_000 });
+      await runMediaAudit();
+    } catch (err: any) {
+      setMediaAuditError(err?.message || 'Não foi possível refazer as capas agora.');
+    } finally {
+      setCoverFixRunning(false);
+    }
+  };
   const [coverJob, setCoverJob] = useState<{ running: boolean; done: number; total: number; pending: number; message: string }>({ running: false, done: 0, total: 0, pending: 0, message: '' });
   const coverStopRef = useRef(false);
 
@@ -403,6 +431,40 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
       <section className="froc-panel">
         <h3 className="froc-section-title">Central administrativa privada</h3>
         <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">Este painel não administra clientes, planos, assinaturas ou créditos. Todo projeto ativo cadastrado em Projetos & Sites entra automaticamente no motor diário de marketing e Blog.</p>
+      </section>
+      <section className="froc-panel">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 className="froc-section-title">Auditoria de imagens e vídeos</h3>
+            <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-400">Abre de verdade cada capa do blog, capa e logo da vitrine, imagem e vídeo da Biblioteca, e aponta o que não abre, o que está no tipo errado (imagem no lugar de vídeo e vice-versa), o que se repete e capa com tema errado.</p>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button type="button" disabled={mediaAuditRunning} onClick={() => void runMediaAudit()} className="froc-primary">{mediaAuditRunning ? 'Auditando…' : 'Auditar agora'}</button>
+            <button type="button" disabled={coverFixRunning} onClick={() => void fixBlogCovers()} className="froc-secondary">{coverFixRunning ? 'Refazendo capas…' : 'Refazer capas do blog'}</button>
+          </div>
+        </div>
+        {mediaAuditError && <p className="mt-3 text-xs text-rose-300">{mediaAuditError}</p>}
+        {mediaAudit && (
+          <div className="mt-4 space-y-3">
+            <div className={`rounded-2xl border p-3 text-xs ${mediaAudit.ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-500/30 bg-amber-500/10 text-amber-200'}`}>
+              {mediaAudit.ok ? 'Nenhum problema grave.' : 'Há problemas graves para corrigir.'} {mediaAudit.checkedUrls} endereços abertos · {mediaAudit.totals.blogArticles} artigos · {mediaAudit.totals.projects} projetos · {mediaAudit.totals.contentItems} peças · {mediaAudit.totals.videoJobs} vídeos · {new Date(mediaAudit.checkedAt).toLocaleString('pt-BR')}
+            </div>
+            {mediaAudit.issues.length === 0 ? (
+              <p className="text-xs text-slate-400">Tudo certo: todas as imagens e vídeos abrem, estão no tipo certo e nada se repete.</p>
+            ) : (
+              <ul className="max-h-96 space-y-2 overflow-y-auto pr-1">
+                {mediaAudit.issues.slice(0, 150).map((issue, index) => (
+                  <li key={index} className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 text-xs">
+                    <span className={`mr-2 rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${issue.severity === 'alta' ? 'bg-rose-500/20 text-rose-300' : issue.severity === 'media' ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-700 text-slate-300'}`}>{issue.severity}</span>
+                    <span className="font-bold text-slate-200">{issue.area}</span> · <span className="text-slate-300">{issue.item}</span>
+                    <div className="mt-1 text-slate-400">{issue.problem}</div>
+                    {issue.url && <a href={issue.url} target="_blank" rel="noreferrer" className="mt-1 block truncate text-[10px] text-cyan-400 underline">{issue.url}</a>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </section>
       <section className="froc-panel">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

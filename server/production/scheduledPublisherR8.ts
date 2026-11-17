@@ -1,6 +1,13 @@
 import { getPortalProjectFromDb } from './almaPortfolio.js';
 import { COLLECTIONS, createNotification, firestore, nowIso } from './store.js';
-import { normalizeProvider, type SocialProvider } from './social.js';
+import { isManualPublishChannel, isRemovedSocialProvider, normalizeProvider, type SocialProvider } from './social.js';
+
+/** Redes que o publicador automático atende (sem X/Pinterest retirados e sem o Kwai, que é manual). */
+function automaticPlatforms(values: unknown): string[] {
+  return (Array.isArray(values) ? values : [])
+    .map((value) => String(value || ''))
+    .filter((value) => value && !isRemovedSocialProvider(value) && !isManualPublishChannel(value));
+}
 import { publishScheduledContent } from './socialMediaPublisher.js';
 
 function isConfirmedPublishedResult(result: any): boolean {
@@ -40,7 +47,7 @@ export async function recoverStalePublishingPostsR8(
     if (Number.isFinite(processingTime) && processingTime >= cutoffMs) continue;
 
     const publicationResults = Array.isArray(post.publicationResults) ? post.publicationResults : [];
-    const requestedPlatforms = Array.isArray(post.platforms) ? post.platforms : [];
+    const requestedPlatforms = automaticPlatforms(post.platforms);
     const hasUnknown = publicationResults.some((r: any) => r?.externalState === 'unknown');
     const hasUserAction = publicationResults.some((r: any) => r?.requiresUserAction === true || r?.deliveryMode === 'draft');
 
@@ -181,8 +188,12 @@ export async function processScheduledPostsR8(options?: {
       }
       verifiedContentRef = contentSnap.ref;
 
-      const platforms = Array.isArray(post.platforms) ? post.platforms : [];
-      if (!platforms.length) throw new Error('Nenhuma rede social selecionada para publicação.');
+      const platforms = automaticPlatforms(post.platforms);
+      if (!platforms.length) {
+        throw new Error(Array.isArray(post.platforms) && post.platforms.length
+          ? 'As redes deste agendamento foram retiradas do Portal (X/Pinterest) ou são de postagem manual (Kwai).'
+          : 'Nenhuma rede social selecionada para publicação.');
+      }
 
       const existingResults = Array.isArray(post.publicationResults) ? post.publicationResults : [];
       const publicationResults: any[] = [];

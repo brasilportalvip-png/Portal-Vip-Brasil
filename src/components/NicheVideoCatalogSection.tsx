@@ -23,6 +23,8 @@ import type { Company } from '../types';
 
 interface NicheVideoCatalogSectionProps {
   selectedCompany: Company | null;
+  /** Vídeos reais já gerados para o projeto (Veo). O mais recente aparece no player. */
+  realVideos?: Array<{ id: string; videoUrl?: string; title?: string; aspectRatio?: string }>;
   onApplyToVeo: (template: NicheVideoTemplate) => void;
   onApplyToScript: (template: NicheVideoTemplate) => void;
   onNavigateToTikTok: (template: NicheVideoTemplate) => void;
@@ -30,6 +32,7 @@ interface NicheVideoCatalogSectionProps {
 
 export const NicheVideoCatalogSection: React.FC<NicheVideoCatalogSectionProps> = ({
   selectedCompany,
+  realVideos = [],
   onApplyToVeo,
   onApplyToScript,
   onNavigateToTikTok
@@ -40,6 +43,12 @@ export const NicheVideoCatalogSection: React.FC<NicheVideoCatalogSectionProps> =
   const [isMuted, setIsMuted] = useState(true);
   const [copiedCaption, setCopiedCaption] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [posterFailed, setPosterFailed] = useState(false);
+  // Só vídeo de verdade vai para o player: o mais recente gerado para este projeto, no nicho do projeto.
+  const realVideo = selectedTemplate.id === detected.id
+    ? realVideos.find((v) => typeof v.videoUrl === 'string' && /^https?:\/\//.test(v.videoUrl) && v.aspectRatio !== '16:9')
+    : undefined;
+  useEffect(() => setPosterFailed(false), [selectedTemplate.id]);
 
   // Sincronizar quando o projeto selecionado mudar
   useEffect(() => {
@@ -139,16 +148,32 @@ export const NicheVideoCatalogSection: React.FC<NicheVideoCatalogSectionProps> =
         {/* Lado Esquerdo: Player de Vídeo Vertical 9:16 */}
         <div className="lg:col-span-4 flex flex-col items-center">
           <div className="relative w-full max-w-[260px] aspect-[9/16] rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-700 bg-black group">
-            <video
-              ref={videoRef}
-              key={selectedTemplate.id}
-              src={selectedTemplate.sampleVideoUrl}
-              autoPlay
-              loop
-              muted={isMuted}
-              playsInline
-              className="w-full h-full object-cover"
-            />
+            {realVideo ? (
+              <video
+                ref={videoRef}
+                key={realVideo.id}
+                src={realVideo.videoUrl}
+                poster={posterFailed ? undefined : selectedTemplate.posterImageUrl}
+                autoPlay
+                loop
+                muted={isMuted}
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            ) : posterFailed ? (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-b from-slate-800 to-slate-950 p-4 text-center">
+                <span className="text-4xl">{selectedTemplate.icon}</span>
+                <span className="text-xs font-bold text-white">{selectedTemplate.nicheName.split('&')[0]}</span>
+              </div>
+            ) : (
+              <img
+                key={selectedTemplate.id}
+                src={selectedTemplate.posterImageUrl}
+                alt={`Referência visual do roteiro: ${selectedTemplate.nicheName}`}
+                className="w-full h-full object-cover"
+                onError={() => setPosterFailed(true)}
+              />
+            )}
 
             {/* Overlay de Controle no Hover */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-3 pointer-events-none">
@@ -156,23 +181,35 @@ export const NicheVideoCatalogSection: React.FC<NicheVideoCatalogSectionProps> =
                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-black/60 text-cyan-400 backdrop-blur border border-cyan-500/30">
                   {selectedTemplate.icon} {selectedTemplate.badge}
                 </span>
-                <button
-                  type="button"
-                  onClick={toggleMute}
-                  className="p-1.5 rounded-full bg-black/70 text-white hover:bg-black transition"
-                >
-                  {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                </button>
+                {realVideo && (
+                  <button
+                    type="button"
+                    onClick={toggleMute}
+                    className="p-1.5 rounded-full bg-black/70 text-white hover:bg-black transition"
+                  >
+                    {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center justify-center pointer-events-auto">
-                <button
-                  type="button"
-                  onClick={togglePlay}
-                  className="p-3 rounded-full bg-cyan-500/90 text-slate-950 hover:bg-cyan-400 hover:scale-110 transition shadow-lg"
-                >
-                  {isPlaying ? <Pause size={18} /> : <Play size={18} className="translate-x-0.5" />}
-                </button>
+                {realVideo ? (
+                  <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="p-3 rounded-full bg-cyan-500/90 text-slate-950 hover:bg-cyan-400 hover:scale-110 transition shadow-lg"
+                  >
+                    {isPlaying ? <Pause size={18} /> : <Play size={18} className="translate-x-0.5" />}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onApplyToVeo(selectedTemplate)}
+                    className="rounded-full bg-cyan-500/90 px-3 py-2 text-[11px] font-black text-slate-950 hover:bg-cyan-400 transition shadow-lg"
+                  >
+                    Gerar este vídeo
+                  </button>
+                )}
               </div>
 
               <div className="text-[10px] text-slate-300 pointer-events-auto text-center font-semibold">
@@ -189,7 +226,9 @@ export const NicheVideoCatalogSection: React.FC<NicheVideoCatalogSectionProps> =
           </div>
 
           <div className="text-[11px] text-slate-400 mt-2 text-center">
-            Vídeo vertical gerado com a identidade do nicho.
+            {realVideo
+              ? 'Último vídeo vertical gerado para este projeto.'
+              : 'Imagem de referência do roteiro. Clique em gerar para criar o vídeo real com o Veo.'}
           </div>
         </div>
 

@@ -4,7 +4,7 @@ import { config } from '../config/index.js';
 import { AuthenticatedRequest, CURRENT_PRIVACY_VERSION, CURRENT_TERMS_VERSION, ensureUserProfile, hasAcceptedLatestTerms, requireAdmin, requireAuth } from './auth.js';
 import { generateArticle, generateCarousel, generateCopy, generateImagePrompt, generateMarketingImage, generatePlatformArticle, generatePost, generateStrategy, generateVideoDirection, generateVideoScript, startVideoGenerationJob, checkAndCompleteVideoJob, manualRetryVideoJob, processPendingVideoJobs, listUserVideoJobs, textAiClient } from './ai.js';
 import { analyzeSeo, pingAllSearchEngines, getSearchEnginePingStatus } from './seo.js';
-import { createOAuthUrl, createPinterestPin, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getPinterestBoards, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
+import { createOAuthUrl, disconnectSocial, ensureValidSocialAccessToken, getFacebookPageSelectionCandidates, getProviderAutoPublishReason, getSocialReadiness, getTikTokUploadStatus, handleOAuthCallback, initTikTokDraftUpload, initYouTubeResumableUpload, isManualPublishChannel, isRemovedSocialProvider, isTextAutoPublishSupported, listConnections, MAX_TIKTOK_SANDBOX_VIDEO_SIZE, normalizeProvider, publishInstagramMedia, sanitizeOAuthPublicError, selectFacebookPage, TEXT_AUTO_PUBLISH_PROVIDERS, uploadTikTokDraftVideo, type SocialProvider } from './social.js';
 import { assertUniversalConnectionReady, checkUniversalConnectionReady, isUniversalAutoPublishSupported, validateScheduledContentForProvider } from './socialMediaPublisher.js';
 import { getSchedulerDiagnostics, getSchedulerHealth, getSchedulerPublicRuntime, processSchedulerTick, triggerUserAutopilot } from './scheduler.js';
 import { DEFAULT_AUTOPILOT_TARGET_PLATFORMS, getAutopilotProjectsOverview, triggerAllActiveAutopilotMultimediaR8, clearAutopilotErrors, isLegacyUnsplashImage, getMasterAutomationControl, updateMasterAutomationControl, calculateAutopilotCostSummary } from './autopilotMultimediaR8.js';
@@ -48,6 +48,7 @@ import {
   invalidatePublishedBlogCache
 } from './blogEngine.js';
 import { loadStoredCover, runCoverPhotoBatch, coverPhotoStatus } from './coverPhotoEngine.js';
+import { runMediaAudit } from './mediaAudit.js';
 import multer from 'multer';
 
 import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso, probeDatabaseHealth, queryData, slugify, writeAdminLog } from './store.js';
@@ -103,7 +104,8 @@ function safeEmail(value: any): string {
 }
 
 function sanitizedSocialLinks(value: any): Record<string, string> {
-  const allowed = ['instagram','facebook','tiktok','youtube','linkedin','pinterest','x'];
+  // X e Pinterest foram retirados; Kwai entra como link de perfil.
+  const allowed = ['instagram','facebook','tiktok','kwai','youtube','linkedin'];
   if (!value || typeof value !== 'object') return {};
   const out: Record<string, string> = {};
   for (const key of allowed) {
@@ -870,6 +872,12 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
   for (const plat of rawPlatforms) {
     const provider = normalizeProvider(plat);
     if (!provider || !isUniversalAutoPublishSupported(provider)) {
+      if (isManualPublishChannel(plat)) {
+        return res.status(400).json({ error: 'O Kwai não tem publicação automática (não existe API pública). Use o modo Planejamento no calendário ou o botão "Postar no Kwai" na Biblioteca de Conteúdos.' });
+      }
+      if (isRemovedSocialProvider(plat)) {
+        return res.status(400).json({ error: `A rede "${plat}" foi retirada do Portal Vip Brasil.` });
+      }
       return res.status(400).json({ error: `Rede social "${plat}" não reconhecida ou não suportada.` });
     }
     const compatibilityError = validateScheduledContentForProvider(provider, itemData);
@@ -887,8 +895,6 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
       ? rawOptions.youtubePrivacyStatus
       : 'unlisted'
   };
-  const pinterestBoardId = safeString(rawOptions.pinterestBoardId, 200);
-  if (pinterestBoardId) providerOptions.pinterestBoardId = pinterestBoardId;
 
   const id = newId('sched');
   const scheduled = {
@@ -1255,7 +1261,7 @@ router.get('/social/connections', requireAuth, asyncRoute(async (req: Authentica
 }));
 router.get('/social/:provider/connect', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const provider = req.params.provider as SocialProvider;
-  if (!['instagram','facebook','tiktok','youtube','linkedin','pinterest','x'].includes(provider)) return res.status(400).json({ error: 'Provedor social inválido.' });
+  if (!['instagram','facebook','tiktok','youtube','linkedin'].includes(provider)) return res.status(400).json({ error: 'Provedor social inválido.' });
   const companyId = safeString(req.query.companyId, 200);
   if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório.' });
   await requireSocialCompany(req.user!.id, companyId);
@@ -1342,7 +1348,7 @@ router.get('/social/connections/:companyId', requireAuth, asyncRoute(async (req:
 router.get('/social/oauth/:provider/start', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const provider = req.params.provider as SocialProvider;
   const companyId = safeString(req.query.companyId, 200);
-  if (!['instagram','facebook','tiktok','youtube','linkedin','pinterest','x'].includes(provider)) return res.status(400).json({ error: 'Provedor social inválido.' });
+  if (!['instagram','facebook','tiktok','youtube','linkedin'].includes(provider)) return res.status(400).json({ error: 'Provedor social inválido.' });
   await requireSocialCompany(req.user!.id, companyId);
   const oauth = await createOAuthUrl({ provider, userId: req.user!.id, companyId });
   res.json({ ...oauth, authUrl: oauth.url });
@@ -1505,44 +1511,6 @@ router.post('/social/youtube/init-upload', requireAuth, asyncRoute(async (req: A
     privacyStatus: ['private', 'unlisted', 'public'].includes(req.body?.privacyStatus) ? req.body.privacyStatus : 'unlisted',
     videoSize,
     mimeType: safeString(req.body?.mimeType, 100) || 'video/mp4'
-  });
-
-  res.json(result);
-}));
-
-router.get('/social/pinterest/boards', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const companyId = safeString(req.query.companyId, 200);
-  if (!companyId) return res.status(400).json({ error: 'companyId é obrigatório.' });
-  await requireOwnedCompany(req.user!.id, companyId);
-
-  const boards = await getPinterestBoards({
-    userId: req.user!.id,
-    companyId
-  });
-
-  res.json({ boards });
-}));
-
-router.post('/social/pinterest/create-pin', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const companyId = safeString(req.body?.companyId, 200);
-  const boardId = safeString(req.body?.boardId, 200);
-  const title = safeString(req.body?.title, 100);
-  const imageUrl = safeHttpUrl(req.body?.imageUrl, 2000);
-
-  if (!companyId || !boardId || !title || !imageUrl) {
-    return res.status(400).json({ error: 'companyId, boardId, title e imageUrl válida são obrigatórios.' });
-  }
-  await requireOwnedCompany(req.user!.id, companyId);
-  await requireSocialPublishingAccess(req.user!.id, req.user?.role);
-
-  const result = await createPinterestPin({
-    userId: req.user!.id,
-    companyId,
-    boardId,
-    title,
-    description: safeString(req.body?.description, 800),
-    link: safeHttpUrl(req.body?.link, 1000) || undefined,
-    imageUrl
   });
 
   res.json(result);
@@ -1988,6 +1956,12 @@ router.post('/portal/blog/covers/regenerate', requireAdmin, asyncRoute(async (re
 
 router.get('/portal/blog/covers/status', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
   res.json({ success: true, ...(await coverPhotoStatus()) });
+}));
+
+// Auditoria de imagens e vídeos (abre cada endereço de verdade e procura repetições)
+router.get('/admin/media-audit', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const report = await runMediaAudit({ userId: req.user!.id, checkUrls: req.query.checkUrls !== '0', baseUrl: config.appUrl });
+  res.json({ success: true, report });
 }));
 
 // Diagnóstico do acervo (somente leitura): mostra quantos posts existem por coleção/status

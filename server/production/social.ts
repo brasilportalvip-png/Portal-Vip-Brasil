@@ -30,7 +30,28 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export type SocialProvider = 'instagram' | 'facebook' | 'tiktok' | 'youtube' | 'linkedin' | 'pinterest' | 'x';
+export type SocialProvider = 'instagram' | 'facebook' | 'tiktok' | 'youtube' | 'linkedin';
+
+/**
+ * Redes retiradas do Portal (X/Twitter e Pinterest). Conexões e agendamentos antigos que ainda
+ * citam essas redes são ignorados com segurança — nunca quebram a publicação nas demais redes.
+ */
+export const REMOVED_SOCIAL_PROVIDERS = ['x', 'twitter', 'pinterest'] as const;
+
+export function isRemovedSocialProvider(value: string): boolean {
+  const v = String(value || '').toLowerCase().trim();
+  return v === 'x' || v === '𝕏' || v.includes('twitter') || v.includes('pinterest');
+}
+
+/**
+ * Kwai: não existe API pública de publicação para terceiros (o Kwai for Business é só para
+ * anúncios). O Portal prepara o vídeo vertical + legenda e a publicação é feita no app do Kwai.
+ */
+export const MANUAL_PUBLISH_CHANNELS = ['kwai'] as const;
+
+export function isManualPublishChannel(value: string): boolean {
+  return String(value || '').toLowerCase().trim().includes('kwai');
+}
 export type ExternalState = 'confirmed_success' | 'confirmed_failed' | 'unknown';
 
 export interface PublishTextResult {
@@ -42,7 +63,7 @@ export interface PublishTextResult {
   statusCode?: number;
 }
 
-export const TEXT_AUTO_PUBLISH_PROVIDERS: readonly SocialProvider[] = ['facebook', 'linkedin', 'x'] as const;
+export const TEXT_AUTO_PUBLISH_PROVIDERS: readonly SocialProvider[] = ['facebook', 'linkedin'] as const;
 
 export function isTextAutoPublishSupported(provider: string): boolean {
   const norm = normalizeProvider(provider);
@@ -52,7 +73,11 @@ export function isTextAutoPublishSupported(provider: string): boolean {
 
 export function getProviderAutoPublishReason(provider: string): string | null {
   const norm = normalizeProvider(provider);
-  if (!norm) return 'Rede social não reconhecida.';
+  if (!norm) {
+    if (isRemovedSocialProvider(provider)) return 'Esta rede foi retirada do Portal Vip Brasil e não recebe mais publicações.';
+    if (isManualPublishChannel(provider)) return 'O Kwai não oferece API pública de publicação: o Portal prepara o vídeo vertical e a legenda para você postar no app do Kwai.';
+    return 'Rede social não reconhecida.';
+  }
   if (isTextAutoPublishSupported(norm)) return null;
   switch (norm) {
     case 'instagram':
@@ -61,8 +86,6 @@ export function getProviderAutoPublishReason(provider: string): string | null {
       return 'O TikTok suporta exclusivamente postagem de vídeos via API Direct Post/Draft Inbox.';
     case 'youtube':
       return 'O YouTube exige arquivo de vídeo ou Short para publicação.';
-    case 'pinterest':
-      return 'O Pinterest exige envio de imagem e URL de destino para criação de Pins.';
     default:
       return `A rede social "${provider}" não suporta publicação automática textual direta neste pipeline.`;
   }
@@ -75,8 +98,6 @@ export function normalizeProvider(value: string): SocialProvider | null {
   if (v.includes('tiktok')) return 'tiktok';
   if (v.includes('youtube')) return 'youtube';
   if (v.includes('linkedin')) return 'linkedin';
-  if (v === 'x' || v.includes('twitter')) return 'x';
-  if (v.includes('pinterest')) return 'pinterest';
   return null;
 }
 
@@ -119,8 +140,6 @@ function providerCredentials(provider: SocialProvider): { clientId: string; clie
     case 'linkedin': return { clientId: config.social.linkedin.clientId, clientSecret: config.social.linkedin.clientSecret };
     case 'youtube': return { clientId: config.social.google.clientId, clientSecret: config.social.google.clientSecret };
     case 'tiktok': return { clientId: config.social.tiktok.clientId || process.env.TIKTOK_CLIENT_KEY || 'mock_tiktok_client_id', clientSecret: config.social.tiktok.clientSecret || process.env.TIKTOK_CLIENT_SECRET || 'mock_tiktok_client_secret' };
-    case 'pinterest': return { clientId: config.social.pinterest.clientId, clientSecret: config.social.pinterest.clientSecret };
-    case 'x': return { clientId: config.social.x.clientId, clientSecret: config.social.x.clientSecret };
   }
 }
 
@@ -130,7 +149,8 @@ export async function createOAuthUrl(data: { provider: SocialProvider; userId: s
     throw new Error(`Credenciais OAuth de ${data.provider} não configuradas.`);
   }
   const state = crypto.randomBytes(32).toString('base64url');
-  const codeVerifier = data.provider === 'x' ? crypto.randomBytes(48).toString('base64url') : '';
+  // PKCE só era usado pelo X (removido); mantido vazio para os provedores atuais.
+  const codeVerifier = '';
   await firestore().collection(COLLECTIONS.oauthStates).doc(stableId(state)).set({
     stateHash: stableId(state),
     provider: data.provider,
@@ -155,14 +175,6 @@ export async function createOAuthUrl(data: { provider: SocialProvider; userId: s
     case 'tiktok':
       url = new URL('https://www.tiktok.com/v2/auth/authorize/');
       url.search = new URLSearchParams({ client_key: credentials.clientId, response_type: 'code', scope: 'user.info.basic,video.upload', redirect_uri: redirectUri, state }).toString();
-      break;
-    case 'pinterest':
-      url = new URL('https://www.pinterest.com/oauth/');
-      url.search = new URLSearchParams({ client_id: credentials.clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'boards:read,pins:read,pins:write,user_accounts:read', state }).toString();
-      break;
-    case 'x':
-      url = new URL('https://x.com/i/oauth2/authorize');
-      url.search = new URLSearchParams({ response_type: 'code', client_id: credentials.clientId, redirect_uri: redirectUri, scope: 'tweet.read tweet.write users.read media.write offline.access', state, code_challenge: base64UrlSha256(codeVerifier), code_challenge_method: 'S256' }).toString();
       break;
     case 'facebook':
       url = new URL(`https://www.facebook.com/${config.social.meta.graphVersion}/dialog/oauth`);
@@ -204,14 +216,6 @@ async function exchangeCode(provider: SocialProvider, code: string, codeVerifier
   } else if (provider === 'tiktok') {
     endpoint = 'https://open.tiktokapis.com/v2/oauth/token/';
     params = new URLSearchParams({ client_key: clientId, client_secret: clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectUri });
-  } else if (provider === 'pinterest') {
-    endpoint = 'https://api.pinterest.com/v5/oauth/token';
-    params = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, continuous_refresh: 'true' });
-    headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
-  } else if (provider === 'x') {
-    endpoint = 'https://api.x.com/2/oauth2/token';
-    params = new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: codeVerifier, client_id: clientId });
-    if (clientSecret) headers.Authorization = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
   } else {
     const url = new URL(`https://graph.facebook.com/${config.social.meta.graphVersion}/oauth/access_token`);
     url.search = new URLSearchParams({ client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, code }).toString();
@@ -247,14 +251,12 @@ async function fetchAccount(provider: SocialProvider, accessToken: string): Prom
     }
     endpoint = 'https://www.googleapis.com/oauth2/v3/userinfo';
   } else if (provider === 'tiktok') endpoint = 'https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url';
-  else if (provider === 'pinterest') endpoint = 'https://api.pinterest.com/v5/user_account';
-  else if (provider === 'x') endpoint = 'https://api.x.com/2/users/me';
   else endpoint = `https://graph.facebook.com/${config.social.meta.graphVersion}/me?fields=id,name&access_token=${encodeURIComponent(accessToken)}`;
 
   const response = await socialFetch(endpoint, { headers });
   const json = await response.json().catch(() => ({} as any));
   if (!response.ok) throw new Error(json.error?.message || json.message || `Falha ao consultar perfil ${provider}.`);
-  const source = provider === 'tiktok' ? json.data?.user : provider === 'x' ? json.data : json;
+  const source = provider === 'tiktok' ? json.data?.user : json;
   return { id: String(source?.id || source?.sub || source?.open_id || source?.username || 'unknown'), name: String(source?.name || source?.display_name || source?.username || provider) };
 }
 
@@ -306,9 +308,7 @@ export function sanitizeOAuthPublicError(err: any, provider: SocialProvider): st
     instagram: 'o Instagram',
     tiktok: 'o TikTok',
     youtube: 'o YouTube',
-    linkedin: 'o LinkedIn',
-    pinterest: 'o Pinterest',
-    x: 'o X (Twitter)'
+    linkedin: 'o LinkedIn'
   };
   const target = providerNames[provider] || provider;
   return `Não foi possível concluir a conexão com ${target}.`;
@@ -847,6 +847,8 @@ export async function listConnections(userId: string, companyId?: string) {
   const allDocs: any[] = [];
   for (const doc of snap.docs) {
     let item = doc.data() as any;
+    // Conexões antigas de redes retiradas (X, Pinterest) não aparecem nem são renovadas.
+    if (isRemovedSocialProvider(item?.provider)) continue;
     const expiresAt = item.expiresAt ? new Date(item.expiresAt).getTime() : Infinity;
     const nearingExpiry = Number.isFinite(expiresAt) && expiresAt - Date.now() < 5 * 60 * 1000;
     if ((nearingExpiry || item.status === 'token_expired') && item.encryptedRefreshToken) {
@@ -938,32 +940,6 @@ export async function refreshSocialAccessToken(
 ): Promise<{ accessToken: string; refreshToken?: string; expiresAt: number }> {
   if (!refreshToken) throw new Error(`Refresh token não fornecido para ${provider}.`);
 
-  if (provider === 'x') {
-    const creds = Buffer.from(`${config.social.x.clientId}:${config.social.x.clientSecret}`).toString('base64');
-    const res = await socialFetch('https://api.twitter.com/2/oauth2/token', {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${creds}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-        client_id: config.social.x.clientId
-      }).toString()
-    });
-    const json = await res.json().catch(() => ({} as any));
-    if (!res.ok || !json.access_token) {
-      throw new Error(json.error_description || json.error || `Falha ao renovar token do X (HTTP ${res.status}).`);
-    }
-    const expiresIn = Number(json.expires_in || 7200);
-    return {
-      accessToken: json.access_token,
-      refreshToken: json.refresh_token || refreshToken,
-      expiresAt: Date.now() + expiresIn * 1000
-    };
-  }
-
   if (provider === 'tiktok') {
     const res = await socialFetch('https://open.tiktokapis.com/v2/oauth/token/', {
       method: 'POST',
@@ -1004,31 +980,6 @@ export async function refreshSocialAccessToken(
       throw new Error(json.error_description || json.error || `Falha ao renovar token do Google/YouTube (HTTP ${res.status}).`);
     }
     const expiresIn = Number(json.expires_in || 3600);
-    return {
-      accessToken: json.access_token,
-      refreshToken: json.refresh_token || refreshToken,
-      expiresAt: Date.now() + expiresIn * 1000
-    };
-  }
-
-  if (provider === 'pinterest') {
-    const creds = Buffer.from(`${config.social.pinterest.clientId}:${config.social.pinterest.clientSecret}`).toString('base64');
-    const res = await socialFetch('https://api.pinterest.com/v5/oauth/token', {
-      method: 'POST',
-      headers: {
-        Authorization: `Basic ${creds}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken
-      }).toString()
-    });
-    const json = await res.json().catch(() => ({} as any));
-    if (!res.ok || !json.access_token) {
-      throw new Error(json.message || json.error || `Falha ao renovar token do Pinterest (HTTP ${res.status}).`);
-    }
-    const expiresIn = Number(json.expires_in || 86400 * 30);
     return {
       accessToken: json.access_token,
       refreshToken: json.refresh_token || refreshToken,
@@ -1356,138 +1307,6 @@ export async function publishText(data: {
         externalState: 'unknown',
         retrySafe: false,
         error: 'Erro de rede ou timeout durante a comunicação com a API da Meta.'
-      };
-    }
-  }
-
-  if (data.provider === 'x') {
-    try {
-      const response = await socialFetch('https://api.x.com/2/tweets', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ text: trimmedText.slice(0, 280) })
-      });
-
-      const json = await response.json().catch(() => ({} as any));
-
-      if (response.status >= 500) {
-        return {
-          provider: 'x',
-          externalId: null,
-          externalState: 'unknown',
-          retrySafe: false,
-          statusCode: response.status,
-          error: `Erro interno do X (HTTP ${response.status}).`
-        };
-      }
-
-      if (response.status === 401) {
-        let rawRefresh = '';
-        if (connection.encryptedRefreshToken) {
-          try {
-            rawRefresh = decrypt(connection.encryptedRefreshToken);
-          } catch {
-            // ignore
-          }
-        }
-
-        if (rawRefresh) {
-          try {
-            const refreshed = await refreshSocialAccessToken('x', rawRefresh);
-            await connDoc.ref.update({
-              encryptedAccessToken: encrypt(refreshed.accessToken),
-              encryptedRefreshToken: refreshed.refreshToken ? encrypt(refreshed.refreshToken) : connection.encryptedRefreshToken,
-              expiresAt: new Date(refreshed.expiresAt).toISOString(),
-              status: 'connected',
-              updatedAt: nowIso()
-            });
-
-            // Re-executa uma única chamada segura com o token renovado
-            const retryRes = await socialFetch('https://api.x.com/2/tweets', {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${refreshed.accessToken}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ text: trimmedText.slice(0, 280) })
-            });
-            const retryJson = await retryRes.json().catch(() => ({} as any));
-            if (retryRes.status >= 500) {
-              return { provider: 'x', externalId: null, externalState: 'unknown', retrySafe: false, statusCode: retryRes.status, error: `Erro interno do X (HTTP ${retryRes.status}).` };
-            }
-            if (retryRes.status >= 400) {
-              const errMsg = sanitizeProviderMessage(
-                retryJson.detail || retryJson.title || retryJson.error,
-                `Rejeição da API do X (HTTP ${retryRes.status}).`
-              );
-              return { provider: 'x', externalId: null, externalState: 'confirmed_failed', retrySafe: retryRes.status !== 401, statusCode: retryRes.status, error: errMsg };
-            }
-            if (retryJson.data?.id) {
-              return { provider: 'x', externalId: String(retryJson.data.id), externalState: 'confirmed_success', retrySafe: false, statusCode: retryRes.status };
-            }
-            return { provider: 'x', externalId: null, externalState: 'unknown', retrySafe: false, statusCode: retryRes.status, error: 'Resposta do X sem ID do tweet.' };
-          } catch {
-            await connDoc.ref.update({ status: 'token_expired', updatedAt: nowIso() }).catch(() => undefined);
-            return { provider: 'x', externalId: null, externalState: 'confirmed_failed', retrySafe: false, statusCode: 401, error: 'A autenticação com o X expirou e a renovação de token falhou. Reconecte a conta.' };
-          }
-        }
-
-        await connDoc.ref.update({ status: 'token_expired', updatedAt: nowIso() }).catch(() => undefined);
-        return {
-          provider: 'x',
-          externalId: null,
-          externalState: 'confirmed_failed',
-          retrySafe: false,
-          statusCode: 401,
-          error: 'A autenticação com o X expirou. Reconecte a conta.'
-        };
-      }
-
-      if (response.status >= 400) {
-        const errorMsg = sanitizeProviderMessage(
-          json.detail || json.title || json.error,
-          `Rejeição da API do X (HTTP ${response.status}).`
-        );
-        return {
-          provider: 'x',
-          externalId: null,
-          externalState: 'confirmed_failed',
-          retrySafe: true,
-          statusCode: response.status,
-          error: errorMsg
-        };
-      }
-
-      // HTTP 2xx
-      if (json.data?.id) {
-        return {
-          provider: 'x',
-          externalId: String(json.data.id),
-          externalState: 'confirmed_success',
-          retrySafe: false,
-          statusCode: response.status
-        };
-      }
-
-      // HTTP 2xx sem data.id
-      return {
-        provider: 'x',
-        externalId: null,
-        externalState: 'unknown',
-        retrySafe: false,
-        statusCode: response.status,
-        error: 'Resposta do X retornou HTTP 200, mas sem identificador (data.id) do tweet.'
-      };
-    } catch {
-      return {
-        provider: 'x',
-        externalId: null,
-        externalState: 'unknown',
-        retrySafe: false,
-        error: 'Erro de rede ou timeout durante a comunicação com a API do X.'
       };
     }
   }
@@ -2130,96 +1949,6 @@ export async function initYouTubeResumableUpload(data: {
   return { uploadUrl };
 }
 
-export async function getPinterestBoards(data: {
-  userId: string;
-  companyId: string;
-}): Promise<Array<{ id: string; name: string; description?: string }>> {
-  const resolved = await findSocialConnection(data.userId, data.companyId, 'pinterest');
-  if (!resolved) {
-    throw new Error('Conta Pinterest não conectada para este projeto.');
-  }
-
-  const token = await ensureValidSocialAccessToken(resolved.docId);
-
-  const res = await socialFetch('https://api.pinterest.com/v5/boards?page_size=50', {
-    headers: { Authorization: `Bearer ${token}` }
-  });
-  const json = await res.json().catch(() => ({} as any));
-
-  if (!res.ok) {
-    const errorMsg = json.message || json.error || `Erro HTTP ${res.status} ao listar pastas do Pinterest.`;
-    throw new Error(errorMsg);
-  }
-
-  const items = Array.isArray(json.items) ? json.items : [];
-  return items.map((b: any) => ({
-    id: String(b.id),
-    name: String(b.name || 'Pasta'),
-    description: b.description || ''
-  }));
-}
-
-export async function createPinterestPin(data: {
-  userId: string;
-  companyId: string;
-  boardId: string;
-  title: string;
-  description?: string;
-  link?: string;
-  imageUrl: string;
-}): Promise<{
-  success: boolean;
-  pinId: string;
-  externalId: string;
-  message: string;
-}> {
-  if (!data.boardId || !data.title?.trim() || !data.imageUrl) {
-    throw new Error('Pasta (boardId), título e URL da imagem são obrigatórios para criar Pin no Pinterest.');
-  }
-
-  const resolved = await findSocialConnection(data.userId, data.companyId, 'pinterest');
-  if (!resolved) {
-    throw new Error('Conta Pinterest não conectada para este projeto.');
-  }
-
-  const token = await ensureValidSocialAccessToken(resolved.docId);
-
-  const pinBody: any = {
-    board_id: data.boardId,
-    title: data.title.trim().slice(0, 100),
-    description: (data.description || '').slice(0, 800),
-    media_source: {
-      source_type: 'image_url',
-      url: data.imageUrl
-    }
-  };
-  if (data.link?.trim()) {
-    pinBody.link = data.link.trim();
-  }
-
-  const res = await socialFetch('https://api.pinterest.com/v5/pins', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(pinBody)
-  });
-
-  const json = await res.json().catch(() => ({} as any));
-  if (!res.ok || !json.id) {
-    const errorMsg = json.message || json.error || `Erro HTTP ${res.status} ao criar Pin no Pinterest.`;
-    throw new Error(`Falha ao criar Pin: ${errorMsg}`);
-  }
-
-  return {
-    success: true,
-    pinId: String(json.id),
-    externalId: String(json.id),
-    message: 'Pin criado com sucesso no Pinterest.'
-  };
-}
-
 export function isProviderConfigured(provider: SocialProvider): { configured: boolean; clientIdPresent: boolean; clientSecretPresent: boolean } {
   const creds = providerCredentials(provider);
   const clientIdPresent = Boolean(creds.clientId);
@@ -2236,15 +1965,15 @@ export async function getSocialReadiness(companyId: string, userId?: string): Pr
     ? await listConnections(userId, companyId)
     : (await firestore().collection(COLLECTIONS.socialConnections).where('companyId', '==', companyId).get()).docs.map((d: any) => ({ id: d.id, ...d.data() }));
   const findConn = (p: SocialProvider) => connections.find((c: any) => c.provider === p);
-  const providers: SocialProvider[] = ['facebook', 'instagram', 'linkedin', 'x', 'tiktok', 'youtube', 'pinterest'];
+  const providers: SocialProvider[] = ['facebook', 'instagram', 'linkedin', 'tiktok', 'youtube'];
   const readiness: Record<string, any> = {
     companyId, healthy: true, checkedAt: nowIso(), connectedCount: 0, summary: '',
     scheduler: { cronSecretConfigured: Boolean(config.cronSecret), nativeCronConfigured: true },
     linkedinApiVersionConfigured: Boolean(config.social.linkedin.apiVersion)
   };
   const capabilitiesMap: Record<SocialProvider, string> = {
-    facebook: 'text_image_video', instagram: 'image_video_reel', linkedin: 'text_image_video', x: 'text_image_video',
-    tiktok: 'image_video_draft', youtube: 'video_upload', pinterest: 'image_video_pin'
+    facebook: 'text_image_video', instagram: 'image_video_reel', linkedin: 'text_image_video',
+    tiktok: 'image_video_draft', youtube: 'video_upload'
   };
   let connectedCount = 0;
   for (const p of providers) {

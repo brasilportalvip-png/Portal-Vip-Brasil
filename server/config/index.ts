@@ -113,14 +113,6 @@ export const config = {
       clientId: env('TIKTOK_CLIENT_KEY', isTest ? 'mock_tiktok_client_id' : ''),
       clientSecret: env('TIKTOK_CLIENT_SECRET', isTest ? 'mock_tiktok_client_secret' : '')
     },
-    pinterest: {
-      clientId: env('PINTEREST_APP_ID', isTest ? 'mock_pinterest_client_id' : ''),
-      clientSecret: env('PINTEREST_APP_SECRET', isTest ? 'mock_pinterest_client_secret' : '')
-    },
-    x: {
-      clientId: env('X_CLIENT_ID', isTest ? 'mock_x_client_id' : ''),
-      clientSecret: env('X_CLIENT_SECRET', isTest ? 'mock_x_client_secret' : '')
-    }
   }
 } as const;
 
@@ -168,9 +160,7 @@ export function assertProductionConfig(): void {
     { name: 'Meta', id: config.social.meta.clientId, secret: config.social.meta.clientSecret, idVar: 'META_APP_ID', secretVar: 'META_APP_SECRET' },
     { name: 'LinkedIn', id: config.social.linkedin.clientId, secret: config.social.linkedin.clientSecret, idVar: 'LINKEDIN_CLIENT_ID', secretVar: 'LINKEDIN_CLIENT_SECRET' },
     { name: 'Google/YouTube', id: config.social.google.clientId, secret: config.social.google.clientSecret, idVar: 'GOOGLE_CLIENT_ID', secretVar: 'GOOGLE_CLIENT_SECRET' },
-    { name: 'TikTok', id: config.social.tiktok.clientId, secret: config.social.tiktok.clientSecret, idVar: 'TIKTOK_CLIENT_KEY', secretVar: 'TIKTOK_CLIENT_SECRET' },
-    { name: 'Pinterest', id: config.social.pinterest.clientId, secret: config.social.pinterest.clientSecret, idVar: 'PINTEREST_APP_ID', secretVar: 'PINTEREST_APP_SECRET' },
-    { name: 'X', id: config.social.x.clientId, secret: config.social.x.clientSecret, idVar: 'X_CLIENT_ID', secretVar: 'X_CLIENT_SECRET' }
+    { name: 'TikTok', id: config.social.tiktok.clientId, secret: config.social.tiktok.clientSecret, idVar: 'TIKTOK_CLIENT_KEY', secretVar: 'TIKTOK_CLIENT_SECRET' }
   ];
 
   for (const p of oauthProviders) {

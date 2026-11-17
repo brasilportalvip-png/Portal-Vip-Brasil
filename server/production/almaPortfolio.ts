@@ -4,8 +4,6 @@ export interface PortalProjectSocialSettings {
   instagramEnabled?: boolean;
   facebookEnabled?: boolean;
   linkedinEnabled?: boolean;
-  xEnabled?: boolean;
-  pinterestEnabled?: boolean;
   youtubeEnabled?: boolean;
   tiktokEnabled?: boolean;
 }
@@ -295,8 +293,6 @@ function defaultProjectSocialSettings(project: PortalProjectItem): PortalProject
     instagramEnabled: true,
     facebookEnabled: true,
     linkedinEnabled: true,
-    xEnabled: true,
-    pinterestEnabled: false,
     youtubeEnabled: Boolean(project.hasApp),
     tiktokEnabled: false
   };

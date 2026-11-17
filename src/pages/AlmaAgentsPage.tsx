@@ -255,17 +255,17 @@ export const THIRTY_AGENTS: AgentDefinition[] = [
     ]
   },
   {
-    id: 'PINTEREST_ADS_EXPERT',
-    name: 'Pinterest Ads Expert',
+    id: 'KWAI_GROWTH_EXPERT',
+    name: 'Kwai Growth & Kwai for Business',
     category: 'ads',
-    role: 'Gestor de Campanhas no Pinterest',
-    description: 'Pins verticais 2:3 de alto CTR, tráfego contínuo e público qualificado de compras e espiritualidade.',
+    role: 'Especialista em crescimento e anúncios no Kwai',
+    description: 'Vídeos verticais 9:16 com gancho forte, linguagem popular brasileira, desafios de hashtag e anúncios Kwai for Business.',
     icon: Star,
-    color: 'text-rose-400 bg-rose-500/10 border-rose-500/30',
+    color: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
     promptChips: [
-      'Como criar Pins de alta conversão para o nicho de Runas e Cristais?',
-      'Quais as dimensões e proporções que recebem maior prioridade no algoritmo?',
-      'Como usar palavras-chave nos títulos de Pins para tráfego perpétuo?'
+      'Monte um roteiro de 30 segundos para o Kwai que leve as pessoas a baixar o app Oráculos.',
+      'Quais horários e hashtags funcionam melhor no Kwai para o nicho espiritual?',
+      'Como criar um desafio de hashtag no Kwai para o Manual Católico?'
     ]
   },
   {

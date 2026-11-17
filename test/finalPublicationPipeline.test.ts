@@ -50,21 +50,21 @@ test('Estúdio exibe o job mais recente encerrado e sua mensagem real de erro', 
   assert.match(source, /activeJob\.lastErrorMessage \|\| activeJob\.errorMessage \|\| activeJob\.error/);
 });
 
-test('Autopilot reaproveita o vídeo vertical em todas as sete redes selecionadas', () => {
+test('Autopilot reaproveita o vídeo vertical em todas as redes de vídeo selecionadas (e gera para o Kwai)', () => {
   const autopilot = read('server/production/autopilotMultimediaR8.ts');
-  assert.match(autopilot, /\['youtube', 'tiktok', 'facebook', 'instagram', 'pinterest', 'linkedin', 'x'\]/);
+  assert.match(autopilot, /\['youtube', 'tiktok', 'facebook', 'instagram', 'linkedin'\]/);
   assert.match(autopilot, /imageTargets = targets\.filter\(\(target\) => !videoProviders\.has\(target\.provider\)\)/);
-  assert.match(autopilot, /target\.provider !== 'pinterest' \|\| Boolean\(videoCoverImageUrl\)/);
-  assert.match(autopilot, /imageTargets\.length > 0 \|\| pinterestVideoSelected \|\| mode !== 'automatic'/);
+  assert.match(autopilot, /videoTargets\.length > 0 \|\| kwaiSelected/);
+  assert.ok(!/pinterest|'x'/.test(autopilot));
 
   const ai = read('server/production/ai.ts');
   assert.match(ai, /imageUrl: workingJob\.coverImageUrl \|\| ''/);
   assert.match(ai, /coverImageUrl: data\.coverImageUrl/);
 });
 
-test('Projetos novos herdam todas as sete redes conectadas do proprietário', () => {
+test('Projetos novos herdam todas as redes do proprietário (com Kwai, sem X/Pinterest)', () => {
   const autopilot = read('server/production/autopilotMultimediaR8.ts');
-  for (const provider of ['Facebook', 'Instagram', 'LinkedIn', 'X', 'TikTok', 'YouTube', 'Pinterest']) {
+  for (const provider of ['Facebook', 'Instagram', 'LinkedIn', 'Kwai', 'TikTok', 'YouTube']) {
     assert.match(autopilot, new RegExp(`['\"]${provider}['\"]`));
   }
   assert.match(autopilot, /DEFAULT_AUTOPILOT_TARGET_PLATFORMS/);

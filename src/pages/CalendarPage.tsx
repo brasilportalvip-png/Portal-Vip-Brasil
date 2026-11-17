@@ -16,10 +16,9 @@ const PLATFORM_OPTIONS = [
   { id: 'Facebook', label: 'Facebook Page', icon: '📘', autoPublish: true, note: 'Texto, imagem ou vídeo via Meta Graph' },
   { id: 'Instagram', label: 'Instagram', icon: '📸', autoPublish: true, note: 'Imagem ou Reel em conta profissional' },
   { id: 'LinkedIn', label: 'LinkedIn', icon: '💼', autoPublish: true, note: 'Texto, imagem ou vídeo via Posts API' },
-  { id: 'X', label: 'X', icon: '𝕏', autoPublish: true, note: 'Texto, imagem ou vídeo via API do X' },
+  { id: 'Kwai', label: 'Kwai', icon: '🎬', autoPublish: false, note: 'Só no Planejamento: o Kwai não tem API de postagem; poste pela Biblioteca (botão "Postar no Kwai")' },
   { id: 'TikTok', label: 'TikTok', icon: '🎵', autoPublish: true, note: 'Vídeo/foto; automação diária entrega rascunho para confirmação no TikTok' },
   { id: 'YouTube', label: 'YouTube', icon: '▶️', autoPublish: true, note: 'Vídeo/Short via upload resumível; padrão não listado' },
-  { id: 'Pinterest', label: 'Pinterest', icon: '📌', autoPublish: true, note: 'Pin com imagem ou vídeo na pasta disponível' },
 ]
 
 export const CalendarPage: React.FC<Props> = ({
@@ -484,7 +483,7 @@ export const CalendarPage: React.FC<Props> = ({
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="text-xs font-semibold text-slate-300">Redes Sociais de Destino *</div>
                   {scheduleMode === 'auto' && (
-                    <span className="text-[10px] text-cyan-300">Auto-publicação multimídia: 7 redes conforme mídia e conexão</span>
+                    <span className="text-[10px] text-cyan-300">Auto-publicação multimídia: 5 redes conforme mídia e conexão</span>
                   )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -1142,7 +1142,7 @@ export interface VideoJobData {
   storagePath?: string;
   contentItemId: string;
   autoPublishPlatforms?: string[];
-  autoPublishProviderOptions?: { pinterestBoardId?: string; youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
+  autoPublishProviderOptions?: { youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
   status: VideoJobStatus;
   pipelineState?: 'credits_reserved' | 'provider_starting' | 'provider_running' | 'result_received' | 'result_persisted' | 'credits_committed' | 'completed' | 'failed';
   errorMessage?: string;
@@ -1452,7 +1452,7 @@ export async function startVideoGenerationJob(data: {
   lighting?: string;
   mood?: string;
   autoPublishPlatforms?: string[];
-  autoPublishProviderOptions?: { pinterestBoardId?: string; youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
+  autoPublishProviderOptions?: { youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
 }): Promise<VideoJobData> {
   await assertAutomationAllowed({ userId: data.userId, projectId: data.company?.id });
   const preset: VideoPreset = data.preset === 'cinema_4k' ? 'cinema_4k' : data.preset === 'pro_1080p' ? 'pro_1080p' : 'demo_720p';
@@ -2531,10 +2531,8 @@ const VIDEO_AUTOPUBLISH_PROVIDERS = new Map<string, string>([
   ['facebook', 'Facebook'],
   ['instagram', 'Instagram'],
   ['linkedin', 'LinkedIn'],
-  ['x', 'X'],
   ['tiktok', 'TikTok'],
-  ['youtube', 'YouTube'],
-  ['pinterest', 'Pinterest']
+  ['youtube', 'YouTube']
 ]);
 
 function recoverableVideoPlatforms(values: unknown): string[] {

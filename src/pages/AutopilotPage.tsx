@@ -112,10 +112,9 @@ const channels = [
   { name: 'Facebook', key: 'facebook', direct: true },
   { name: 'Instagram', key: 'instagram', direct: true },
   { name: 'LinkedIn', key: 'linkedin', direct: true },
-  { name: 'X', key: 'x', direct: true },
+  { name: 'Kwai', key: 'kwai', direct: false },
   { name: 'TikTok', key: 'tiktok', direct: true },
-  { name: 'YouTube', key: 'youtube', direct: true },
-  { name: 'Pinterest', key: 'pinterest', direct: true }
+  { name: 'YouTube', key: 'youtube', direct: true }
 ];
 
 const defaultTargetPlatforms = channels.map((channel) => channel.name);
@@ -310,7 +309,9 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   const toggleChannel = (name: string, direct: boolean) => {
     if (!cfg) return;
     if (cfg.mode === 'automatic' && !direct) {
-      setMessage(`${name} usa o fluxo multimídia específico da própria rede.`);
+      setMessage(name === 'Kwai'
+        ? 'O Kwai não tem API de postagem: use o modo de aprovação manual. O vídeo vertical fica pronto na Biblioteca com o botão "Postar no Kwai".'
+        : `${name} usa o fluxo multimídia específico da própria rede.`);
       return;
     }
     patch({ targetPlatforms: cfg.targetPlatforms.includes(name) ? cfg.targetPlatforms.filter((item) => item !== name) : [...cfg.targetPlatforms, name] });

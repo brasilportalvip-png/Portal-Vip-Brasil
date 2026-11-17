@@ -5,15 +5,14 @@ import { apiRequest } from '../lib/api';
 
 interface SocialNetworksPageProps { selectedCompany: Company | null; onNavigate: (tab:string)=>void; }
 
-type Provider = SocialConnection['provider'];
-const networks:Array<{id:Provider;name:string;icon:string;capability:string;note:string}> = [
+type Provider = SocialConnection['provider'] | 'kwai';
+const networks:Array<{id:Provider;name:string;icon:string;capability:string;note:string;manual?:boolean}> = [
   { id:'instagram', name:'Instagram Business', icon:'📸', capability:'OAuth e conta profissional', note:'Publicação automática exige mídia compatível, conta Business/Creator e permissões Meta aprovadas.' },
   { id:'facebook', name:'Facebook Page', icon:'📘', capability:'Publicação de texto em Página', note:'Disponível quando o token possui a Página e os escopos aprovados necessários.' },
   { id:'linkedin', name:'LinkedIn', icon:'💼', capability:'Publicação de texto', note:'Disponível quando o aplicativo LinkedIn e o usuário possuem o escopo de publicação autorizado.' },
+  { id:'kwai', name:'Kwai', icon:'🎬', capability:'Postagem guiada de vídeo vertical', note:'O Kwai não oferece API pública de publicação para outros apps. O Portal prepara o vídeo vertical 9:16 e a legenda; na Biblioteca de Conteúdos, o botão "Postar no Kwai" envia o vídeo direto para o app do Kwai no celular.', manual:true },
   { id:'tiktok', name:'TikTok', icon:'🎵', capability:'Login Kit & Content Posting (Rascunho)', note:'Envio de vídeo MP4 (até 4 MB) como rascunho para a Caixa de Entrada do TikTok. A publicação final é concluída pelo usuário no app do TikTok.' },
-  { id:'youtube', name:'YouTube', icon:'▶️', capability:'OAuth e canal conectado', note:'Upload/publicação exige arquivo de vídeo e permissões próprias da API do YouTube.' },
-  { id:'pinterest', name:'Pinterest', icon:'📌', capability:'Não configurado / Aguardando aprovação', note:'Criação de Pin permanece desabilitada até aprovação do aplicativo e credenciais completas no Pinterest Developers.' },
-  { id:'x', name:'X', icon:'𝕏', capability:'Publicação de texto', note:'Disponível quando o aplicativo X permite escrita e o token OAuth 2.0 possui o escopo necessário.' }
+  { id:'youtube', name:'YouTube', icon:'▶️', capability:'OAuth e canal conectado', note:'Upload/publicação exige arquivo de vídeo e permissões próprias da API do YouTube.' }
 ];
 
 export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedCompany, onNavigate }) => {
@@ -340,7 +339,39 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
 
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {networks.map((net) => {
-        const conn = byProvider.get(net.id);
+        if (net.manual) {
+          return (
+            <article key={net.id} className="flex min-h-[270px] flex-col justify-between rounded-3xl border border-amber-500/30 bg-[#0F172A] p-5 shadow-xl shadow-black/10 transition hover:border-amber-400/50">
+              <div>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="grid h-11 w-11 place-items-center rounded-2xl border border-slate-700 bg-[#1E293B] text-xl">{net.icon}</div>
+                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-300">Sem login</span>
+                </div>
+                <h3 className="mt-4 text-sm font-bold text-white">{net.name}</h3>
+                <p className="mt-1 text-xs font-semibold text-amber-300">{net.capability}</p>
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-400">{net.note}</p>
+              </div>
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => onNavigate('conteudos')}
+                  className="flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-xs font-extrabold text-slate-950 hover:opacity-95"
+                >
+                  <Send size={14} />Postar vídeo no Kwai
+                </button>
+                <a
+                  href="https://www.kwai.com/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 text-xs font-bold text-slate-300 hover:bg-slate-800"
+                >
+                  <ExternalLink size={14} />Abrir Kwai
+                </a>
+              </div>
+            </article>
+          );
+        }
+        const conn = byProvider.get(net.id as SocialConnection['provider']);
         const connected = conn?.status === 'connected';
         const expired = conn?.expiresAt && new Date(conn.expiresAt).getTime() < Date.now();
         return (

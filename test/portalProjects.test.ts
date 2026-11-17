@@ -95,7 +95,7 @@ test('Portal Vip Brasil - Redes Sociais: Sem Conexão Não Simula Sucesso Falso'
   const result = await publishText({
     userId: 'unconnected_user_id_12345',
     companyId: 'unconnected_company_99999',
-    provider: 'x',
+    provider: 'linkedin',
     text: 'Teste de segurança'
   });
 

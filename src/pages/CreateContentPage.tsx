@@ -316,8 +316,8 @@ export const CreateContentPage: React.FC<CreateContentPageProps> = ({
                 <option value="LinkedIn">LinkedIn</option>
                 <option value="Facebook">Facebook</option>
                 <option value="TikTok">TikTok</option>
-                <option value="X">X (Twitter)</option>
-                <option value="Pinterest">Pinterest</option>
+                <option value="Kwai">Kwai</option>
+                <option value="YouTube">YouTube</option>
               </select>
             </div>
 

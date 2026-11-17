@@ -1,6 +1,5 @@
 import path from 'path';
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import { createApp } from './server/app.js';
 import { config } from './server/config/index.js';
 import { startVideoRetryDaemon } from './server/production/videoRetryDaemon.js';
@@ -9,6 +8,8 @@ async function startServer() {
   const app = createApp();
 
   if (!config.isProduction) {
+    // Vite é ferramenta de desenvolvimento (devDependency): só é carregado fora de produção.
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({ server: { middlewareMode: true }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {

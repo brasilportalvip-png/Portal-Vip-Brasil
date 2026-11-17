@@ -358,6 +358,12 @@ export function detectArticleNiche(meta: {
   );
   const proj = meta.relatedProjectId || '';
 
+  // === FASE 0: projetos novos (as capas definitivas são geradas por IA no servidor) ===
+  const themeCorpus = `${titleAndSlug} ${normalizeText(meta.relatedProjectId || '')}`.replace(/-/g, ' ');
+  if (/corrida|motorista|uber|passageiro|carona|mobilidade|froc x/.test(themeCorpus)) return 'trafego_organico_growth';
+  if (/fantasma|sobrenatural|assombra|paranormal|detector/.test(themeCorpus)) return 'runes_viking';
+  if (/cipriano|bruxo|bruxa|bruxaria|feitico|grimorio|buzios/.test(themeCorpus)) return 'tarot_oraculos';
+
   // === FASE 1: Detecção de Alta Precisão pelo TÍTULO e SLUG ===
 
   // 1. Tarot & Baralho Cigano
@@ -622,4 +628,80 @@ export function resolveArticleCoverAlt(
     category,
     tags
   }).alt;
+}
+
+
+/** Chave de comparação de imagens (mesma foto com parâmetros diferentes conta como repetida). */
+export function coverImageKey(url?: string | null): string {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const unsplash = raw.match(/images\.unsplash\.com\/(photo-[a-z0-9-]+)/i);
+  if (unsplash) return unsplash[1].toLowerCase();
+  return raw.split('#')[0].split('?')[0].toLowerCase();
+}
+
+const ALL_CATALOG_PHOTOS: CoverAsset[] = Object.values(NICHE_PHOTO_CATALOG).flat();
+
+/**
+ * Garante que nenhuma capa se repita numa listagem (blog, relacionados, vitrine).
+ * Mantém a capa própria de cada artigo; só troca a foto de catálogo que já apareceu antes,
+ * primeiro por outra do mesmo nicho e, se acabar, por qualquer foto ainda não usada.
+ */
+export function withUniqueCovers<T extends { id?: string; slug?: string; title?: string; relatedProjectId?: string; category?: string; tags?: string[]; coverImage?: string; coverImageAlt?: string }>(
+  items: T[],
+  alreadyUsed: Iterable<string> = []
+): T[] {
+  const used = new Set<string>([...alreadyUsed].map(coverImageKey).filter(Boolean));
+  return items.map((item) => {
+    const current = resolveArticleCover(item.coverImage, item.relatedProjectId, item.title, item.slug, item.id, item.category, item.tags);
+    const key = coverImageKey(current);
+    if (key && !used.has(key)) {
+      used.add(key);
+      return { ...item, coverImage: current };
+    }
+    const niche = detectArticleNiche({ title: item.title, slug: item.slug, category: item.category, tags: item.tags, relatedProjectId: item.relatedProjectId });
+    const pool = [...(NICHE_PHOTO_CATALOG[niche] || []), ...ALL_CATALOG_PHOTOS];
+    const replacement = pool.find((photo) => !used.has(coverImageKey(photo.url)));
+    if (!replacement) return { ...item, coverImage: current };
+    used.add(coverImageKey(replacement.url));
+    return { ...item, coverImage: replacement.url, coverImageAlt: replacement.alt };
+  });
+}
+
+/** Fundo elegante em SVG (sempre carrega): último recurso quando nenhuma foto abre. */
+export function brandedCoverFallback(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  const a = h % 360;
+  const b = (a + 40) % 360;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900' preserveAspectRatio='xMidYMid slice'><defs><radialGradient id='g' cx='25%' cy='20%' r='95%'><stop offset='0' stop-color='hsl(${a},45%,40%)'/><stop offset='0.6' stop-color='hsl(${b},40%,16%)'/><stop offset='1' stop-color='hsl(${b},35%,8%)'/></radialGradient></defs><rect width='1600' height='900' fill='url(#g)'/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+/**
+ * onError das capas: tenta outra foto do mesmo nicho e, se nenhuma abrir, mostra o fundo da marca.
+ * Nunca deixa ícone de imagem quebrada nem entra em loop.
+ */
+export function handleCoverError(
+  img: HTMLImageElement,
+  meta: { relatedProjectId?: string; title?: string; slug?: string; id?: string; category?: string; tags?: string[] }
+): void {
+  const attempt = Number(img.dataset.coverAttempt || '0') + 1;
+  img.dataset.coverAttempt = String(attempt);
+  const seed = `${meta.id || ''}:${meta.slug || ''}:${meta.title || ''}`;
+  if (attempt <= 2) {
+    const niche = detectArticleNiche(meta);
+    const pool = NICHE_PHOTO_CATALOG[niche] || ALL_CATALOG_PHOTOS;
+    const failed = coverImageKey(img.currentSrc || img.src);
+    const options = pool.filter((photo) => coverImageKey(photo.url) !== failed);
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+    const next = options[(h + attempt) % Math.max(options.length, 1)];
+    if (next) {
+      img.src = next.url;
+      return;
+    }
+  }
+  img.onerror = null;
+  img.src = brandedCoverFallback(seed);
 }

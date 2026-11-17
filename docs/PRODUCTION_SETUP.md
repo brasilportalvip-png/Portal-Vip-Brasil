@@ -107,13 +107,12 @@ Callbacks seguem:
 |---|---|---:|---:|---|
 | Facebook Page | sim | sim | limitado | requer Page Access Token/permissões aprovadas |
 | LinkedIn | sim | sim | limitado | requer `w_member_social` aprovado |
-| X | sim, PKCE | sim | limitado | requer permissão de escrita |
 | Instagram Professional | sim | não | sim/específico | publicação exige mídia |
 | YouTube | sim | não | sim/específico | upload de vídeo |
 | TikTok | sim, PKCE | não | draft/upload | escopos atuais: `user.info.basic`, `video.upload` |
-| Pinterest | sim | não | sim/específico | pins exigem conteúdo visual |
+| Kwai | não (sem API pública) | não | manual guiado | vídeo vertical + legenda prontos na Biblioteca (botão "Postar no Kwai") |
 
-As aprovações de Meta/Google/LinkedIn/TikTok/Pinterest/X são externas ao repositório.
+As aprovações de Meta/Google/LinkedIn/TikTok são externas ao repositório. X/Twitter e Pinterest foram retirados do Portal.
 
 ## 6. GitHub / CI
 
