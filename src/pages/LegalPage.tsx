@@ -345,7 +345,7 @@ Assinatura / Nome do Titular: ____________________________________`;
 
                 <div className="p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <strong className="text-cyan-300 block mb-1">D. Tokens de Conexão com Redes Sociais (OAuth 2.0):</strong>
-                  Tokens de acesso autorizados expressamente pelo usuário para publicação em Meta (Facebook/Instagram), Google/YouTube, LinkedIn, TikTok ou X. Estes tokens são criptografados no servidor com chave simétrica em repouso e jamais expostos ao navegador.
+                  Tokens de acesso autorizados expressamente pelo usuário para publicação em Meta (Facebook/Instagram), Google/YouTube, LinkedIn ou TikTok. O Kwai não recebe token: a postagem no Kwai é feita pelo próprio usuário no app. Estes tokens são criptografados no servidor com chave simétrica em repouso e jamais expostos ao navegador.
                 </div>
               </div>
             </section>

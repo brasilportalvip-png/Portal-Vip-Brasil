@@ -206,7 +206,6 @@ function projectAllowsProvider(project: PortalProjectItem, provider: SocialProvi
   const settings = project.socialSettings || {};
   if (provider === 'facebook') return settings.facebookEnabled !== false;
   if (provider === 'linkedin') return settings.linkedinEnabled !== false;
-  if (provider === 'x') return settings.xEnabled !== false;
   return false;
 }
 

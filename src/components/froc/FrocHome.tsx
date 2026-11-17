@@ -498,7 +498,7 @@ export function FrocHome(props: Props) {
     if (!p) return null;
     return (
       <div className="rounded-2xl border border-[#d4a937]/40 bg-black/60 p-3 flex gap-3 items-start" data-testid="froc-project-card">
-        {p.logoUrl ? <img src={p.logoUrl} alt="" className="w-12 h-12 rounded-xl object-contain bg-white/5 shrink-0" /> : null}
+        {p.logoUrl ? <img src={p.logoUrl} alt="" className="w-12 h-12 rounded-xl object-contain bg-white/5 shrink-0" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/icons/logo.png'; }} /> : null}
         <div className="min-w-0 flex-1">
           <p className="font-bold text-[#f5d67a] text-sm">{p.name}</p>
           {p.tagline && <p className="text-xs text-slate-300 mt-0.5">{p.tagline}</p>}

@@ -35,7 +35,7 @@ import {
   Instagram,
   Facebook,
   Linkedin,
-  Twitter
+  Clapperboard
 } from 'lucide-react';
 import { BLOG_ARTICLES, BLOG_CATEGORIES } from '../data/blogArticles';
 import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND, type PortalProject } from '../data/portalProjects';
@@ -43,7 +43,7 @@ import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProj
 import { apiRequest } from '../lib/api';
 import { trackAnalyticsEvent } from '../lib/firebase';
 import type { PortalBlogArticle, BlogArticleSection, BlogFaqItem } from '../types/blog';
-import { resolveArticleCover, resolveArticleCoverAlt, getThematicCover, getSmartThematicCover } from '../utils/thematicCovers';
+import { resolveArticleCover, resolveArticleCoverAlt, withUniqueCovers, handleCoverError } from '../utils/thematicCovers';
 
 interface BlogPortalPageProps {
   onNavigate: (tab: string) => void;
@@ -66,7 +66,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
   const [copiedSnippet, setCopiedSnippet] = useState<string | null>(null);
   const [showRepurposeModal, setShowRepurposeModal] = useState<PortalBlogArticle | null>(null);
   const [showSchemaModal, setShowSchemaModal] = useState<PortalBlogArticle | null>(null);
-  const [activeRepurposeTab, setActiveRepurposeTab] = useState<'instagram' | 'linkedin' | 'facebook' | 'twitter'>('instagram');
+  const [activeRepurposeTab, setActiveRepurposeTab] = useState<'instagram' | 'linkedin' | 'facebook' | 'kwai'>('instagram');
   const [portalProjects, setPortalProjects] = useState<PortalProject[]>(USER_PORTFOLIO_PROJECTS);
 
   // Generator Modal state
@@ -162,11 +162,12 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
       }>(`/api/portal/blog/articles?${params.toString()}`);
 
       if (Array.isArray(data?.articles)) {
-        const sanitized = data.articles.map((art) => ({
+        // Capas sem repetição na listagem (a capa própria de cada artigo é mantida).
+        const sanitized = withUniqueCovers(data.articles.map((art) => ({
           ...art,
-          coverImage: resolveArticleCover(art.coverImage, art.relatedProjectId, art.title),
-          coverImageAlt: resolveArticleCoverAlt(art.coverImageAlt, art.relatedProjectId, art.title)
-        }));
+          coverImage: resolveArticleCover(art.coverImage, art.relatedProjectId, art.title, art.slug, art.id, art.category),
+          coverImageAlt: resolveArticleCoverAlt(art.coverImageAlt, art.relatedProjectId, art.title, art.slug, art.id, art.category)
+        })));
         setArticles(sanitized);
         setTotalArticles(typeof data.total === 'number' ? data.total : sanitized.length);
       } else {
@@ -183,7 +184,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
           return matchCat && matchProj && matchQ;
         });
         const offset = (page - 1) * pageSize;
-        setArticles(filtered.slice(offset, offset + pageSize));
+        setArticles(withUniqueCovers(filtered.slice(offset, offset + pageSize)));
         setTotalArticles(filtered.length);
       }
     } catch (err) {
@@ -201,7 +202,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
         return matchCat && matchProj && matchQ;
       });
       const offset = (page - 1) * pageSize;
-      setArticles(filtered.slice(offset, offset + pageSize));
+      setArticles(withUniqueCovers(filtered.slice(offset, offset + pageSize)));
       setTotalArticles(filtered.length);
     } finally {
       setLoading(false);
@@ -358,18 +359,21 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
           professionalTakeaway: 'A consistência de publicações e a precisão das diretrizes aumentam a relevância e retenção de usuários.',
           utmUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}?utm_source=linkedin`
         },
-        twitter: {
-          thread: [
-            `1/2 📢 Novo artigo publicado: ${item.title}`,
-            `2/2 ${item.excerpt} Leia completo em: https://portal-vip-brasil.vercel.app/blog/${item.slug}`
+        kwai: {
+          caption: `${item.title} 👀\n${item.excerpt}\nLink na bio: Portal Vip Brasil`,
+          hashtags: ['#PortalVipBrasil', '#Kwai', '#Espiritualidade'],
+          videoScript: [
+            `0-3s (gancho): ${item.title}`,
+            `4-20s: ${item.excerpt}`,
+            '21-30s: Chamada — "O artigo completo está no Portal Vip Brasil, link na bio."'
           ],
-          utmUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}?utm_source=x`
+          utmUrl: `https://portal-vip-brasil.vercel.app/blog/${item.slug}?utm_source=kwai`
         }
       },
       author: item.author || {
         name: 'Equipe Editorial Portal Vip Brasil',
         role: 'Especialista Temático',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150',
+        avatar: '/icons/logo.png',
         bio: 'Redação oficial do Portal Vip Brasil com curadoria de especialistas em espiritualidade, oráculos e IA.'
       },
       views: 0,
@@ -496,7 +500,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
           article: res.article
         });
         // Prepend to article list
-        setArticles((prev) => [res.article, ...prev.filter((a) => a.id !== res.article.id)]);
+        setArticles((prev) => withUniqueCovers([res.article, ...prev.filter((a) => a.id !== res.article.id)]));
       } else {
         setGenFeedback({
           success: false,
@@ -713,6 +717,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                     <img
                       src={featuredArticle.author.avatar}
                       alt={featuredArticle.author.name}
+                      onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/icons/logo.png'; }}
                       className="w-10 h-10 rounded-full object-cover border border-slate-700 bg-slate-800"
                     />
                     <div>
@@ -958,16 +963,14 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                         )}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         loading="lazy"
-                        onError={(e) => {
-                          e.currentTarget.src = getSmartThematicCover({
-                            relatedProjectId: article.relatedProjectId,
-                            title: article.title,
-                            slug: article.slug,
-                            id: article.id,
-                            category: article.category,
-                            tags: article.keywords
-                          }).url;
-                        }}
+                        onError={(e) => handleCoverError(e.currentTarget, {
+                          relatedProjectId: article.relatedProjectId,
+                          title: article.title,
+                          slug: article.slug,
+                          id: article.id,
+                          category: article.category,
+                          tags: article.keywords
+                        })}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
 
@@ -1225,6 +1228,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 <img
                   src={readingArticle.author.avatar}
                   alt={readingArticle.author.name}
+                  onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/icons/logo.png'; }}
                   className="w-11 h-11 rounded-full object-cover bg-slate-800 border border-slate-700"
                 />
                 <div>
@@ -1296,16 +1300,14 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                   readingArticle.keywords
                 )}
                 className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.src = getSmartThematicCover({
-                    relatedProjectId: readingArticle.relatedProjectId,
-                    title: readingArticle.title,
-                    slug: readingArticle.slug,
-                    id: readingArticle.id,
-                    category: readingArticle.category,
-                    tags: readingArticle.keywords
-                  }).url;
-                }}
+                onError={(e) => handleCoverError(e.currentTarget, {
+                  relatedProjectId: readingArticle.relatedProjectId,
+                  title: readingArticle.title,
+                  slug: readingArticle.slug,
+                  id: readingArticle.id,
+                  category: readingArticle.category,
+                  tags: readingArticle.keywords
+                })}
               />
             </div>
 
@@ -1444,6 +1446,7 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
               <img
                 src={readingArticle.author.avatar}
                 alt={readingArticle.author.name}
+                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/icons/logo.png'; }}
                 className="w-14 h-14 rounded-full object-cover border border-slate-700 bg-slate-800"
               />
               <div>
@@ -1534,15 +1537,15 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
               </button>
 
               <button
-                onClick={() => setActiveRepurposeTab('twitter')}
+                onClick={() => setActiveRepurposeTab('kwai')}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 ${
-                  activeRepurposeTab === 'twitter'
-                    ? 'bg-slate-950 border border-slate-700 text-white'
+                  activeRepurposeTab === 'kwai'
+                    ? 'bg-orange-500 text-slate-950'
                     : 'bg-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
-                <Twitter className="w-3.5 h-3.5" />
-                <span>X (Twitter)</span>
+                <Clapperboard className="w-3.5 h-3.5" />
+                <span>Kwai</span>
               </button>
             </div>
 
@@ -1628,30 +1631,34 @@ export function BlogPortalPage({ onNavigate, onOpenAuth, user }: BlogPortalPageP
                 </div>
               )}
 
-              {activeRepurposeTab === 'twitter' && (
-                <div className="space-y-3">
-                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
-                    <p className="text-xs font-bold text-slate-400 uppercase mb-1">Thread no X:</p>
-                    {showRepurposeModal.socialRepurpose?.twitter?.thread?.map((tweet, idx) => (
-                      <div key={idx} className="p-2 rounded bg-slate-900 border border-slate-800 text-xs text-slate-200">
-                        {tweet}
-                      </div>
-                    ))}
+              {activeRepurposeTab === 'kwai' && (() => {
+                const kwai = showRepurposeModal.socialRepurpose?.kwai;
+                const caption = kwai?.caption || showRepurposeModal.excerpt;
+                const hashtags = kwai?.hashtags?.join(' ') || '#PortalVipBrasil';
+                const script = Array.isArray(kwai?.videoScript) ? kwai!.videoScript : [];
+                return (
+                  <div className="space-y-3">
+                    <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                      <p className="text-xs font-bold text-slate-400 uppercase mb-1">Roteiro do vídeo vertical (9:16):</p>
+                      {script.length > 0 ? script.map((scene, idx) => (
+                        <div key={idx} className="p-2 rounded bg-slate-900 border border-slate-800 text-xs text-slate-200">{scene}</div>
+                      )) : (
+                        <p className="text-xs text-slate-400">Gere o vídeo em "Criar Vídeo" usando o título e o resumo do artigo.</p>
+                      )}
+                      <p className="text-xs font-bold text-slate-400 uppercase pt-2">Legenda:</p>
+                      <p className="text-xs text-slate-200 leading-relaxed whitespace-pre-line">{caption}</p>
+                      <p className="text-xs text-orange-300">{hashtags}</p>
+                    </div>
+                    <button
+                      onClick={() => handleCopySnippet(`${caption}\n\n${hashtags}`, 'kwai')}
+                      className="w-full py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>{copiedSnippet === 'kwai' ? 'Copiado!' : 'Copiar legenda do Kwai'}</span>
+                    </button>
                   </div>
-                  <button
-                    onClick={() =>
-                      handleCopySnippet(
-                        showRepurposeModal.socialRepurpose?.twitter?.thread?.join('\n\n') || '',
-                        'tw'
-                      )
-                    }
-                    className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 border border-slate-700"
-                  >
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>{copiedSnippet === 'tw' ? 'Copiado!' : 'Copiar Thread do X'}</span>
-                  </button>
-                </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         </div>

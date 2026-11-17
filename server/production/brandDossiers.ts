@@ -161,7 +161,7 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Leia o decreto completo e receba a bênção do dia.',
       'Compartilhe esta luz com quem precisa de esperança hoje.'
     ],
-    socialPlatforms: ['Instagram', 'YouTube', 'Pinterest', 'Facebook'],
+    socialPlatforms: ['Instagram', 'YouTube', 'Kwai', 'Facebook'],
     contentPillars: ['Oração Matinal', 'Decreto de Prosperidade', 'Salmo do Dia', 'Reflexão de Sabedoria'],
     videoVisualDirectives: 'Iluminação dourada translúcida, raios de sol entre árvores milenares, mãos em postura de oração, partículas de luz sutis flutuando em 4K 60fps. ZERO texto embutido na imagem.',
     allowedImageArchetypes: ['Luz solar ao amanhecer', 'Céu estrelado límpido', 'Velas suaves em castiçal nobre', 'Cristais naturais translúcidos'],
@@ -347,7 +347,7 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Faça a oração da soberania agora e eleve seu magnetismo.',
       'Salve a Rainha! Compartilhe com quem merece se sentir poderosa hoje.'
     ],
-    socialPlatforms: ['Instagram', 'TikTok', 'Pinterest', 'YouTube'],
+    socialPlatforms: ['Instagram', 'TikTok', 'Kwai', 'YouTube'],
     contentPillars: ['Conselho Régio', 'Autoestima & Soberania', 'Firmeza Ética de Amor', 'História e Fundamentos'],
     videoVisualDirectives: 'Rosas vermelhas aveludadas abrindo em câmera lenta, gotas de orvalho reluzindo sob luz de velas, seda preta e rubi ondulando com suavidade, taça de cristal lapidado refletindo brilho dourado em 4K. ZERO texto embutido.',
     allowedImageArchetypes: ['Rosas vermelhas nobres', 'Leque de renda e ouro', 'Taça de cristal com espumante rubi', 'Coroa delicada em almofada de veludo'],
@@ -440,7 +440,7 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Reze a oração do Santo do Dia e peça sua intercessão.',
       'Compartilhe o Evangelho de hoje com sua família e amigos.'
     ],
-    socialPlatforms: ['Instagram', 'Facebook', 'YouTube', 'Pinterest'],
+    socialPlatforms: ['Instagram', 'Facebook', 'YouTube', 'Kwai'],
     contentPillars: ['Liturgia Diária', 'Santo do Dia', 'Mistérios do Terço', 'Doutrina & Virtudes'],
     videoVisualDirectives: 'Vitrais góticos iluminados pela luz matinal, velas do altar acesas com chama mansa, Bíblia Sagrada encadernada em couro sobre estante de carvalho, detalhes artísticos de catedrais sacras em planos cinematográficos contemplativos. ZERO texto embutido.',
     allowedImageArchetypes: ['Vitrais sacros', 'Ícones bizantinos e clássicos', 'Terço de madeira nobre sobre bíblia', 'Catedrais e capelas históricas'],
@@ -533,7 +533,7 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Veja o código de exemplo e implemente agora em seus projetos.',
       'Conecte sua empresa à próxima geração de inteligência artificial.'
     ],
-    socialPlatforms: ['LinkedIn', 'GitHub', 'YouTube', 'X/Twitter'],
+    socialPlatforms: ['LinkedIn', 'GitHub', 'YouTube', 'Instagram'],
     contentPillars: ['Engenharia de Prompts', 'Arquitetura de LLMs', 'Estudos de Caso de Automação', 'Tendências de IA'],
     videoVisualDirectives: 'Renderizações 3D abstratas de feixes de dados em nós neurais, interfaces holográficas minimalistas, servidores em rack com luzes azuis e ciano pulsantes, telas de código com sintaxe moderna. ZERO texto gerado na imagem.',
     allowedImageArchetypes: ['Redes neurais luminosas 3D', 'Data centers ultra limpos', 'Ondas cinemáticas de partículas cibernéticas'],
@@ -626,7 +626,7 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Faça sua tiragem de hoje e desvende o conselho dos arcanos.',
       'Compartilhe esta leitura com quem busca clareza em seu caminho.'
     ],
-    socialPlatforms: ['Instagram', 'Pinterest', 'YouTube', 'TikTok'],
+    socialPlatforms: ['Instagram', 'Kwai', 'YouTube', 'TikTok'],
     contentPillars: ['Arcano do Dia', 'Runa da Semana', 'Tiragens Guiadas', 'Arquétipos Junguianos'],
     videoVisualDirectives: 'Madeira rústica entalhada com runas brilhando em dourado sob luz de tocha, cartas de tarot com bordas douradas sendo abertas sobre veludo roxo escuro, pedras de ametista e quartzo fumê ao fundo, atmosfera nórdica ancestral. ZERO texto gerado.',
     allowedImageArchetypes: ['Runas de madeira sobre musgo nórdico', 'Cartas de tarot clássicas em mesa nobre', 'Cristais e ametistas naturais'],
@@ -656,7 +656,7 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Auditoria de SEO On-Page padrão Yoast e RankMath (título, meta description, H1-H3, slug)',
       'Sitemaps XML 0.9 com imagens e rich snippets Schema.org (JSON-LD)',
       'Notificações de indexação rápida via protocolo IndexNow (Bing, Yandex)',
-      'Gestão integrada de campanhas de alta conversão (Meta Ads, Google Search, TikTok e Pinterest)'
+      'Gestão integrada de campanhas de alta conversão (Meta Ads, Google Search, TikTok e Kwai for Business)'
     ],
     targetAudience: 'Empreendedores, gestores de tráfego, redatores, analistas de SEO e os administradores do Portal Vip Brasil.',
     toneOfVoice: 'Estratégico, persuasivo, analítico, focado em métricas, conversão e crescimento sustentável.',
@@ -719,7 +719,7 @@ export const CANONICAL_BRAND_DOSSIERS: Record<string, MasterBrandDossier> = {
       'Consulte o Yoast SEO Specialist para otimizar seus artigos hoje.',
       'Acompanhe o crescimento das suas métricas no painel de controle do portal.'
     ],
-    socialPlatforms: ['LinkedIn', 'YouTube', 'X/Twitter', 'Instagram'],
+    socialPlatforms: ['LinkedIn', 'YouTube', 'Instagram', 'Kwai'],
     contentPillars: ['SEO Técnico & Sitemaps', 'Copywriting & Ganchos Virais', 'Tráfego Pago & ROI', 'CRO & Conversão'],
     videoVisualDirectives: 'Gráficos holográficos de crescimento orgânico ascendente, painéis de telemetria analítica com visualização fluida de dados, mapas de calor de interação de usuários e interfaces de busca em alta resolução. ZERO texto gerado.',
     allowedImageArchetypes: ['Gráficos vetoriais limpos de analytics', 'Telas de SEO e performance técnica', 'Conceito de funil de conversão iluminado'],

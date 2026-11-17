@@ -13,7 +13,7 @@ export interface SocialRepurposePack {
   instagram: { caption: string; hashtags: string[]; utmUrl: string };
   facebook: { postText: string; utmUrl: string };
   linkedin: { postText: string; professionalTakeaway: string; utmUrl: string };
-  twitter: { thread: string[]; utmUrl: string };
+  kwai: { caption: string; hashtags: string[]; videoScript: string[]; utmUrl: string };
 }
 
 export interface PortalBlogArticle {

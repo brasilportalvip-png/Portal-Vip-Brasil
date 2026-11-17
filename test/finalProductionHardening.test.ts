@@ -21,12 +21,12 @@ test('Produção final: fallback da IA respeita o projeto atual e não fixa Magi
   assert.ok(!engine.includes('PORTAL_VIP_PROJECTS[0]'));
 });
 
-test('Produção final: agendamento textual direto exclui Instagram/TikTok/YouTube/Pinterest', () => {
+test('Produção final: agendamento textual direto exclui Instagram/TikTok/YouTube (X e Pinterest retirados)', () => {
   const engine = read('server/production/antiFallEngine.ts');
   assert.ok(engine.includes('isTextAutoPublishSupported'));
   assert.ok(engine.includes("provider === 'facebook'"));
   assert.ok(engine.includes("provider === 'linkedin'"));
-  assert.ok(engine.includes("provider === 'x'"));
+  assert.ok(!engine.includes("provider === 'x'"));
   assert.ok(!engine.includes("platforms: ['facebook', 'instagram', 'linkedin', 'x']"));
 });
 

@@ -24,6 +24,7 @@ export interface NicheVideoTemplate {
   cameraMotion: string;
   lighting: string;
   mood: string;
+  /** Clipe de texto antigo (não é exibido: o player só mostra vídeos reais gerados). */
   sampleVideoUrl: string;
   posterImageUrl: string;
   viralScript: {
@@ -52,7 +53,7 @@ export const NICHE_VIDEO_TEMPLATES: Record<string, NicheVideoTemplate> = {
     lighting: 'Warm flickering candle rim-light with cool ambient misty backlight and glowing runes',
     mood: 'Epic mystical, cinematic historical fantasy with high contrast and tactile texture',
     sampleVideoUrl: '/videos/runes_viking.mp4',
-    posterImageUrl: 'https://images.unsplash.com/photo-1514533450685-4493e01d1fdc?auto=format&fit=crop&w=1080&q=80',
+    posterImageUrl: 'https://images.unsplash.com/photo-1532767153582-b1a0e5145009?auto=format&fit=crop&w=1080&q=80',
     viralScript: {
       hook: 'PARE O FEED! Se essa runa apareceu na sua tela, não é coincidência: os nórdicos têm um aviso urgente.',
       scenes: [

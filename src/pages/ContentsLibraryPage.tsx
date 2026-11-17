@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Calendar, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, PenTool, Search, Trash2, Video } from 'lucide-react';
+import { Calendar, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, PenTool, Search, Send, Trash2, Video } from 'lucide-react';
 import type { Company, ContentItem } from '../types';
 import { apiRequest } from '../lib/api';
 
@@ -22,6 +22,8 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
   const [copied, setCopied] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [kwaiNotice, setKwaiNotice] = useState<{ id: string; text: string; videoUrl?: string } | null>(null);
+  const [kwaiBusy, setKwaiBusy] = useState<string | null>(null);
 
   const projectNames = useMemo(() => new Map(companies.map((project) => [project.id, project.name])), [companies]);
   const brandAssets = useMemo(() => companies.flatMap((project) => {
@@ -46,6 +48,53 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
     if (type === 'video' || type === 'video_script') return <Video size={16} className="text-rose-400" />;
     if (type === 'article') return <FileText size={16} className="text-emerald-400" />;
     return <PenTool size={16} className="text-cyan-400" />;
+  };
+
+  /**
+   * Kwai não tem API pública de postagem. No celular, o compartilhamento do sistema envia o vídeo
+   * direto para o app do Kwai (com a legenda); no computador, a legenda é copiada e o vídeo é aberto
+   * para baixar e subir no Kwai.
+   */
+  const postToKwai = async (item: ContentItem) => {
+    if (!item.videoUrl) return;
+    const caption = [item.headline, item.body, item.cta, item.hashtags?.join(' ')].filter(Boolean).join('\n\n').slice(0, 2000);
+    setKwaiBusy(item.id);
+    setKwaiNotice(null);
+    let captionCopied = false;
+    try {
+      await navigator.clipboard.writeText(caption);
+      captionCopied = true;
+    } catch {
+      captionCopied = false;
+    }
+    try {
+      const nav = navigator as Navigator & { canShare?: (data: ShareData) => boolean };
+      if (typeof nav.share === 'function' && typeof nav.canShare === 'function') {
+        const response = await fetch(item.videoUrl);
+        if (response.ok) {
+          const blob = await response.blob();
+          const file = new File([blob], `${(item.title || 'video').replace(/[^a-z0-9-]+/gi, '-').slice(0, 40) || 'video'}-kwai.mp4`, { type: blob.type || 'video/mp4' });
+          if (nav.canShare({ files: [file] })) {
+            await nav.share({ files: [file], text: caption, title: item.title || 'Vídeo para o Kwai' });
+            setKwaiNotice({ id: item.id, text: 'Escolha o Kwai na lista de compartilhamento. A legenda também foi copiada: é só colar no Kwai.' });
+            return;
+          }
+        }
+      }
+    } catch (shareError: any) {
+      if (shareError?.name === 'AbortError') {
+        setKwaiNotice({ id: item.id, text: 'Compartilhamento cancelado.' });
+        return;
+      }
+    } finally {
+      setKwaiBusy(null);
+    }
+    // Sem compartilhamento de arquivos (computador): link para baixar o vídeo e subir no Kwai.
+    setKwaiNotice({
+      id: item.id,
+      videoUrl: item.videoUrl,
+      text: `${captionCopied ? 'Legenda copiada. ' : ''}Baixe o vídeo e, no app do Kwai, toque em + e escolha o vídeo${captionCopied ? ' (depois cole a legenda)' : ''}.`,
+    });
   };
 
   const copy = async (item: ContentItem) => {
@@ -190,6 +239,26 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
                   )}
                   <button disabled={deleting === item.id} onClick={() => void remove(item)} className="flex min-h-10 items-center justify-center gap-1 rounded-xl border border-rose-500/30 bg-rose-500/10 text-[11px] font-bold text-rose-300 hover:bg-rose-500/20 transition-all disabled:opacity-50"><Trash2 size={13} />Excluir</button>
                 </div>
+                {item.videoUrl && (
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      disabled={kwaiBusy === item.id}
+                      onClick={() => void postToKwai(item)}
+                      className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-[11px] font-extrabold text-slate-950 hover:opacity-95 transition-all disabled:opacity-60"
+                    >
+                      <Send size={13} />{kwaiBusy === item.id ? 'Preparando vídeo…' : 'Postar no Kwai'}
+                    </button>
+                    {kwaiNotice?.id === item.id && (
+                      <p className="mt-2 text-[10px] leading-relaxed text-amber-300">
+                        {kwaiNotice.text}
+                        {kwaiNotice.videoUrl && (
+                          <> <a href={kwaiNotice.videoUrl} target="_blank" rel="noreferrer" download className="font-bold underline">Baixar vídeo</a></>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </article>
           ))}

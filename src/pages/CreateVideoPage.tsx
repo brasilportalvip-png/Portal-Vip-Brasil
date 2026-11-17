@@ -919,6 +919,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
       {/* CATÁLOGO ESTRATÉGICO DE VÍDEOS VERTICAIS (TIKTOK, INSTAGRAM, YOUTUBE SHORTS) */}
       <NicheVideoCatalogSection
         selectedCompany={selectedCompany}
+        realVideos={recentJobs.filter((job) => Boolean(job.videoUrl) && ['completed', 'ready_to_publish', 'published', 'publishing'].includes(job.status))}
         onApplyToVeo={handleApplyToVeo}
         onApplyToScript={handleApplyToScript}
         onNavigateToTikTok={handleNavigateToSocial}

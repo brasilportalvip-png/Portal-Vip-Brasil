@@ -146,7 +146,7 @@ export interface SocialRepurposePack {
   instagram: { caption: string; hashtags: string[]; utmUrl: string };
   facebook: { postText: string; utmUrl: string };
   linkedin: { postText: string; utmUrl: string };
-  x: { tweetText: string; utmUrl: string };
+  kwai?: { caption: string; hashtags: string[]; videoScript: string[]; utmUrl: string };
 }
 
 export interface StoredBlogArticle {
@@ -177,6 +177,7 @@ export interface StoredBlogArticle {
   coverImageStoragePath?: string;
   coverImageGenerated?: boolean;
   coverPhotoVersion?: number;
+  coverSceneGroup?: string;
   sections: BlogArticleSection[];
   faqSection: BlogFaqItem[];
   conclusion: string;
@@ -1003,10 +1004,6 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       linkedin: {
         postText: 'Artigo publicado no Portal Vip Brasil: Como a intenção focada e os hábitos mentais impactam a clareza e tomada de decisão.',
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=linkedin&utm_medium=social&utm_campaign=blog_magia_crencas'
-      },
-      x: {
-        tweetText: 'Aprenda como desbloquear seus caminhos com o poder dos decretos diários no Blog Portal Vip Brasil:',
-        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-despertar-o-poder-das-suas-crencas-para-abrir-caminhos?utm_source=x&utm_medium=social&utm_campaign=blog_magia_crencas'
       }
     },
     status: 'published',
@@ -1160,10 +1157,6 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       linkedin: {
         postText: 'Artigo sobre inteligência emocional, autoestima e desenvolvimento pessoal no Portal Vip Brasil.',
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/maria-padilha-rainha-das-7-encruzilhadas-autoestima-e-amor?utm_source=linkedin&utm_medium=social&utm_campaign=blog_maria_padilha'
-      },
-      x: {
-        tweetText: 'Eleve seu magnetismo pessoal e harmonia amorosa com o guia no Blog Portal Vip Brasil:',
-        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/maria-padilha-rainha-das-7-encruzilhadas-autoestima-e-amor?utm_source=x&utm_medium=social&utm_campaign=blog_maria_padilha'
       }
     },
     status: 'published',
@@ -1248,10 +1241,6 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       linkedin: {
         postText: 'Tradição, fé e perseverança na rotina diária: conheça o devocionário Manual Católico no Portal Vip Brasil.',
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/manual-catolico-o-guia-diario-de-oracoes-e-fortalecimento-na-fe?utm_source=linkedin&utm_medium=social&utm_campaign=blog_manual_catolico'
-      },
-      x: {
-        tweetText: 'Acompanhe a liturgia diária e o Santo Terço no aplicativo Manual Católico. Saiba mais no Portal Vip Brasil:',
-        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/manual-catolico-o-guia-diario-de-oracoes-e-fortalecimento-na-fe?utm_source=x&utm_medium=social&utm_campaign=blog_manual_catolico'
       }
     },
     status: 'published',
@@ -1335,10 +1324,6 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       linkedin: {
         postText: 'Inovação e inteligência artificial aplicada ao marketing digital e SEO em 2026: análise completa no Portal Vip Brasil.',
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo?utm_source=linkedin&utm_medium=social&utm_campaign=blog_froc_ia'
-      },
-      x: {
-        tweetText: 'Como o Froc IA automatiza artigos de blog e posts para redes com SEO de ponta. Confira no Portal Vip Brasil:',
-        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/como-a-ia-generativa-e-o-froc-ia-estao-revolucionando-a-criacao-de-conteudo?utm_source=x&utm_medium=social&utm_campaign=blog_froc_ia'
       }
     },
     status: 'published',
@@ -1422,10 +1407,6 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       linkedin: {
         postText: 'Tecnologia moderna e arquétipos clássicos: conheça o projeto Oráculos TS no ecossistema Portal Vip Brasil.',
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online?utm_source=linkedin&utm_medium=social&utm_campaign=blog_oraculos_ts'
-      },
-      x: {
-        tweetText: 'Consulte o Tarot online e o Baralho Cigano gratuitamente no Oráculos TS:',
-        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/oraculos-ts-guia-completo-de-tarot-baralho-cigano-e-runas-online?utm_source=x&utm_medium=social&utm_campaign=blog_oraculos_ts'
       }
     },
     status: 'published',
@@ -1509,10 +1490,6 @@ export const INITIAL_SEEDED_ARTICLES: StoredBlogArticle[] = [
       linkedin: {
         postText: 'Estratégias de ASO e crescimento orgânico de aplicativos móveis: estudo prático publicado no Portal Vip Brasil.',
         utmUrl: 'https://portal-vip-brasil.vercel.app/blog/estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store?utm_source=linkedin&utm_medium=social&utm_campaign=blog_marketing_engine'
-      },
-      x: {
-        tweetText: 'Aprenda como escalar downloads de aplicativos na Play Store com divulgação diária no Blog Portal Vip Brasil:',
-        utmUrl: 'https://portal-vip-brasil.vercel.app/blog/estrategia-de-divulgacao-diaria-para-aplicativos-na-google-play-store?utm_source=x&utm_medium=social&utm_campaign=blog_marketing_engine'
       }
     },
     status: 'published',
@@ -1662,9 +1639,13 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
         professionalTakeaway: '',
         utmUrl: social?.linkedin?.utmUrl || canonicalUrl
       },
-      twitter: {
-        thread: [social?.x?.tweetText, social?.x?.utmUrl].filter(Boolean),
-        utmUrl: social?.x?.utmUrl || canonicalUrl
+      kwai: {
+        caption: social?.kwai?.caption || article.excerpt,
+        hashtags: (Array.isArray(social?.kwai?.hashtags) && social.kwai.hashtags.length > 0)
+          ? social.kwai.hashtags
+          : (PROJECT_NICHE_HASHTAGS[article.relatedProjectId] || ['#PortalVipBrasil']).slice(0, 5),
+        videoScript: Array.isArray(social?.kwai?.videoScript) ? social.kwai.videoScript.filter(Boolean).map(String) : [],
+        utmUrl: social?.kwai?.utmUrl || canonicalUrl
       }
     },
     author: {
@@ -2322,7 +2303,7 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
     "instagram": { "caption": "string", "hashtags": ["#tag"] },
     "facebook": { "postText": "string" },
     "linkedin": { "postText": "string" },
-    "x": { "tweetText": "string" }
+    "kwai": { "caption": "legenda curta para vídeo vertical do Kwai, com gancho", "hashtags": ["#tag"], "videoScript": ["cena 1 (0-3s, gancho)", "cena 2", "cena 3 (chamada para ação)"] }
   }
 }`;
 
@@ -2393,8 +2374,7 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
       socialCampaign: {
         instagram: { caption: `Confira o novo artigo editorial sobre ${project.name} no Blog Portal Vip Brasil!`, hashtags: ['#PortalVipBrasil', '#Tecnologia', '#Marketing'] },
         facebook: { postText: `Novo conteúdo editorial disponível sobre ${project.name}. Acesse e confira os detalhes!` },
-        linkedin: { postText: `Publicação oficial do Portal Vip Brasil sobre ${project.name} no segmento de ${project.category}.` },
-        x: { tweetText: `Confira o novo artigo sobre ${project.name} no blog oficial Portal Vip Brasil:` }
+        linkedin: { postText: `Publicação oficial do Portal Vip Brasil sobre ${project.name} no segmento de ${project.category}.` }
       }
     };
   }
@@ -2453,9 +2433,15 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
       postText: parsed.socialCampaign?.linkedin?.postText || articleExcerpt,
       utmUrl: `${articlePublicUrl}?utm_source=linkedin&utm_medium=social&utm_campaign=daily_blog_seo`
     },
-    x: {
-      tweetText: parsed.socialCampaign?.x?.tweetText || parsed.title || topic,
-      utmUrl: `${articlePublicUrl}?utm_source=x&utm_medium=social&utm_campaign=daily_blog_seo`
+    kwai: {
+      caption: String(parsed.socialCampaign?.kwai?.caption || parsed.title || topic).slice(0, 600),
+      hashtags: (Array.isArray(parsed.socialCampaign?.kwai?.hashtags) && parsed.socialCampaign.kwai.hashtags.length > 0
+        ? parsed.socialCampaign.kwai.hashtags.map(String)
+        : nicheHashtags).slice(0, 5),
+      videoScript: Array.isArray(parsed.socialCampaign?.kwai?.videoScript)
+        ? parsed.socialCampaign.kwai.videoScript.map(String).filter(Boolean).slice(0, 6)
+        : [],
+      utmUrl: `${articlePublicUrl}?utm_source=kwai&utm_medium=social&utm_campaign=daily_blog_seo`
     }
   };
 
@@ -2464,6 +2450,7 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
   let coverAlt = parsed.coverAlt || thematicCover.alt;
   let coverImageStoragePath: string | undefined;
   let coverImageGenerated = false;
+  let coverSceneGroup = '';
   try {
     // Capa fotográfica ultrarrealista do nicho certo, guardada fora do artigo (WebP leve via rota de capa)
     const photo = await withTimeout(75_000, 'capa fotográfica', () => generateArticleCoverPhoto({
@@ -2476,6 +2463,7 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
     }, { userId: options?.userId, collection: COLLECTIONS.blogArticles }));
     coverImage = photo.coverUrl;
     coverAlt = photo.coverAlt;
+    coverSceneGroup = photo.sceneGroup;
     coverImageGenerated = true;
   } catch (coverError) {
     console.warn('[BlogEngine] Capa IA indisponível para ' + project.id + '; usando fotografia temática curada do nicho.', coverError);
@@ -2535,7 +2523,7 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
     coverAlt: safeString(coverAlt || parsed.coverAlt || 'Imagem editorial temática sobre ' + primaryKeyword, 240),
     coverImageStoragePath,
     coverImageGenerated,
-    ...(coverImageGenerated ? { coverPhotoVersion: COVER_PHOTO_VERSION } : {}),
+    ...(coverImageGenerated ? { coverPhotoVersion: COVER_PHOTO_VERSION, coverSceneGroup } : {}),
     sections: articleSections,
     faqSection: Array.isArray(parsed.faqSection) ? parsed.faqSection : [],
     conclusion: parsed.conclusion || '',
@@ -2650,7 +2638,7 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
         .get();
       // TikTok não entra no repurpose fotográfico automático: PHOTO/PULL_FROM_URL exige domínio/URL verificado pelo TikTok.
       // O Autopilot R8 atende TikTok com vídeo FILE_UPLOAD, que não depende desse requisito externo.
-      const allowed = new Set(['facebook', 'instagram', 'linkedin', 'x', 'pinterest']);
+      const allowed = new Set(['facebook', 'instagram', 'linkedin']);
       const platforms = [...new Set(connectionsSnap.docs
         .map((doc) => doc.data() as any)
         .filter((connection) => String(connection.status || 'connected') === 'connected')

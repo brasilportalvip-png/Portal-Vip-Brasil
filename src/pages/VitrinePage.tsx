@@ -18,6 +18,40 @@ import {
   Copy
 } from 'lucide-react';
 import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND, PortalProject } from '../data/portalProjects';
+import { coverImageKey, isInvalidOrLogoImage } from '../utils/thematicCovers';
+
+/** Capa de projeto: foto própria quando existe e não se repete; senão, capa desenhada única do projeto. */
+const ProjectBanner: React.FC<{ project: PortalProject; banner: string | null }> = ({ project, banner }) => {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [banner]);
+  if (banner && !failed) {
+    return (
+      <img
+        src={banner}
+        alt={`Capa de ${project.name}`}
+        loading="lazy"
+        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  let h = 0;
+  for (const ch of project.id || project.name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const hue = h % 360;
+  return (
+    <div
+      role="img"
+      aria-label={`Capa de ${project.name}`}
+      className="relative h-full w-full overflow-hidden"
+      style={{ background: `radial-gradient(120% 140% at 15% 10%, hsl(${hue},55%,42%) 0%, hsl(${(hue + 40) % 360},45%,18%) 55%, hsl(${(hue + 40) % 360},40%,8%) 100%)` }}
+    >
+      {project.logoUrl && (
+        <img src={project.logoUrl} alt="" aria-hidden="true" className="absolute -right-6 -top-6 h-40 w-40 rotate-12 object-contain opacity-25" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+      )}
+      <span className="absolute bottom-3 right-4 max-w-[70%] truncate text-right text-lg font-black text-white/80 drop-shadow">{project.name}</span>
+    </div>
+  );
+};
 import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProjectAdapter';
 import { BRAND } from '../lib/brand';
 import { apiRequest } from '../lib/api';
@@ -83,6 +117,23 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
       project.keywords.some((k) => k.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
+
+  // Capas da vitrine sem repetição: logo/ícone usado como capa ou foto já usada por outro card vira capa desenhada.
+  const projectBanners = useMemo(() => {
+    const used = new Set<string>();
+    const map = new Map<string, string | null>();
+    for (const project of projects) {
+      const banner = String(project.bannerUrl || '').trim();
+      const key = coverImageKey(banner);
+      if (!banner || isInvalidOrLogoImage(banner) || banner === project.logoUrl || used.has(key)) {
+        map.set(project.id, null);
+        continue;
+      }
+      used.add(key);
+      map.set(project.id, banner);
+    }
+    return map;
+  }, [projects]);
 
   const handleCopy = (text: string, id: string) => {
     if (navigator.clipboard) {
@@ -248,14 +299,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
             >
               {/* Individual Card Banner Cover */}
               <div className="relative h-36 w-full overflow-hidden bg-slate-950 border-b border-slate-800/80">
-                <img
-                  src={project.bannerUrl || project.logoUrl}
-                  alt={project.name}
-                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
+                <ProjectBanner project={project} banner={projectBanners.get(project.id) ?? null} />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
 
                 {/* Badges on top of banner */}
@@ -282,6 +326,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                     src={project.logoUrl}
                     alt={project.name}
                     className="w-full h-full object-contain"
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = PORTAL_VIP_BRAND.logoUrl; }}
                   />
                 </div>
               </div>
@@ -455,6 +500,7 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
                   src={activeProjectModal.logoUrl}
                   alt={activeProjectModal.name}
                   className="w-full h-full object-contain"
+                  onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = PORTAL_VIP_BRAND.logoUrl; }}
                 />
               </div>
               <div>

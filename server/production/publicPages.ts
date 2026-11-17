@@ -360,10 +360,6 @@ ${config.bingSiteVerification ? `<meta name="msvalidate.01" content="${esc(confi
 <meta property="og:title" content="${esc(meta.title)}" />
 <meta property="og:description" content="${esc(meta.description)}" />
 <meta property="og:image" content="${esc(meta.image)}" />
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="${esc(meta.title)}" />
-<meta name="twitter:description" content="${esc(meta.description)}" />
-<meta name="twitter:image" content="${esc(meta.image)}" />
 <script type="application/ld+json">${jsonLd(meta.schema)}</script>
 <link rel="stylesheet" href="/assets/app.css" />
 </head><body class="bg-[#0B0F19] text-slate-100 antialiased"><div id="root">${meta.bodyHtml || ''}</div><noscript>O Portal Vip Brasil precisa de JavaScript habilitado.</noscript><script type="module" src="/assets/app.js"></script></body></html>`;

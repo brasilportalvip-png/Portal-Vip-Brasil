@@ -687,9 +687,9 @@ test('20. Nova cobertura não repete redes publicadas pela recuperação anterio
     createdAt: timestamp, updatedAt: timestamp
   });
   await db.collection(COLLECTIONS.autopilotConfigs).doc(`${userId}_${companyId}`).set({
-    userId, companyId, enabled: true, mode: 'automatic', targetPlatforms: ['YouTube', 'LinkedIn', 'X']
+    userId, companyId, enabled: true, mode: 'automatic', targetPlatforms: ['YouTube', 'LinkedIn', 'Facebook']
   });
-  for (const provider of ['youtube', 'linkedin', 'x']) {
+  for (const provider of ['youtube', 'linkedin', 'facebook']) {
     await db.collection(COLLECTIONS.socialConnections).doc(`all_${provider}`).set({
       id: `all_${provider}`, userId, companyId: 'shared_project', provider,
       status: 'connected', encryptedAccessToken: encrypt('test_token'),
@@ -699,7 +699,7 @@ test('20. Nova cobertura não repete redes publicadas pela recuperação anterio
   const run = await processPendingVideoJobs();
   assert.equal(run.schedulesRecovered, 1);
   const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-all-networks-recovery-v1`).get();
-  assert.deepEqual(recovery.data()?.platforms, ['LinkedIn', 'X']);
+  assert.deepEqual(recovery.data()?.platforms, ['LinkedIn', 'Facebook']);
 });
 
 test('21. Agendamento publicado também recupera redes que não existiam na fila antiga', async () => {
@@ -725,9 +725,9 @@ test('21. Agendamento publicado também recupera redes que não existiam na fila
     createdAt: timestamp, updatedAt: timestamp
   });
   await db.collection(COLLECTIONS.autopilotConfigs).doc(`${userId}_${companyId}`).set({
-    userId, companyId, enabled: true, mode: 'automatic', targetPlatforms: ['YouTube', 'LinkedIn', 'X']
+    userId, companyId, enabled: true, mode: 'automatic', targetPlatforms: ['YouTube', 'LinkedIn', 'Facebook']
   });
-  for (const provider of ['youtube', 'linkedin', 'x']) {
+  for (const provider of ['youtube', 'linkedin', 'facebook']) {
     await db.collection(COLLECTIONS.socialConnections).doc(`published_${provider}`).set({
       id: `published_${provider}`, userId, companyId: 'shared_project', provider,
       status: 'connected', encryptedAccessToken: encrypt('test_token'),
@@ -737,5 +737,5 @@ test('21. Agendamento publicado também recupera redes que não existiam na fila
   const run = await processPendingVideoJobs();
   assert.equal(run.schedulesRecovered, 1);
   const recovery = await db.collection(COLLECTIONS.scheduledPosts).doc(`sched-video-${jobId}-all-networks-recovery-v1`).get();
-  assert.deepEqual(recovery.data()?.platforms, ['LinkedIn', 'X']);
+  assert.deepEqual(recovery.data()?.platforms, ['LinkedIn', 'Facebook']);
 });

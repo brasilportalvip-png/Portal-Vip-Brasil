@@ -496,12 +496,12 @@ test('10. OAuth State Management: Anti-replay, expiração e integridade de sess
   );
 });
 
-test('11. OAuth Outros Provedores: LinkedIn, YouTube, TikTok, Pinterest e X permanecem inalterados', async () => {
+test('11. OAuth Outros Provedores: LinkedIn, YouTube e TikTok permanecem inalterados (X e Pinterest retirados)', async () => {
   resetMemoryDb();
   const userId = 'usr_other_test';
   const companyId = 'comp_other_test';
 
-  const providers: SocialProvider[] = ['linkedin', 'youtube', 'tiktok', 'pinterest', 'x'];
+  const providers: SocialProvider[] = ['linkedin', 'youtube', 'tiktok'];
 
   for (const provider of providers) {
     const oauth = await createOAuthUrl({
@@ -628,36 +628,15 @@ test('21. Facebook Multi-Pages: getFacebookPageSelectionCandidates retorna dados
   );
 });
 
-test('22. Token Refresh: X (Twitter) OAuth2 refresh com Basic Auth e rotação de refresh_token', async () => {
-  const originalFetch = globalThis.fetch;
-  let refreshCalled = false;
-  let authHeaderUsed = '';
-
-  try {
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input);
-      if (url.includes('api.twitter.com/2/oauth2/token') || url.includes('api.x.com/2/oauth2/token')) {
-        refreshCalled = true;
-        authHeaderUsed = (init?.headers as any)?.Authorization || '';
-        return new Response(JSON.stringify({
-          access_token: 'new_x_access_token_777',
-          refresh_token: 'new_x_refresh_token_888',
-          expires_in: 7200,
-          token_type: 'bearer'
-        }), { status: 200 });
-      }
-      return new Response(JSON.stringify({}), { status: 404 });
-    }) as typeof fetch;
-
-    const res = await refreshSocialAccessToken('x', 'old_x_refresh_token');
-    assert.equal(refreshCalled, true, 'Deve ter chamado endpoint de refresh do X');
-    assert.equal(res.accessToken, 'new_x_access_token_777');
-    assert.equal(res.refreshToken, 'new_x_refresh_token_888');
-    assert.ok(res.expiresAt > Date.now(), 'expiresAt deve ser futuro');
-    assert.ok(authHeaderUsed.startsWith('Basic '), 'Deve usar Basic Authorization com Client ID e Secret');
-  } finally {
-    globalThis.fetch = originalFetch;
+test('22. Redes retiradas: X/Twitter e Pinterest não são mais reconhecidos nem renovados', async () => {
+  const { normalizeProvider, isRemovedSocialProvider, isManualPublishChannel } = await import('../server/production/social.js');
+  for (const removed of ['x', 'X', 'twitter', 'Twitter', 'pinterest', 'Pinterest']) {
+    assert.equal(normalizeProvider(removed), null, removed);
+    assert.equal(isRemovedSocialProvider(removed), true, removed);
   }
+  assert.equal(isRemovedSocialProvider('linkedin'), false);
+  assert.equal(isManualPublishChannel('Kwai'), true);
+  await assert.rejects(() => refreshSocialAccessToken('x' as any, 'qualquer'), /não suportada/);
 });
 
 test('23. Token Refresh: Google / YouTube OAuth2 refresh flow', async () => {
@@ -682,34 +661,6 @@ test('23. Token Refresh: Google / YouTube OAuth2 refresh flow', async () => {
     assert.equal(refreshCalled, true, 'Deve chamar endpoint de token do Google');
     assert.equal(res.accessToken, 'new_youtube_access_token_999');
     assert.ok(res.expiresAt > Date.now());
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-});
-
-test('24. Token Refresh: Pinterest OAuth2 refresh flow', async () => {
-  const originalFetch = globalThis.fetch;
-  let refreshCalled = false;
-
-  try {
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('api.pinterest.com/v5/oauth/token')) {
-        refreshCalled = true;
-        return new Response(JSON.stringify({
-          access_token: 'new_pinterest_access_token_333',
-          refresh_token: 'new_pinterest_refresh_token_444',
-          expires_in: 86400,
-          token_type: 'bearer'
-        }), { status: 200 });
-      }
-      return new Response(JSON.stringify({}), { status: 404 });
-    }) as typeof fetch;
-
-    const res = await refreshSocialAccessToken('pinterest', 'pin_refresh_token_abc');
-    assert.equal(refreshCalled, true, 'Deve chamar endpoint de token do Pinterest');
-    assert.equal(res.accessToken, 'new_pinterest_access_token_333');
-    assert.equal(res.refreshToken, 'new_pinterest_refresh_token_444');
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -751,7 +702,7 @@ test('26. Token Lifecycle: ensureValidSocialAccessToken renova token expirado e 
     id: connId,
     userId: 'usr_token_cycle',
     companyId: 'comp_token_cycle',
-    provider: 'x',
+    provider: 'linkedin',
     status: 'connected',
     encryptedAccessToken: encrypt('expired_access_token'),
     encryptedRefreshToken: encrypt('valid_refresh_token_x'),
@@ -763,7 +714,7 @@ test('26. Token Lifecycle: ensureValidSocialAccessToken renova token expirado e 
   try {
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('oauth2/token')) {
+      if (url.includes('oauth2/token') || url.includes('linkedin.com/oauth/v2/accessToken')) {
         return new Response(JSON.stringify({
           access_token: 'brand_new_refreshed_access_token',
           refresh_token: 'brand_new_refreshed_refresh_token',

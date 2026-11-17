@@ -32,7 +32,7 @@ test('30 Agentes: Todos os 30 agentes oficiais estão cadastrados com IDs canôn
     'META_ADS_PRO',
     'GOOGLE_SEARCH_ADS_PRO',
     'TIKTOK_ADS_GROWTH',
-    'PINTEREST_ADS_EXPERT',
+    'KWAI_GROWTH_EXPERT',
     'LINKEDIN_B2B_ADS',
     'YOUTUBE_SHORTS_ADS',
     'VEO_VIDEO_PROMPT_DIRECTOR',
