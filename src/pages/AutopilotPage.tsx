@@ -112,7 +112,7 @@ const channels = [
   { name: 'Facebook', key: 'facebook', direct: true },
   { name: 'Instagram', key: 'instagram', direct: true },
   { name: 'LinkedIn', key: 'linkedin', direct: true },
-  { name: 'Kwai', key: 'kwai', direct: false },
+  { name: 'Kwai', key: 'kwai', direct: true },
   { name: 'TikTok', key: 'tiktok', direct: true },
   { name: 'YouTube', key: 'youtube', direct: true }
 ];

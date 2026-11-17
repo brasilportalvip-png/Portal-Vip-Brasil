@@ -16,7 +16,7 @@ const PLATFORM_OPTIONS = [
   { id: 'Facebook', label: 'Facebook Page', icon: '📘', autoPublish: true, note: 'Texto, imagem ou vídeo via Meta Graph' },
   { id: 'Instagram', label: 'Instagram', icon: '📸', autoPublish: true, note: 'Imagem ou Reel em conta profissional' },
   { id: 'LinkedIn', label: 'LinkedIn', icon: '💼', autoPublish: true, note: 'Texto, imagem ou vídeo via Posts API' },
-  { id: 'Kwai', label: 'Kwai', icon: '🎬', autoPublish: false, note: 'Só no Planejamento: o Kwai não tem API de postagem; poste pela Biblioteca (botão "Postar no Kwai")' },
+  { id: 'Kwai', label: 'Kwai', icon: '🎬', autoPublish: true, note: 'Aviso no celular na hora marcada; um toque envia o vídeo ao Kwai (exige vídeo)' },
   { id: 'TikTok', label: 'TikTok', icon: '🎵', autoPublish: true, note: 'Vídeo/foto; automação diária entrega rascunho para confirmação no TikTok' },
   { id: 'YouTube', label: 'YouTube', icon: '▶️', autoPublish: true, note: 'Vídeo/Short via upload resumível; padrão não listado' },
 ]

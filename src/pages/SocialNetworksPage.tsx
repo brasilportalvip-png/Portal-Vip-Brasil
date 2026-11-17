@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Check, CheckCircle2, Clock, Copy, ExternalLink, FileVideo, Info, RefreshCw, Send, Share2, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import type { Company, SocialConnection } from '../types';
 import { apiRequest } from '../lib/api';
+import { enablePush, getPushState, sendTestPush } from '../lib/push';
 
 interface SocialNetworksPageProps { selectedCompany: Company | null; onNavigate: (tab:string)=>void; }
 
@@ -10,12 +11,29 @@ const networks:Array<{id:Provider;name:string;icon:string;capability:string;note
   { id:'instagram', name:'Instagram Business', icon:'📸', capability:'OAuth e conta profissional', note:'Publicação automática exige mídia compatível, conta Business/Creator e permissões Meta aprovadas.' },
   { id:'facebook', name:'Facebook Page', icon:'📘', capability:'Publicação de texto em Página', note:'Disponível quando o token possui a Página e os escopos aprovados necessários.' },
   { id:'linkedin', name:'LinkedIn', icon:'💼', capability:'Publicação de texto', note:'Disponível quando o aplicativo LinkedIn e o usuário possuem o escopo de publicação autorizado.' },
-  { id:'kwai', name:'Kwai', icon:'🎬', capability:'Postagem guiada de vídeo vertical', note:'O Kwai não oferece API pública de publicação para outros apps. O Portal prepara o vídeo vertical 9:16 e a legenda; na Biblioteca de Conteúdos, o botão "Postar no Kwai" envia o vídeo direto para o app do Kwai no celular.', manual:true },
+  { id:'kwai', name:'Kwai', icon:'🎬', capability:'Aviso no celular + postagem com um toque', note:'O Kwai não oferece API de publicação para outros apps. Na hora marcada (Calendário ou vídeo diário do Autopilot), o Portal avisa no seu celular; tocando no aviso, o vídeo vai direto para o Kwai com a legenda copiada.', manual:true },
   { id:'tiktok', name:'TikTok', icon:'🎵', capability:'Login Kit & Content Posting (Rascunho)', note:'Envio de vídeo MP4 (até 4 MB) como rascunho para a Caixa de Entrada do TikTok. A publicação final é concluída pelo usuário no app do TikTok.' },
   { id:'youtube', name:'YouTube', icon:'▶️', capability:'OAuth e canal conectado', note:'Upload/publicação exige arquivo de vídeo e permissões próprias da API do YouTube.' }
 ];
 
 export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedCompany, onNavigate }) => {
+  const [push,setPush]=useState<{supported:boolean;permission:string;subscribed:boolean;devices:number}|null>(null);
+  const [pushBusy,setPushBusy]=useState(false);
+  const [pushMsg,setPushMsg]=useState('');
+  useEffect(()=>{ void getPushState().then(setPush).catch(()=>setPush(null)); },[]);
+  const activatePush = async () => {
+    setPushBusy(true); setPushMsg('');
+    try {
+      await enablePush();
+      const delivered = await sendTestPush();
+      setPushMsg(delivered ? 'Avisos ativados! Mandamos um aviso de teste para este aparelho.' : 'Avisos ativados neste aparelho.');
+    } catch (err:any) {
+      setPushMsg(err?.message || 'Não foi possível ativar os avisos.');
+    } finally {
+      setPushBusy(false);
+      void getPushState().then(setPush).catch(()=>undefined);
+    }
+  };
   const [connections,setConnections]=useState<SocialConnection[]>([]);
   const [loading,setLoading]=useState(false);
   const [working,setWorking]=useState<string|null>(null);
@@ -350,8 +368,23 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
                 <h3 className="mt-4 text-sm font-bold text-white">{net.name}</h3>
                 <p className="mt-1 text-xs font-semibold text-amber-300">{net.capability}</p>
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-400">{net.note}</p>
+                <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3 text-[11px]">
+                  {push?.subscribed
+                    ? <p className="font-semibold text-emerald-300">✅ Avisos ativos neste aparelho{push.devices > 1 ? ` (${push.devices} aparelhos)` : ''}.</p>
+                    : <p className="text-slate-300">Ative os avisos no celular em que você usa o Kwai.</p>}
+                  {pushMsg && <p className="mt-1 text-amber-300">{pushMsg}</p>}
+                </div>
               </div>
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <div className="mt-4 flex flex-col gap-2">
+                <button
+                  type="button"
+                  disabled={pushBusy}
+                  onClick={() => void activatePush()}
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-xs font-extrabold text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+                >
+                  {pushBusy ? 'Ativando…' : push?.subscribed ? 'Enviar aviso de teste de novo' : 'Ativar avisos neste celular'}
+                </button>
+                <div className="flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => onNavigate('conteudos')}
@@ -367,6 +400,7 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
                 >
                   <ExternalLink size={14} />Abrir Kwai
                 </a>
+                </div>
               </div>
             </article>
           );

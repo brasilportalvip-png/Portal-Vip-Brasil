@@ -589,7 +589,8 @@ export async function executeAutopilotJob(
           aspectRatio: '9:16',
           coverImageUrl: videoCoverImageUrl,
           autoPublishPlatforms: effectiveMode === 'automatic' ? readyVideoTargets.map((item) => item.label) : [],
-          autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' }
+          autoPublishProviderOptions: { youtubePrivacyStatus: 'unlisted' },
+          kwaiReminder: kwaiSelected
         });
 
         // Confirmação obrigatória de persistência real do videoJob no Firestore

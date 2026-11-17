@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, PenTool, Search, Send, Trash2, Video } from 'lucide-react';
 import type { Company, ContentItem } from '../types';
 import { apiRequest } from '../lib/api';
@@ -24,6 +24,19 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
   const [error, setError] = useState('');
   const [kwaiNotice, setKwaiNotice] = useState<{ id: string; text: string; videoUrl?: string } | null>(null);
   const [kwaiBusy, setKwaiBusy] = useState<string | null>(null);
+  // Veio pelo aviso do celular (/conteudos?kwai=ID): destaca o vídeo e deixa o botão a um toque.
+  const [kwaiFocusId] = useState<string | null>(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('kwai');
+    } catch {
+      return null;
+    }
+  });
+  const kwaiFocusItem = useMemo(() => contentItems.find((item) => item.id === kwaiFocusId && item.videoUrl) || null, [contentItems, kwaiFocusId]);
+  useEffect(() => {
+    if (!kwaiFocusItem) return;
+    window.setTimeout(() => document.getElementById(`conteudo-${kwaiFocusItem.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 300);
+  }, [kwaiFocusItem]);
 
   const projectNames = useMemo(() => new Map(companies.map((project) => [project.id, project.name])), [companies]);
   const brandAssets = useMemo(() => companies.flatMap((project) => {
@@ -124,6 +137,25 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 animate-fadeIn">
+      {kwaiFocusItem && (
+        <div className="sticky top-2 z-30 flex flex-col gap-3 rounded-2xl border border-amber-400/50 bg-[#1a1306]/95 p-4 shadow-2xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-black text-amber-200">🎬 Hora de postar no Kwai</p>
+            <p className="truncate text-xs text-amber-100/80">{kwaiFocusItem.title || kwaiFocusItem.headline || 'Vídeo do Portal'}</p>
+          </div>
+          <button
+            type="button"
+            disabled={kwaiBusy === kwaiFocusItem.id}
+            onClick={() => void postToKwai(kwaiFocusItem)}
+            className="flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 text-xs font-extrabold text-slate-950 disabled:opacity-60"
+          >
+            <Send size={14} />{kwaiBusy === kwaiFocusItem.id ? 'Preparando vídeo…' : 'Postar no Kwai agora'}
+          </button>
+        </div>
+      )}
+      {kwaiFocusItem && kwaiNotice?.id === kwaiFocusItem.id && (
+        <p className="text-xs text-amber-300">{kwaiNotice.text}{kwaiNotice.videoUrl && <> <a href={kwaiNotice.videoUrl} target="_blank" rel="noreferrer" download className="font-bold underline">Baixar vídeo</a></>}</p>
+      )}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="flex items-center gap-2 text-xl font-bold text-white">
@@ -195,7 +227,7 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
       {items.length ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
-            <article key={item.id} className="flex flex-col justify-between overflow-hidden rounded-3xl border border-[#334155] bg-[#0F172A] shadow-xl shadow-black/10">
+            <article key={item.id} id={`conteudo-${item.id}`} className={`flex flex-col justify-between overflow-hidden rounded-3xl border bg-[#0F172A] shadow-xl shadow-black/10 ${kwaiFocusId === item.id ? 'border-amber-400 ring-2 ring-amber-400/60' : 'border-[#334155]'}`}>
               {item.videoUrl ? (
                 <div className="flex aspect-video w-full items-center justify-center overflow-hidden border-b border-slate-800 bg-slate-950">
                   <video src={item.videoUrl} controls playsInline className="h-full w-full object-contain" />

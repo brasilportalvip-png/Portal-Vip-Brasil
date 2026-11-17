@@ -49,6 +49,8 @@ import {
 } from './blogEngine.js';
 import { loadStoredCover, runCoverPhotoBatch, coverPhotoStatus } from './coverPhotoEngine.js';
 import { runMediaAudit } from './mediaAudit.js';
+import { queueKwaiReminder } from './kwaiReminders.js';
+import { countPushSubscriptions, getVapidKeys, removePushSubscription, savePushSubscription, sendPushToUser } from './webPush.js';
 import multer from 'multer';
 
 import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso, probeDatabaseHealth, queryData, slugify, writeAdminLog } from './store.js';
@@ -858,7 +860,25 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
   const rawPlatforms = stringArray(req.body?.platforms, 10);
   if (!rawPlatforms.length) return res.status(400).json({ error: 'Selecione ao menos uma rede social para o agendamento.' });
 
-  if (isPlanning) {
+  // Kwai: sem API de postagem. Na hora marcada o Portal avisa no celular e um toque envia o vídeo ao Kwai.
+  const wantsKwai = rawPlatforms.some((plat) => isManualPublishChannel(plat));
+  const automaticPlatforms = rawPlatforms.filter((plat) => !isManualPublishChannel(plat));
+  if (wantsKwai && !isPlanning && !String(itemData.videoUrl || '').trim()) {
+    return res.status(400).json({ error: 'O Kwai é só para vídeo: escolha um conteúdo com vídeo pronto (ou use o modo Planejamento).' });
+  }
+  const queueKwai = async () => {
+    if (!wantsKwai) return;
+    await queueKwaiReminder({
+      key: `sched:${contentItemId}:${new Date(scheduledFor).toISOString()}`,
+      userId: req.user!.id,
+      companyId,
+      contentItemId,
+      title: String(itemData.title || itemData.headline || 'Vídeo do Portal'),
+      dueAt: new Date(scheduledFor).toISOString()
+    });
+  };
+
+  if (isPlanning || (wantsKwai && automaticPlatforms.length === 0)) {
     const id = newId('sched');
     const scheduled = {
       id, userId: req.user!.id, companyId, contentItemId, platforms: rawPlatforms,
@@ -866,10 +886,16 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
       autopilotGenerated: false, createdAt: nowIso(), updatedAt: nowIso()
     };
     await firestore().collection(COLLECTIONS.scheduledPosts).doc(id).set(scheduled);
-    return res.status(201).json({ message: 'Planejamento editorial salvo no calendário com sucesso.', scheduled });
+    await queueKwai();
+    return res.status(201).json({
+      message: wantsKwai
+        ? 'Agendado! Na hora marcada você recebe um aviso no celular para postar no Kwai com um toque.'
+        : 'Planejamento editorial salvo no calendário com sucesso.',
+      scheduled
+    });
   }
 
-  for (const plat of rawPlatforms) {
+  for (const plat of automaticPlatforms) {
     const provider = normalizeProvider(plat);
     if (!provider || !isUniversalAutoPublishSupported(provider)) {
       if (isManualPublishChannel(plat)) {
@@ -905,7 +931,32 @@ router.post('/content/schedule', requireAuth, asyncRoute(async (req: Authenticat
   };
   await firestore().collection(COLLECTIONS.scheduledPosts).doc(id).set(scheduled);
   await itemSnap.ref.set({ status: 'scheduled', updatedAt: nowIso() }, { merge: true });
-  res.status(201).json({ message: 'Publicação multimídia agendada com sucesso.', scheduled });
+  await queueKwai();
+  res.status(201).json({ message: wantsKwai ? 'Publicação agendada. Para o Kwai, você recebe um aviso no celular na hora marcada.' : 'Publicação multimídia agendada com sucesso.', scheduled });
+}));
+
+// Notificações no celular (Web Push): usadas pelos avisos do Kwai.
+router.get('/push/public-key', requireAuth, asyncRoute(async (_req: AuthenticatedRequest, res) => {
+  res.json({ publicKey: (await getVapidKeys()).publicKey });
+}));
+router.get('/push/status', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  res.json({ devices: await countPushSubscriptions(req.user!.id) });
+}));
+router.post('/push/subscribe', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  try {
+    await savePushSubscription(req.user!.id, req.body?.subscription);
+  } catch (error: any) {
+    return res.status(400).json({ error: error?.message || 'Assinatura de notificação inválida.' });
+  }
+  res.json({ success: true, devices: await countPushSubscriptions(req.user!.id) });
+}));
+router.post('/push/unsubscribe', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  await removePushSubscription(req.user!.id, safeString(req.body?.endpoint, 2000));
+  res.json({ success: true });
+}));
+router.post('/push/test', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const delivered = await sendPushToUser(req.user!.id, { title: 'Avisos do Portal ativados ✅', body: 'É assim que você vai receber a hora de postar no Kwai.', url: '/conteudos', tag: 'push-test' });
+  res.json({ success: delivered > 0, delivered });
 }));
 
 async function scheduledForUser(userId: string, companyId?: string) {
