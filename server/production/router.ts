@@ -50,7 +50,7 @@ import {
 import { loadStoredCover, runCoverPhotoBatch, coverPhotoStatus } from './coverPhotoEngine.js';
 import { runMediaAudit } from './mediaAudit.js';
 import { queueKwaiReminder } from './kwaiReminders.js';
-import { countPushSubscriptions, getVapidKeys, removePushSubscription, savePushSubscription, sendPushToUser } from './webPush.js';
+import { countPushSubscriptions, getVapidKeys, removePushSubscription, savePushSubscription, sendPushToUserDetailed } from './webPush.js';
 import multer from 'multer';
 
 import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso, probeDatabaseHealth, queryData, slugify, writeAdminLog } from './store.js';
@@ -955,8 +955,8 @@ router.post('/push/unsubscribe', requireAuth, asyncRoute(async (req: Authenticat
   res.json({ success: true });
 }));
 router.post('/push/test', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
-  const delivered = await sendPushToUser(req.user!.id, { title: 'Avisos do Portal ativados ✅', body: 'É assim que você vai receber a hora de postar no Kwai.', url: '/conteudos', tag: 'push-test' });
-  res.json({ success: delivered > 0, delivered });
+  const report = await sendPushToUserDetailed(req.user!.id, { title: 'Avisos do Portal ativados ✅', body: 'É assim que você vai receber a hora de postar no Kwai.', url: '/conteudos', tag: 'push-test' });
+  res.json({ success: report.delivered > 0, ...report });
 }));
 
 async function scheduledForUser(userId: string, companyId?: string) {
@@ -1182,6 +1182,9 @@ router.post('/autopilot/config', requireAuth, asyncRoute(async (req: Authenticat
     const targets = targetPlatforms.length > 0 ? targetPlatforms : ['Facebook'];
     const pendingChannels: string[] = [];
     for (const plat of targets) {
+      // Kwai não tem conta para conectar: o vídeo pronto chega como aviso no celular.
+      if (isManualPublishChannel(plat)) continue;
+      if (isRemovedSocialProvider(plat)) continue;
       const provider = normalizeProvider(plat);
       if (!provider || !isUniversalAutoPublishSupported(provider)) {
         pendingChannels.push(plat);

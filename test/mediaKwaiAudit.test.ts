@@ -155,3 +155,18 @@ test('Avisos no celular: bate byte a byte com o exemplo oficial da RFC 8291 (ApÃ
   );
   assert.equal(out.toString('base64url'), 'DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN');
 });
+
+test('Avisos no celular: o teste mostra o motivo quando o serviÃ§o de avisos recusa', async () => {
+  const { resetMemoryDb } = await import('../server/production/store.js');
+  const { savePushSubscription, sendPushToUserDetailed } = await import('../server/production/webPush.js');
+  const crypto = await import('node:crypto');
+  resetMemoryDb();
+  const device = crypto.createECDH('prime256v1');
+  device.generateKeys();
+  await savePushSubscription('u9', { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: device.getPublicKey().toString('base64url'), auth: crypto.randomBytes(16).toString('base64url') } });
+  const ok = await sendPushToUserDetailed('u9', { title: 't', body: 'b', url: '/' }, async () => ({ status: 201 }));
+  assert.deepEqual([ok.devices, ok.delivered, ok.failures.length], [1, 1, 0]);
+  const refused = await sendPushToUserDetailed('u9', { title: 't', body: 'b', url: '/' }, async () => ({ status: 403, text: async () => 'invalid JWT provided' }));
+  assert.equal(refused.delivered, 0);
+  assert.deepEqual(refused.failures[0], { service: 'fcm.googleapis.com', status: 403, detail: 'invalid JWT provided' });
+});
