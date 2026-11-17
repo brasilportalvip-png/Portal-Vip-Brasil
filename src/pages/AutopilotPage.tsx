@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { Company } from '../types';
 import { apiRequest } from '../lib/api';
+import { getPushState } from '../lib/push';
 
 interface Props {
   companies: Company[];
@@ -142,6 +143,11 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
   const [runningAll, setRunningAll] = useState(false);
   const [runningProjectKey, setRunningProjectKey] = useState<string | null>(null);
   const [connectedProviders, setConnectedProviders] = useState<Set<string>>(new Set());
+  // Kwai não tem login: fica "pronto" quando os avisos no celular estão ativos.
+  const [kwaiReady, setKwaiReady] = useState(false);
+  useEffect(() => {
+    void getPushState().then((state) => setKwaiReady(state.devices > 0)).catch(() => setKwaiReady(false));
+  }, []);
   const isRunningRef = useRef(false);
 
   // Controle Mestre da Automação (Ligar/Desligar Global e Guardião de Custos - Fail-closed: padrão desligado)
@@ -1086,7 +1092,7 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                 <div className="mt-3 flex flex-wrap gap-2">
                   {channels.map((ch) => {
                     const selected = cfg.targetPlatforms.includes(ch.name);
-                    const isConnected = connectedProviders.has(ch.key);
+                    const isConnected = ch.key === 'kwai' ? kwaiReady : connectedProviders.has(ch.key);
                     const disabled = cfg.mode === 'automatic' && !ch.direct;
                     return (
                       <button
@@ -1099,7 +1105,9 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                               ? 'border-cyan-400/60 bg-cyan-500/10 text-cyan-200'
                               : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200 hover:border-slate-600'
                         }`}
-                        title={isConnected ? `${ch.name}: Conectado e pronto para publicação` : `${ch.name}: Desconectado`}
+                        title={ch.key === 'kwai'
+                          ? (isConnected ? 'Kwai: pronto — o vídeo chega como aviso no seu celular' : 'Kwai: ative os avisos no celular em Redes Sociais')
+                          : isConnected ? `${ch.name}: Conectado e pronto para publicação` : `${ch.name}: Desconectado`}
                       >
                         <span
                           className={`w-2 h-2 rounded-full shrink-0 ${
@@ -1107,6 +1115,8 @@ export const AutopilotPage: React.FC<Props> = ({ companies, selectedCompany, onR
                           }`}
                         />
                         <span>{ch.name}</span>
+                        {selected && <span aria-hidden="true">✓</span>}
+                        {ch.key === 'kwai' && <span className="text-[10px] text-amber-300">· aviso no celular</span>}
                         {disabled && <span className="text-[10px] text-slate-500">· mídia/revisão</span>}
                       </button>
                     );

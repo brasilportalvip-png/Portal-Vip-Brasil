@@ -53,7 +53,7 @@ export async function enablePush(): Promise<void> {
   await apiRequest('/api/push/subscribe', { method: 'POST', body: { subscription: subscription.toJSON() } });
 }
 
-export async function sendTestPush(): Promise<boolean> {
-  const res = await apiRequest<{ delivered: number }>('/api/push/test', { method: 'POST', body: {} });
-  return (res.delivered || 0) > 0;
+export async function sendTestPush(): Promise<{ delivered: number; devices: number; failures: Array<{ service: string; status: number | null; detail: string }> }> {
+  const res = await apiRequest<{ delivered: number; devices: number; failures?: Array<{ service: string; status: number | null; detail: string }> }>('/api/push/test', { method: 'POST', body: {} });
+  return { delivered: res.delivered || 0, devices: res.devices || 0, failures: res.failures || [] };
 }

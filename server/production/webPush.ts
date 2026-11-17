@@ -21,10 +21,15 @@ export interface VapidKeys {
   privateKey: string; // escalar d (32 bytes), base64url
 }
 
+/** A chave privada P-256 precisa ter exatamente 32 bytes (o Node pode devolver menos se começar com zero). */
+function pad32(buf: Buffer): Buffer {
+  return buf.length >= 32 ? buf : Buffer.concat([Buffer.alloc(32 - buf.length), buf]);
+}
+
 export function generateVapidKeys(): VapidKeys {
   const ecdh = crypto.createECDH('prime256v1');
   ecdh.generateKeys();
-  return { publicKey: b64u(ecdh.getPublicKey()), privateKey: b64u(ecdh.getPrivateKey()) };
+  return { publicKey: b64u(ecdh.getPublicKey()), privateKey: b64u(pad32(ecdh.getPrivateKey())) };
 }
 
 let cachedKeys: VapidKeys | null = null;
@@ -53,7 +58,7 @@ export async function getVapidKeys(): Promise<VapidKeys> {
 function privateKeyObject(keys: VapidKeys): crypto.KeyObject {
   const pub = fromB64u(keys.publicKey);
   return crypto.createPrivateKey({
-    key: { kty: 'EC', crv: 'P-256', d: keys.privateKey, x: b64u(pub.subarray(1, 33)), y: b64u(pub.subarray(33, 65)) },
+    key: { kty: 'EC', crv: 'P-256', d: b64u(pad32(fromB64u(keys.privateKey))), x: b64u(pub.subarray(1, 33)), y: b64u(pub.subarray(33, 65)) },
     format: 'jwk',
   });
 }
@@ -129,17 +134,30 @@ export async function countPushSubscriptions(userId: string): Promise<number> {
   return snap.size;
 }
 
-type PushFetch = (url: string, init: { method: string; headers: Record<string, string>; body: Buffer; signal?: AbortSignal }) => Promise<{ status: number }>;
+type PushFetch = (url: string, init: { method: string; headers: Record<string, string>; body: Buffer; signal?: AbortSignal }) => Promise<{ status: number; text?: () => Promise<string> }>;
+
+export interface PushDeliveryReport {
+  devices: number;
+  delivered: number;
+  failures: Array<{ service: string; status: number | null; detail: string }>;
+}
 
 /** Envia para todos os aparelhos do usuário. Devolve quantos receberam. */
 export async function sendPushToUser(userId: string, message: PushMessage, fetchImpl: PushFetch = fetch as unknown as PushFetch): Promise<number> {
+  return (await sendPushToUserDetailed(userId, message, fetchImpl)).delivered;
+}
+
+/** Igual ao envio normal, mas conta o que o serviço de avisos respondeu (para o teste na tela). */
+export async function sendPushToUserDetailed(userId: string, message: PushMessage, fetchImpl: PushFetch = fetch as unknown as PushFetch): Promise<PushDeliveryReport> {
+  const report: PushDeliveryReport = { devices: 0, delivered: 0, failures: [] };
   const snap = await firestore().collection(PUSH_SUBSCRIPTIONS).where('userId', '==', userId).get();
-  if (snap.empty) return 0;
+  if (snap.empty) return report;
+  report.devices = snap.size;
   const keys = await getVapidKeys();
   const payload = Buffer.from(JSON.stringify({ title: message.title.slice(0, 120), body: message.body.slice(0, 300), url: message.url, tag: message.tag || 'portal-vip' }));
-  let delivered = 0;
   for (const doc of snap.docs) {
     const sub = doc.data() as any;
+    const service = (() => { try { return new URL(sub.endpoint).host; } catch { return 'desconhecido'; } })();
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 10_000);
@@ -155,12 +173,19 @@ export async function sendPushToUser(userId: string, message: PushMessage, fetch
         body: encryptPushPayload({ p256dh: sub.p256dh, auth: sub.auth }, payload),
         signal: controller.signal,
       }).finally(() => clearTimeout(timer));
-      if (res.status >= 200 && res.status < 300) delivered++;
-      else if (res.status === 404 || res.status === 410) await doc.ref.delete().catch(() => undefined);
-      else console.warn(`[WebPush] Serviço de push respondeu HTTP ${res.status}.`);
+      if (res.status >= 200 && res.status < 300) {
+        report.delivered++;
+        continue;
+      }
+      const detail = res.text ? String(await res.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 200) : '';
+      if (res.status === 404 || res.status === 410) await doc.ref.delete().catch(() => undefined);
+      report.failures.push({ service, status: res.status, detail: res.status === 404 || res.status === 410 ? 'aparelho descadastrado (ative de novo)' : detail });
+      console.warn(`[WebPush] ${service} respondeu HTTP ${res.status}: ${detail}`);
     } catch (error: any) {
-      console.warn('[WebPush] Falha ao enviar notificação:', String(error?.message || error).slice(0, 200));
+      const detail = String(error?.message || error).slice(0, 200);
+      report.failures.push({ service, status: null, detail });
+      console.warn('[WebPush] Falha ao enviar notificação:', detail);
     }
   }
-  return delivered;
+  return report;
 }

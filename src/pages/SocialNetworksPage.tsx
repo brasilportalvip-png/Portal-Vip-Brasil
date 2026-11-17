@@ -25,8 +25,15 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
     setPushBusy(true); setPushMsg('');
     try {
       await enablePush();
-      const delivered = await sendTestPush();
-      setPushMsg(delivered ? 'Avisos ativados! Mandamos um aviso de teste para este aparelho.' : 'Avisos ativados neste aparelho.');
+      const test = await sendTestPush();
+      if (test.delivered > 0) {
+        setPushMsg(`Aviso de teste enviado para ${test.delivered} aparelho(s). Se não apareceu em alguns segundos, confira se as notificações do navegador estão liberadas.`);
+      } else {
+        const first = test.failures[0];
+        setPushMsg(first
+          ? `O aviso de teste não saiu: ${first.service} respondeu ${first.status ?? 'sem resposta'}${first.detail ? ` (${first.detail})` : ''}. Me mande esta mensagem.`
+          : 'O aviso de teste não saiu: nenhum aparelho cadastrado. Toque em ativar de novo.');
+      }
     } catch (err:any) {
       setPushMsg(err?.message || 'Não foi possível ativar os avisos.');
     } finally {
@@ -363,15 +370,19 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
               <div>
                 <div className="flex items-start justify-between gap-3">
                   <div className="grid h-11 w-11 place-items-center rounded-2xl border border-slate-700 bg-[#1E293B] text-xl">{net.icon}</div>
-                  <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-300">Sem login</span>
+                  {push?.subscribed ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300"><CheckCircle2 size={11} />Pronto</span>
+                  ) : (
+                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] font-bold text-amber-300">Ative os avisos</span>
+                  )}
                 </div>
                 <h3 className="mt-4 text-sm font-bold text-white">{net.name}</h3>
                 <p className="mt-1 text-xs font-semibold text-amber-300">{net.capability}</p>
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-400">{net.note}</p>
                 <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/50 p-3 text-[11px]">
                   {push?.subscribed
-                    ? <p className="font-semibold text-emerald-300">✅ Avisos ativos neste aparelho{push.devices > 1 ? ` (${push.devices} aparelhos)` : ''}.</p>
-                    : <p className="text-slate-300">Ative os avisos no celular em que você usa o Kwai.</p>}
+                    ? <p className="font-semibold text-emerald-300">✅ Avisos ativos neste aparelho{push.devices > 1 ? ` (${push.devices} aparelhos)` : ''}. Não precisa de login: o Kwai não tem conexão por conta.</p>
+                    : <p className="text-slate-300">O Kwai não tem login para conectar. Ative os avisos no celular em que você usa o Kwai.</p>}
                   {pushMsg && <p className="mt-1 text-amber-300">{pushMsg}</p>}
                 </div>
               </div>
