@@ -749,7 +749,9 @@ export async function processSchedulerTick(options: { trigger?: SchedulerTrigger
 
     if (hasTimeRemaining(2_000)) {
       try {
-        const t6 = Math.min(30_000, getRemainingBudgetMs());
+        // Divulgação diária: tenta aqui com o tempo que sobrar; o que não terminar, o worker de 5 min completa
+        // (runDailyMarketingCatchUp, com até 120 s de IA por projeto).
+        const t6 = Math.min(70_000, getRemainingBudgetMs());
         const pmRes = await withControlledTimeout(
           (signal) => runDailyPortalMarketingCycle({ signal }),
           t6,
