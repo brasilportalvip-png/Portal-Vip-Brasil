@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import sharp from 'sharp';
 
 /**
  * Marca o vídeo do Veo com a identidade do projeto, como um vídeo de marketing de verdade:
@@ -77,17 +78,91 @@ export function brandColorFor(project: any): string {
   const explicit = String(project?.brandColor || project?.primaryColor || '').trim();
   if (/^#[0-9a-f]{6}$/i.test(explicit)) return explicit;
   const key = normalize(`${project?.slug || ''} ${project?.name || ''}`);
-  return BRAND_COLORS.find(([re]) => re.test(key))?.[1] || '#B45309';
+  const curated = BRAND_COLORS.find(([re]) => re.test(key))?.[1];
+  if (curated) return curated;
+  // Projeto novo sem cor cadastrada: cor estável derivada do nome (cada projeto fica com a sua).
+  const palette = ['#B45309', '#B91C1C', '#9F1239', '#1D4ED8', '#6D28D9', '#0E7490', '#047857', '#A16207', '#C2410C', '#7C3AED', '#0369A1', '#BE185D'];
+  const hash = crypto.createHash('sha1').update(String(project?.id || project?.slug || project?.name || 'x')).digest()[0];
+  return palette[hash % palette.length];
+}
+
+/** Cor de destaque tirada do próprio logotipo (para projetos novos sem cor cadastrada). */
+export async function brandColorFromLogo(logoPath: string | null): Promise<string | null> {
+  if (!logoPath) return null;
+  try {
+    const { dominant } = await sharp(logoPath).stats();
+    const { r, g, b } = dominant;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    // Cinza, quase branco ou quase preto não servem de botão: usa a cor do nome.
+    if (max - min < 40 || max < 60 || min > 200) return null;
+    const k = max > 200 ? 180 / max : 1; // escurece um pouco para o texto branco ler bem
+    const hex = (v: number) => Math.round(v * k).toString(16).padStart(2, '0');
+    return `#${hex(r)}${hex(g)}${hex(b)}`.toUpperCase();
+  } catch {
+    return null;
+  }
 }
 
 /** Logotipo local em PNG (os SVGs do site já foram convertidos em server/assets/branding/logos). */
 export function localLogoFor(project: any): string | null {
   const file = PROJECT_LOGOS[String(project?.id || '')] || PROJECT_LOGOS[String(project?.slug || '')];
+  const isPortal = /portal[ -]?vip/.test(normalize(`${project?.id || ''} ${project?.slug || ''} ${project?.name || ''}`));
   const candidates = [
     file ? path.join(ASSETS_DIR(), 'logos', file) : '',
-    path.join(ASSETS_DIR(), 'logos', 'portal-vip.png')
+    // O logo do Portal Vip só vale para o próprio Portal; projeto novo nunca recebe a marca de outro.
+    isPortal ? path.join(ASSETS_DIR(), 'logos', 'portal-vip.png') : ''
   ].filter(Boolean);
   return candidates.find((c) => fs.existsSync(c)) || null;
+}
+
+/**
+ * Logotipo de QUALQUER projeto (os 7 iniciais e todos os que você cadastrar):
+ * 1) o logo cadastrado em Projetos & Sites (link https ou caminho do site, PNG/JPG/WebP/SVG),
+ *    convertido para PNG; 2) o PNG embutido dos projetos iniciais; 3) sem logo, só o nome.
+ */
+export async function prepareProjectLogo(project: any, dir: string, siteUrl?: string): Promise<string | null> {
+  const raw = String(project?.logoUrl || '').trim();
+  const local = localLogoFor(project);
+  const builtInFile = PROJECT_LOGOS[String(project?.id || '')] || PROJECT_LOGOS[String(project?.slug || '')];
+  // Projeto inicial com o logo padrão do site: usa o PNG pronto (sem rede).
+  if (local && (!raw || (builtInFile && raw.includes(builtInFile.replace('.png', ''))))) return local;
+  if (raw) {
+    try {
+      let source: Buffer | null = null;
+      if (raw.startsWith('/') && !raw.startsWith('//')) {
+        const onDisk = [path.join(process.cwd(), 'public', raw), path.join(process.cwd(), 'dist', raw)].find((f) => fs.existsSync(f));
+        if (onDisk) source = fs.readFileSync(onDisk);
+        else if (siteUrl) source = await fetchLogo(new URL(raw, siteUrl).toString());
+      } else if (/^https:\/\//i.test(raw)) {
+        source = await fetchLogo(raw);
+      } else if (/^data:image\/[a-z+]+;base64,/i.test(raw)) {
+        source = Buffer.from(raw.split(',')[1] || '', 'base64');
+      }
+      if (source && source.length) {
+        const out = path.join(dir, 'logo-project.png');
+        await sharp(source, { density: 300 }).resize(256, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toFile(out);
+        return out;
+      }
+    } catch {
+      // logo cadastrado inválido: segue para o próximo recurso
+    }
+  }
+  return local;
+}
+
+async function fetchLogo(url: string): Promise<Buffer | null> {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return null;
+    const res = await fetch(parsed, { signal: AbortSignal.timeout(8000) });
+    const type = String(res.headers.get('content-type') || '');
+    if (!res.ok || !/image\/(png|jpe?g|webp|svg\+xml|gif)/.test(type)) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.length && buf.length <= 4 * 1024 * 1024 ? buf : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Baixa logotipo enviado pelo dono (PNG/JPG/WebP por HTTPS). SVG não é aceito pelo ffmpeg. */
@@ -458,4 +533,14 @@ export async function applyImageBranding(image: Buffer, input: ImageBrandingInpu
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** Logo + cor do projeto, prontos para o ffmpeg. Chame cleanup() depois. */
+export async function resolveProjectBrand(project: any, siteUrl?: string): Promise<{ logoPath: string | null; brandColor: string; cleanup: () => void }> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pvb-brand-logo-'));
+  const logoPath = await prepareProjectLogo(project, dir, siteUrl);
+  const explicit = String(project?.brandColor || project?.primaryColor || '').trim();
+  const curated = /^#[0-9a-f]{6}$/i.test(explicit) || BRAND_COLORS.some(([re]) => re.test(normalize(`${project?.slug || ''} ${project?.name || ''}`)));
+  const brandColor = curated ? brandColorFor(project) : (await brandColorFromLogo(logoPath)) || brandColorFor(project);
+  return { logoPath, brandColor, cleanup: () => fs.rmSync(dir, { recursive: true, force: true }) };
 }
