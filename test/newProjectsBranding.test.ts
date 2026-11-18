@@ -86,3 +86,10 @@ test('Agentes de IA: dossiê de projeto novo não herda site, logo nem ganchos d
   assert.doesNotMatch(String(d.logoUrl), /froc-ia/);
   assert.deepEqual(d.conversionHooks.slice(0, 2), ['Seu pet cheiroso o dia todo', 'Busca e entrega grátis no bairro']);
 });
+
+test('Painel mostra todos os projetos cadastrados, não só os 7 iniciais', () => {
+  const dash = fs.readFileSync(path.join(process.cwd(), 'src/pages/DashboardPage.tsx'), 'utf8');
+  assert.match(dash, /apiRequest<[^>]*>\('\/api\/vitrine'\)/);
+  assert.doesNotMatch(dash, /USER_PORTFOLIO_PROJECTS\.(map|length)/);
+  assert.doesNotMatch(dash, /\(7 Sites/);
+});

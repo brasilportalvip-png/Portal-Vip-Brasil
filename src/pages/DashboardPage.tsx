@@ -23,7 +23,8 @@ import {
   Copy
 } from 'lucide-react';
 import { BrandLogo } from '../components/BrandLogo';
-import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND } from '../data/portalProjects';
+import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND, type PortalProject } from '../data/portalProjects';
+import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProjectAdapter';
 import type { Campaign, Company, ScheduledPost, User } from '../types';
 import { apiRequest } from '../lib/api';
 import { copyText } from '../lib/clipboard';
@@ -55,6 +56,17 @@ export const DashboardPage: React.FC<Props> = ({
   const [isTriggeringDaily, setIsTriggeringDaily] = useState(false);
   const [dailyFeedback, setDailyFeedback] = useState<{ success: boolean; message: string; count?: number } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  // Lista viva de Projetos & Sites (cresce quando você cadastra); os 7 iniciais só enquanto carrega.
+  const [portfolio, setPortfolio] = useState<PortalProject[]>(USER_PORTFOLIO_PROJECTS);
+
+  useEffect(() => {
+    apiRequest<{ projects: ApiPortalProject[] }>('/api/vitrine')
+      .then((data) => {
+        const list = (data.projects || []).map(portalProjectToDisplay);
+        if (list.length) setPortfolio(list);
+      })
+      .catch((error) => console.warn('[Dashboard] Falha ao carregar Projetos & Sites; mostrando os iniciais:', error));
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -147,14 +159,14 @@ export const DashboardPage: React.FC<Props> = ({
   const activationSteps = useMemo(
     () =>
       [
-        ['Ver Vitrine Oficial (7 Sites/Apps)', USER_PORTFOLIO_PROJECTS.length > 0, 'vitrine'],
+        [`Ver Vitrine Oficial (${portfolio.length} Sites/Apps)`, portfolio.length > 0, 'vitrine'],
         ['Auditoria SEO Bing & Google', status.hasSeoAudit, 'seo'],
         ['Conectar Redes Sociais', status.connectedSocialCount > 0, 'redes-sociais'],
         ['Configurar Automação 1x/dia', status.autopilotEnabled, 'autopilot'],
         ['Criar Artigo no Blog', status.hasCreatedArticle, 'criar-artigo'],
         ['Gerar Campanha Multicanal', companyCampaigns.length > 0, 'campanhas']
       ] as const,
-    [status, companyCampaigns.length]
+    [status, companyCampaigns.length, portfolio.length]
   );
 
   if (!user) {
@@ -191,7 +203,7 @@ export const DashboardPage: React.FC<Props> = ({
                 <Zap size={13} className="text-cyan-400" /> Portal Vip Brasil • Central de Marketing
               </span>
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-300">
-                <ShieldCheck size={13} className="text-emerald-400" /> {USER_PORTFOLIO_PROJECTS.length} Projetos Oficiais
+                <ShieldCheck size={13} className="text-emerald-400" /> {portfolio.length} Projetos Oficiais
               </span>
             </div>
             <h2 className="text-2xl font-black text-white md:text-3xl">
@@ -250,7 +262,7 @@ export const DashboardPage: React.FC<Props> = ({
           <div>
             <h3 className="text-base font-black text-white flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-cyan-400" />
-              Vitrine de Sites e Aplicativos Cadastrados ({USER_PORTFOLIO_PROJECTS.length})
+              Vitrine de Sites e Aplicativos Cadastrados ({portfolio.length})
             </h3>
             <p className="text-xs text-slate-400">
               Projetos monitorados para divulgação automática diária e indexação Bing/Google.
@@ -266,7 +278,7 @@ export const DashboardPage: React.FC<Props> = ({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {USER_PORTFOLIO_PROJECTS.map((proj) => (
+          {portfolio.map((proj) => (
             <div
               key={proj.id}
               className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 hover:border-cyan-500/40 transition-all flex flex-col justify-between space-y-3"
@@ -331,7 +343,7 @@ export const DashboardPage: React.FC<Props> = ({
       {/* Metrics Row */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6">
         {[
-          ['Sites & Apps', USER_PORTFOLIO_PROJECTS.length],
+          ['Sites & Apps', portfolio.length],
           ['Posts na Fila', queued],
           ['Publicados no Mês', publishedMonth],
           ['Campanhas Ativas', active],
