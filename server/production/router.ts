@@ -57,6 +57,8 @@ import { COLLECTIONS, cleanObject, createNotification, firestore, newId, nowIso,
 import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './videoCatalog.js';
 import { runVideoRetryWorker, verifyCronAuthorization, getVideoRetryWorkerHealth } from './videoRetryWorker.js';
 import { runSocialPublicationWorker } from './socialPublicationWorker.js';
+import { runHourlyAutopilot } from './autopilotHourly.js';
+import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { inventoryAllArticlesFailClosed, recoverArticleBatch } from './articleRecoveryEngine.js';
 import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap, querySearchAnalytics } from './googleSearchConsole.js';
 
@@ -678,14 +680,22 @@ router.post('/cron/social-publications', asyncRoute(async (req, res) => {
   if (!verifyCronAuthorization(req.headers.authorization)) {
     return res.status(401).json({ error: 'Cron não autorizado.' });
   }
+  const startedAt = Date.now();
   const result = await runSocialPublicationWorker();
+  // Horários do Autopilot fora das 10h (13h, 15h, 19h...): roda aqui, pois o cron da Vercel é só 1x/dia.
+  let autopilotHourly: any = null;
+  try {
+    autopilotHourly = await runHourlyAutopilot({ budgetMs: Math.min(150_000, 250_000 - (Date.now() - startedAt)) });
+  } catch (error) {
+    autopilotHourly = { ran: false, error: sanitizeSecretText(error).slice(0, 300) };
+  }
   if (result.status === 'skipped_concurrent') {
-    return res.status(409).json({ success: false, status: result.status, telemetry: result.telemetry, durationMs: result.durationMs });
+    return res.status(409).json({ success: false, status: result.status, telemetry: result.telemetry, durationMs: result.durationMs, autopilotHourly });
   }
   if (result.status === 'error') {
-    return res.status(500).json({ success: false, status: result.status, error: result.error, telemetry: result.telemetry, durationMs: result.durationMs });
+    return res.status(500).json({ success: false, status: result.status, error: result.error, telemetry: result.telemetry, durationMs: result.durationMs, autopilotHourly });
   }
-  return res.status(200).json(result);
+  return res.status(200).json({ ...result, autopilotHourly });
 }));
 
 router.get('/admin/video-retries/health', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
