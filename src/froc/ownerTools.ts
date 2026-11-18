@@ -263,6 +263,10 @@ export async function runOwnerTool(a: OwnerAction, req: Req, ctx: { selectedProj
       const r: any = await req(`/api/content/scheduled/${encodeURIComponent(s(arg.scheduledId))}/retry`, { method: 'POST', body: {} });
       return { ok: true, summary: `Agendamento ${s(arg.scheduledId)} voltou para a fila. ${cut(r?.message || '', 160)}` };
     }
+    case 'redo_today': {
+      const r: any = await req('/api/admin/redo-today', { method: 'POST', body: {} });
+      return { ok: true, summary: `${cut(r?.message, 300)} Divulgações liberadas: ${(r?.dailyReleased || []).join(', ') || 'nenhuma'}. Artigos agendados: ${(r?.articlesScheduled || []).map((a: any) => `${a.project} (${(a.platforms || []).join('/')})`).join('; ') || 'nenhum'}.` };
+    }
     case 'run_scheduler_now': {
       const r: any = await req('/api/admin/scheduler/run-now', { method: 'POST', timeoutMs: slow, body: {} });
       return { ok: true, summary: `Publicador rodou agora: ${cut(JSON.stringify(r), 900)}` };

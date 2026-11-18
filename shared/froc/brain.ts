@@ -96,6 +96,7 @@ export const OWNER_TOOLS: Record<string, OwnerToolSpec> = {
   schedule_content: { label: 'Agendar a publicação de um conteúdo nas redes', args: ['contentItemId', 'scheduledFor', 'projectId', 'platforms'], confirm: true },
   cancel_scheduled: { label: 'Cancelar uma publicação agendada', args: ['scheduledId'], confirm: true },
   retry_scheduled: { label: 'Tentar de novo uma publicação que falhou', args: ['scheduledId'], confirm: true },
+  redo_today: { label: 'Refazer as publicações de HOJE que não saíram (divulgação diária sem rede e artigos sem divulgação), sem duplicar', args: [], confirm: true },
   run_scheduler_now: { label: 'Rodar o publicador agora (solta o que estiver na hora ou atrasado)', args: [], confirm: true, slow: true },
 };
 
