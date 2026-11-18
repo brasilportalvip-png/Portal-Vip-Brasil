@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '../lib/api';
 import { USER_PORTFOLIO_PROJECTS } from '../data/portalProjects';
+import { copyText } from '../lib/clipboard';
 
 export interface AgentDefinition {
   id: string;
@@ -520,9 +521,9 @@ export const AlmaAgentsPage: React.FC = () => {
     }
   };
 
-  const handleCopyOutput = () => {
+  const handleCopyOutput = async () => {
     if (!conversationOutput) return;
-    navigator.clipboard.writeText(conversationOutput);
+    if (!(await copyText(conversationOutput))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -750,13 +751,13 @@ export const AlmaAgentsPage: React.FC = () => {
                   }
                 }}
                 placeholder={`Pergunte algo estratégico para ${activeAgent.name}...`}
-                className="flex-1 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
+                className="min-w-0 flex-1 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-400"
               />
               <button
                 type="button"
                 onClick={() => handleSendToAgent()}
                 disabled={loading || !promptInput.trim()}
-                className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-cyan-500/20 hover:opacity-95 transition-all disabled:opacity-50 shrink-0"
+                className="flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 px-5 py-3 text-xs font-bold text-white shadow-lg shadow-cyan-500/20 hover:opacity-95 transition-all disabled:opacity-50 shrink-0"
               >
                 <Send size={15} />
                 <span>Enviar</span>

@@ -33,7 +33,7 @@ export const MyCompanyPage: React.FC<Props> = ({ companies, selectedCompany, onS
         {companies.map((project) => {
           const focused = selectedCompany?.id === project.id;
           return (
-            <article key={project.id} className={`rounded-3xl border p-5 transition-all ${focused ? 'border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-950/20' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'}`}>
+            <article key={project.id} className={`min-w-0 rounded-3xl border p-5 transition-all ${focused ? 'border-cyan-500/50 bg-cyan-500/10 shadow-lg shadow-cyan-950/20' : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'}`}>
               <div className="flex items-start gap-3">
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
                   {project.logoUrl ? <img src={project.logoUrl} alt="" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/icons/logo.png'; }} /> : <Globe2 className="m-3 text-cyan-400" />}

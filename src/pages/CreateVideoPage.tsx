@@ -28,6 +28,7 @@ import type { Company, VideoJob } from '../types';
 import { apiRequest } from '../lib/api';
 import { NicheVideoCatalogSection } from '../components/NicheVideoCatalogSection';
 import type { NicheVideoTemplate } from '../lib/nicheVideoCatalog';
+import { copyText } from '../lib/clipboard';
 
 interface CreateVideoPageProps {
   selectedCompany: Company | null;
@@ -220,8 +221,8 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
     }
   };
 
-  const handleCopy = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (text: string) => {
+    if (!(await copyText(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -849,9 +850,9 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                       </span>
                       <button
                         type="button"
-                        onClick={() => {
+                        onClick={async () => {
                           const fullCaption = `${generatedScript.caption}\n\n${(generatedScript.hashtags || []).join(' ')}`;
-                          navigator.clipboard.writeText(fullCaption);
+                          if (!(await copyText(fullCaption))) return;
                           setCopiedCaption(true);
                           setTimeout(() => setCopiedCaption(false), 2000);
                         }}

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Calendar, Check, Copy, Download, FileText, FolderOpen, Image as ImageIcon, PenTool, Search, Send, Trash2, Video } from 'lucide-react';
 import type { Company, ContentItem } from '../types';
 import { apiRequest } from '../lib/api';
+import { copyText } from '../lib/clipboard';
 
 interface ContentsLibraryPageProps {
   contentItems: ContentItem[];
@@ -75,8 +76,7 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
     setKwaiNotice(null);
     let captionCopied = false;
     try {
-      await navigator.clipboard.writeText(caption);
-      captionCopied = true;
+      captionCopied = await copyText(caption);
     } catch {
       captionCopied = false;
     }
@@ -113,7 +113,7 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
   const copy = async (item: ContentItem) => {
     const text = [item.headline, item.body, item.cta, item.hashtags?.join(' ')].filter(Boolean).join('\n\n');
     try {
-      await navigator.clipboard.writeText(text);
+      if (!(await copyText(text))) throw new Error('copy');
       setCopied(item.id);
       setTimeout(() => setCopied(null), 1800);
     } catch {
@@ -189,12 +189,12 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
       {error && <div role="alert" className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-200">{error}</div>}
 
       <div className="flex flex-col gap-3 rounded-3xl border border-[#334155] bg-[#0F172A] p-4">
-        <div className="grid gap-3 md:grid-cols-[1fr_280px]">
-          <div className="relative">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_280px]">
+          <div className="relative min-w-0">
             <Search size={15} className="absolute left-3.5 top-3.5 text-slate-500" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por título, texto ou projeto…" className="min-h-11 w-full rounded-xl border border-slate-700 bg-[#1E293B] pl-10 pr-4 text-xs text-white outline-none focus:border-cyan-400" />
           </div>
-          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="min-h-11 rounded-xl border border-slate-700 bg-[#1E293B] px-3 text-xs font-semibold text-white outline-none focus:border-cyan-400">
+          <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-700 bg-[#1E293B] px-3 text-xs font-semibold text-white outline-none focus:border-cyan-400">
             <option value="all">Todos os projetos</option>
             {companies.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
           </select>

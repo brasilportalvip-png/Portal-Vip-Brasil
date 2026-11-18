@@ -263,7 +263,16 @@ function headings(html: string, tag: 'h1' | 'h2', max = 20): string[] {
 }
 
 export async function analyzeSeo(data: { userId: string; rawUrl: string; company?: any }) {
-  const page = await safeFetchHtml(data.rawUrl);
+  let page: { url: string; html: string };
+  try {
+    page = await safeFetchHtml(data.rawUrl);
+  } catch (error: any) {
+    // Endereço errado, site fora do ar ou bloqueado: resposta clara (não "erro interno").
+    if (error?.statusCode || error?.status) throw error;
+    const friendly: any = new Error('Não consegui abrir este site para analisar. Confira se o endereço está certo e se o site está no ar, depois tente de novo.');
+    friendly.statusCode = 422;
+    throw friendly;
+  }
   const title = matchOne(page.html, /<title\b[^>]*>([\s\S]*?)<\/title>/i) || metaContent(page.html, 'og:title');
   const metaDescription = metaContent(page.html, 'description') || metaContent(page.html, 'og:description');
   const canonical = matchOne(page.html, /<link[^>]+rel=["'][^"']*canonical[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>/i) || matchOne(page.html, /<link[^>]+href=["']([^"']+)["'][^>]+rel=["'][^"']*canonical[^"']*["'][^>]*>/i);

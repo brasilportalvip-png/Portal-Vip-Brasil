@@ -55,6 +55,7 @@ const ProjectBanner: React.FC<{ project: PortalProject; banner: string | null }>
 import { portalProjectToDisplay, type ApiPortalProject } from '../lib/portalProjectAdapter';
 import { BRAND } from '../lib/brand';
 import { apiRequest } from '../lib/api';
+import { copyText } from '../lib/clipboard';
 
 interface VitrinePageProps {
   onNavigate?: (tab: string) => void;
@@ -135,12 +136,10 @@ export function VitrinePage({ onNavigate }: VitrinePageProps) {
     return map;
   }, [projects]);
 
-  const handleCopy = (text: string, id: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    }
+  const handleCopy = async (text: string, id: string) => {
+    if (!(await copyText(text))) return;
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
