@@ -7,6 +7,7 @@ import { getAdminAuth } from '../providers/firebaseAdmin.js';
 import { isGlobalAutomationEnabled, isProjectAutomationEnabled } from './automationGate.js';
 import { verifyArticleQualityGate, NICHE_PROHIBITED_TERMS } from './articleAuditor.js';
 import { generateArticleCoverPhoto, COVER_PHOTO_VERSION } from './coverPhotoEngine.js';
+import { findSocialConnection } from './social.js';
 
 function safeString(value: any, max = 5000): string {
   return String(value ?? '').trim().slice(0, max);
@@ -2669,18 +2670,15 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
   // Repurpose social do artigo: cria uma única fila idempotente para conexões compatíveis com imagem/texto.
   if (finalStatus === 'published' && settings.autoSocialRepurpose && options?.userId) {
     try {
-      const connectionsSnap = await db.collection(COLLECTIONS.socialConnections)
-        .where('userId', '==', options.userId)
-        .where('companyId', '==', project.id)
-        .get();
       // TikTok não entra no repurpose fotográfico automático: PHOTO/PULL_FROM_URL exige domínio/URL verificado pelo TikTok.
       // O Autopilot R8 atende TikTok com vídeo FILE_UPLOAD, que não depende desse requisito externo.
+      // Conta do projeto ou, se ele não tiver, a conta oficial do dono (antes só o projeto com conta própria divulgava o artigo).
       const allowed = new Set(['facebook', 'instagram', 'linkedin']);
-      const platforms = [...new Set(connectionsSnap.docs
-        .map((doc) => doc.data() as any)
-        .filter((connection) => String(connection.status || 'connected') === 'connected')
-        .map((connection) => String(connection.provider || '').toLowerCase())
-        .filter((provider) => allowed.has(provider)))];
+      const platforms: string[] = [];
+      for (const provider of allowed) {
+        const resolved = await findSocialConnection(options.userId, project.id, provider).catch(() => null);
+        if (resolved && String((resolved.data as any)?.status || 'connected') === 'connected') platforms.push(provider);
+      }
 
       if (platforms.length > 0) {
         const socialContentId = 'blog-social-' + stableId(articleId).slice(0, 48);

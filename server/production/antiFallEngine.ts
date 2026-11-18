@@ -2,7 +2,7 @@ import { config } from '../config/index.js';
 import { getAdminAuth } from '../providers/firebaseAdmin.js';
 import { textAiClient } from './ai.js';
 import { type PortalProjectItem, listAllPortalProjectsFromDb, seedPortalProjectsIfEmpty } from './almaPortfolio.js';
-import { ensureValidSocialAccessToken, isTextAutoPublishSupported, normalizeProvider, type SocialProvider } from './social.js';
+import { findSocialConnection, isTextAutoPublishSupported, type SocialProvider } from './social.js';
 import { COLLECTIONS, createNotification, firestore, nowIso, stableId } from './store.js';
 import { isGlobalAutomationEnabled, isProjectAutomationEnabled } from './automationGate.js';
 
@@ -128,11 +128,15 @@ export async function executeAiWith2SecAntiFall(data: {
   }
 
   const project = data.fallbackProject;
+  // Reserva quando a IA não responde: usa o direcionamento cadastrado (ângulos, slogan), variando por dia.
+  const angles: string[] = Array.isArray((project as any)?.socialMarketingAngles) ? (project as any).socialMarketingAngles.filter(Boolean) : [];
+  const dayIndex = Math.floor(Date.now() / 86_400_000);
+  const pickedAngle = angles.length ? angles[dayIndex % angles.length] : '';
   const headline = project
-    ? `Conheça ${project.name} no Portal Vip Brasil`
+    ? (pickedAngle || project.tagline || `Conheça ${project.name}`)
     : 'Portal Vip Brasil — conteúdo em modo de contingência';
   const body = project
-    ? `${project.description}\n\nAcesse o endereço oficial: ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? `\nAplicativo oficial: ${project.playStoreUrl}` : ''}`
+    ? `${project.tagline && project.tagline !== headline ? `${project.tagline}\n\n` : ''}${project.description}\n\nAcesse o endereço oficial: ${project.websiteUrl}${project.hasApp && project.playStoreUrl ? `\nAplicativo oficial: ${project.playStoreUrl}` : ''}`
     : 'A geração por IA ficou temporariamente indisponível. O conteúdo deve ser revisado antes de qualquer publicação.';
 
   return {
@@ -209,27 +213,22 @@ function projectAllowsProvider(project: PortalProjectItem, provider: SocialProvi
   return false;
 }
 
-async function validDirectTargets(db: any, userId: string, project: PortalProjectItem): Promise<SocialProvider[]> {
-  const snap = await db.collection(COLLECTIONS.socialConnections)
-    .where('userId', '==', userId)
-    .where('companyId', '==', project.id)
-    .get();
-  const targets = new Set<SocialProvider>();
-
-  for (const doc of snap.docs) {
-    const conn = doc.data() as any;
-    const provider = normalizeProvider(conn?.provider);
-    if (!provider || !isTextAutoPublishSupported(provider) || !projectAllowsProvider(project, provider)) continue;
-    if (!conn?.encryptedAccessToken && !conn?.accessToken) continue;
+async function validDirectTargets(_db: any, userId: string, project: PortalProjectItem): Promise<SocialProvider[]> {
+  // Antes: só valia conta conectada DENTRO do próprio projeto. As contas oficiais (Facebook/LinkedIn do
+  // Portal Vip Brasil) estão conectadas no Exu Responde, então só ele publicava e os outros 10 ficavam
+  // parados. Agora usa a mesma regra do publicador: conta do projeto ou, se ele não tiver, a conta do dono.
+  const targets: SocialProvider[] = [];
+  for (const provider of ['facebook', 'linkedin'] as SocialProvider[]) {
+    if (!isTextAutoPublishSupported(provider) || !projectAllowsProvider(project, provider)) continue;
     try {
-      await ensureValidSocialAccessToken(doc.id);
-      targets.add(provider);
+      const resolved = await findSocialConnection(userId, project.id, provider);
+      const conn: any = resolved?.data;
+      if (conn && (conn.encryptedAccessToken || conn.accessToken) && (conn.status === 'connected' || !conn.status)) targets.push(provider);
     } catch {
-      // Sem token utilizável/renovável, o canal fica fora deste ciclo sem bloquear os demais projetos.
+      // Sem conta utilizável, o canal fica fora deste ciclo sem bloquear os demais projetos.
     }
   }
-
-  return [...targets];
+  return targets;
 }
 
 /**
@@ -295,16 +294,18 @@ export async function runDailyPortalMarketingCycle(userIdOrOptions?: string | { 
     }
   }
 
-  for (const project of projectsToProcess) {
-    if (signal?.aborted) break;
+  // Todos os projetos em paralelo: em fila, com IA de 2 s, quase todos caíam no texto genérico
+  // "Conheça X no Portal Vip Brasil" (era o que aparecia no Calendário todo dia).
+  await Promise.allSettled(projectsToProcess.map(async (project) => {
+    if (signal?.aborted) return;
     const claimRef = await acquireDailyMarketingClaim(db, targetUserId, project.id, todayDate);
     if (!claimRef) {
       skippedCount += 1;
-      continue;
+      return;
     }
     if (signal?.aborted) {
       await claimRef.set({ status: 'failed', lockedUntil: 0, lastError: 'cycle_aborted', updatedAt: nowIso() }, { merge: true }).catch(() => undefined);
-      break;
+      return;
     }
 
     try {
@@ -332,7 +333,8 @@ Responda em JSON com: "headline", "body", "cta", "hashtags", "keywords", "visual
         systemInstruction: 'Você é o Diretor de Marketing do Portal Vip Brasil. Nunca misture identidade, links, aplicativos ou características entre projetos.',
         jsonOutput: true,
         maxTokens: 2500,
-        timeoutMs: 2000,
+        // 2 s não dá para a IA escrever um post completo; o ciclo do dia tem ~30 s para todos em paralelo.
+        timeoutMs: 22_000,
         fallbackProject: project
       });
 
@@ -429,7 +431,7 @@ Responda em JSON com: "headline", "body", "cta", "hashtags", "keywords", "visual
       await claimRef.set({ status: 'failed', lockedUntil: 0, lastError: message, failedAt: nowIso(), updatedAt: nowIso() }, { merge: true }).catch(() => undefined);
       console.error(`[Portal Vip Divulgação Diária] Falha em ${project.id}:`, message);
     }
-  }
+  }));
 
   if (itemsGenerated.length > 0) {
     try {
