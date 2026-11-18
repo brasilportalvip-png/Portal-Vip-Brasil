@@ -86,7 +86,7 @@ export async function runOwnerTool(a: OwnerAction, req: Req, ctx: { selectedProj
       const byStatus: Record<string, number> = {};
       for (const p of all) byStatus[p.status] = (byStatus[p.status] || 0) + 1;
       const br = (iso: string) => { const t = Date.parse(iso); return Number.isNaN(t) ? iso : new Date(t - 3 * 3600_000).toISOString().slice(0, 16).replace('T', ' '); };
-      const items = list.slice(0, 15).map((p: any) => `${br(p.scheduledFor)} ${cut(p.title || p.contentItemId, 60)} (id ${p.id}, ${(p.platforms || []).join('/')}, ${p.status}${p.lastError ? `, erro: ${cut(p.lastError, 80)}` : ''})`);
+      const items = list.slice(0, 15).map((p: any) => `${br(p.scheduledFor)} ${cut(p.title || p.contentItemId, 60)} (id ${p.id}, ${(p.platforms || []).join('/')}, ${p.status}${p.errorMessage || p.lastError ? `, erro: ${cut(p.errorMessage || p.lastError, 100)}` : ''})`);
       return { ok: true, summary: `${all.length} agendamentos no total (${Object.entries(byStatus).map(([k, v]) => `${v} ${k}`).join(', ')}). ${status ? `Com status ${status}` : 'Próximos a partir de agora'} (${list.length}): ${items.join('; ') || 'nenhum'}` };
     }
     case 'project_details': {
