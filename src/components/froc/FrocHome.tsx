@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Mic, MicOff, Send, Volume2, VolumeX, ArrowLeft, ExternalLink, Smartphone, Copy, Check, X, Loader2, Store } from 'lucide-react';
 import { FrocAvatar, type FrocPhase } from './FrocAvatar';
 import { FrocMenu } from './FrocMenu';
-import { brazilNow, greetingFor, isPageAllowed, OWNER_TOOLS, type FrocAction, type FrocClientState, type FrocEmotion, type FrocMode } from '../../../shared/froc/brain';
+import { brazilNow, greetingFor, isPageAllowed, resolvePageKey, OWNER_TOOLS, type FrocAction, type FrocClientState, type FrocEmotion, type FrocMode } from '../../../shared/froc/brain';
 import { detectIntent, heardStopOverSpeech, isLikelyEcho, normalizeUtterance, PAGE_LABEL, type FrocIntent } from '../../../shared/froc/intents';
 import { frocChat, FrocApiError, type ChatTurn, type TokenGetter } from '../../froc/api';
 import { startFrocListener, mergeFinal, type FrocListener } from '../../froc/listener';
@@ -225,7 +225,7 @@ export function FrocHome(props: Props) {
     for (const a of actions) {
       switch (a.name) {
         case 'open_page':
-          if (isPageAllowed(a.page, mode)) { setExpanded(false); onNavigate(a.page); }
+          if (isPageAllowed(a.page, mode)) { setExpanded(false); onNavigate(resolvePageKey(a.page)); }
           break;
         case 'open_project':
           openProjectRef.current = a.slug;

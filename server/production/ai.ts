@@ -1120,46 +1120,180 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
 }
 
 export type VideoPreset = 'demo_720p' | 'pro_1080p' | 'cinema_4k';
+export type VideoResolution = '360p' | '720p' | '1080p' | '4k';
 
 export interface VideoPresetConfig {
   preset: VideoPreset;
   name: string;
   model: string;
-  resolution: '720p' | '1080p' | '4k';
+  resolution: VideoResolution;
   durationSeconds: number;
   creditsKey: 'video_veo_fast' | 'video_veo_1080p' | 'video_veo_4k';
   credits: number;
 }
 
+const OMNI_RESOLUTIONS = new Set(['360p', '720p', '1080p', '4k']);
+const RETIRED_VIDEO_MODELS = /^veo-(2\.|3\.0-|3\.1-(lite-|fast-)?generate-preview)/i;
+
+/** Modelo de vídeo em uso. Ignora IDs do Veo já desligados pelo Google (env antiga na Vercel). */
+export function resolveVideoModel(configured?: string): string {
+  const fallback = config.geminiModels.videoOmni || 'gemini-omni-1.1-flash';
+  const value = String(configured || '').trim();
+  if (!value || RETIRED_VIDEO_MODELS.test(value)) return fallback;
+  return value;
+}
+
+export function isOmniVideoModel(model: string): boolean {
+  return /^gemini-omni/i.test(String(model || ''));
+}
+
+function omniResolution(value: string | undefined, fallback: string): string {
+  const v = String(value || '').toLowerCase();
+  return OMNI_RESOLUTIONS.has(v) ? v : fallback;
+}
+
+const DAILY_VIDEO_RESOLUTION = omniResolution(config.geminiModels.videoResolution, '360p') as VideoResolution;
+
 export const VIDEO_PRESETS: Record<VideoPreset, VideoPresetConfig> = {
   demo_720p: {
     preset: 'demo_720p',
-    name: 'Fast 720p',
-    model: config.geminiModels.veoLite || 'veo-3.1-lite-generate-preview',
-    resolution: '720p',
-    durationSeconds: 4,
+    name: 'Rápido 360p',
+    model: resolveVideoModel(config.geminiModels.veoLite),
+    resolution: '360p',
+    durationSeconds: 8,
     creditsKey: 'video_veo_fast',
     credits: 50
   },
+  // Usado pela divulgação diária: resolução definida por GEMINI_VIDEO_RESOLUTION (padrão 360p ≈ R$1,30/vídeo).
   pro_1080p: {
     preset: 'pro_1080p',
-    name: 'Pro 1080p',
-    model: config.geminiModels.veoFast || 'veo-3.1-fast-generate-preview',
-    resolution: '1080p',
+    name: `Divulgação ${DAILY_VIDEO_RESOLUTION}`,
+    model: resolveVideoModel(config.geminiModels.veoFast),
+    resolution: DAILY_VIDEO_RESOLUTION,
     durationSeconds: 8,
     creditsKey: 'video_veo_1080p',
     credits: 100
   },
   cinema_4k: {
     preset: 'cinema_4k',
-    name: 'Cinema 4K',
-    model: config.geminiModels.veoCinema || 'veo-3.1-generate-preview',
-    resolution: '4k',
+    name: 'Cinema 1080p',
+    model: resolveVideoModel(config.geminiModels.veoCinema),
+    resolution: '1080p',
     durationSeconds: 8,
     creditsKey: 'video_veo_4k',
     credits: 200
   }
 };
+
+/** Proporções aceitas pelo Gemini Omni: só vertical e horizontal. */
+export function omniAspectRatio(aspectRatio?: string): '9:16' | '16:9' {
+  return String(aspectRatio || '').trim() === '16:9' ? '16:9' : '9:16';
+}
+
+function interactionsApi(client: any): any {
+  return client?.interactions && typeof client.interactions.create === 'function' ? client.interactions : null;
+}
+
+/** Omni em produção. Clientes falsos de teste que só imitam o Veo antigo seguem o caminho legado. */
+function shouldUseOmni(model: string): boolean {
+  if (!isOmniVideoModel(model)) return false;
+  if (overrideMediaClient !== undefined) return Boolean(interactionsApi(overrideMediaClient));
+  return process.env.NODE_ENV !== 'test';
+}
+
+const INTERACTIONS_REST = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+
+async function interactionsRest(method: 'POST' | 'GET', pathSuffix: string, body?: any): Promise<any> {
+  const key = config.geminiMediaApiKey || config.geminiApiKey;
+  if (!key) throw new Error('GEMINI_MEDIA_API_KEY ou GEMINI_API_KEY não configurada no servidor.');
+  const response = await fetch(`${INTERACTIONS_REST}${pathSuffix}`, {
+    method,
+    headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json', 'Api-Revision': '2026-05-20' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const text = await response.text();
+  let json: any = {};
+  try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text.slice(0, 300) }; }
+  if (!response.ok) {
+    const err: any = new Error(String(json?.error?.message || json?.raw || `HTTP ${response.status}`));
+    err.status = response.status;
+    err.code = response.status;
+    throw err;
+  }
+  return json;
+}
+
+/**
+ * Inicia a geração no Gemini Omni (Interactions API) em segundo plano e devolve
+ * o nome durável "interactions/<id>" usado pelo worker para acompanhar.
+ */
+export async function startOmniVideoInteraction(input: {
+  model: string; prompt: string; aspectRatio?: string; resolution: string; durationSeconds?: number; imageBase64?: string;
+}): Promise<string> {
+  const text = `${input.prompt}\nClip length: about ${input.durationSeconds || 8} seconds, one continuous vertical-friendly shot sequence.`;
+  const inputParts: any = input.imageBase64
+    ? [{ type: 'image', data: input.imageBase64.replace(/^data:image\/[a-z]+;base64,/, ''), mime_type: 'image/jpeg' }, { type: 'text', text }]
+    : text;
+  const request: any = {
+    model: input.model,
+    input: inputParts,
+    background: true,
+    store: true,
+    response_format: { type: 'video', aspect_ratio: omniAspectRatio(input.aspectRatio), resolution: omniResolution(input.resolution, '360p') }
+  };
+  const api = interactionsApi(mediaAiClient());
+  const create = (body: any) => api ? api.create(body) : interactionsRest('POST', '', body);
+  let interaction: any;
+  try {
+    interaction = await create(request);
+  } catch (error: any) {
+    // Se o modelo não aceitar execução em segundo plano, gera de forma síncrona.
+    if (!/background/i.test(String(error?.message || ''))) throw error;
+    interaction = await create({ ...request, background: false });
+  }
+  const id = String(interaction?.id || interaction?.name || '').replace(/^interactions\//, '');
+  if (!id) throw new Error('O Gemini Omni não retornou o identificador da geração de vídeo.');
+  return `interactions/${id}`;
+}
+
+/** Procura o vídeo na resposta (formato do SDK: output_video; formato REST: steps/outputs). */
+export function extractInteractionVideo(interaction: any): { data?: string; uri?: string; mimeType: string } | null {
+  const seen = new Set<any>();
+  const visit = (node: any, depth: number): any => {
+    if (!node || typeof node !== 'object' || depth > 8 || seen.has(node)) return null;
+    seen.add(node);
+    const mime = String(node.mime_type || node.mimeType || '');
+    const isVideo = node.type === 'video' || /^video\//i.test(mime);
+    if (isVideo && (typeof node.data === 'string' || typeof node.uri === 'string')) {
+      return { data: node.data, uri: node.uri, mimeType: /^video\//i.test(mime) ? mime : 'video/mp4' };
+    }
+    if (node.output_video) {
+      const found = visit({ type: 'video', ...node.output_video }, depth + 1);
+      if (found) return found;
+    }
+    for (const value of Array.isArray(node) ? node : Object.values(node)) {
+      const found = visit(value, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  };
+  return visit(interaction, 0);
+}
+
+export async function pollOmniVideoInteraction(operationName: string): Promise<{ done: boolean; error?: any; downloadUri?: string }> {
+  const id = operationName.replace(/^interactions\//, '');
+  const api = interactionsApi(mediaAiClient());
+  const interaction = api ? await api.get(id) : await interactionsRest('GET', `/${encodeURIComponent(id)}`);
+  const status = String(interaction?.status || '').toLowerCase();
+  if (!status || status === 'in_progress' || status === 'queued' || status === 'running' || status === 'pending') return { done: false };
+  if (status !== 'completed') {
+    return { done: true, error: interaction?.error || { message: `O Gemini Omni encerrou a geração com status ${status}.` } };
+  }
+  const video = extractInteractionVideo(interaction);
+  if (!video) return { done: true };
+  if (video.data) return { done: true, downloadUri: `data:${video.mimeType};base64,${video.data}` };
+  return { done: true, downloadUri: video.uri };
+}
 
 export type VideoJobStatus =
   | 'queued'
@@ -1243,9 +1377,9 @@ export interface VideoJobData {
   prompt: string;
   title?: string;
   preset: VideoPreset;
-  resolution: '720p' | '1080p' | '4k';
-  requestedResolution: '720p' | '1080p' | '4k';
-  actualResolution?: '720p' | '1080p' | '4k';
+  resolution: VideoResolution;
+  requestedResolution: VideoResolution;
+  actualResolution?: VideoResolution;
   durationSeconds: number;
   aspectRatio: '9:16' | '16:9';
   modelUsed: string;
@@ -1693,7 +1827,16 @@ export async function startVideoGenerationJob(data: {
 
     let operationName = `mock_op_${jobId}`;
 
-    if (overrideMediaClient !== undefined || process.env.NODE_ENV !== 'test') {
+    if (shouldUseOmni(presetConfig.model)) {
+      operationName = await startOmniVideoInteraction({
+        model: presetConfig.model,
+        prompt: finalPrompt,
+        aspectRatio,
+        resolution: presetConfig.resolution,
+        durationSeconds: presetConfig.durationSeconds,
+        imageBase64: data.initialImageBase64
+      });
+    } else if (overrideMediaClient !== undefined || process.env.NODE_ENV !== 'test') {
       const videoConfig: any = {
         numberOfVideos: 1,
         resolution: presetConfig.resolution,
@@ -1939,7 +2082,15 @@ export async function startOrRetryVideoOperation(
   try {
     let operationName = `mock_op_${workingJob.id}`;
 
-    if (overrideMediaClient !== undefined || process.env.NODE_ENV !== 'test') {
+    if (shouldUseOmni(presetConfig.model)) {
+      operationName = await startOmniVideoInteraction({
+        model: presetConfig.model,
+        prompt: finalPrompt,
+        aspectRatio: workingJob.aspectRatio || '9:16',
+        resolution: presetConfig.resolution,
+        durationSeconds: presetConfig.durationSeconds
+      });
+    } else if (overrideMediaClient !== undefined || process.env.NODE_ENV !== 'test') {
       const videoConfig: any = {
         numberOfVideos: 1,
         resolution: presetConfig.resolution,
@@ -2218,7 +2369,12 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
     }
 
     try {
-      if (overrideMediaClient !== undefined) {
+      if (String(job.operationName).startsWith('interactions/') && (overrideMediaClient !== undefined || process.env.NODE_ENV !== 'test')) {
+        const polled = await pollOmniVideoInteraction(String(job.operationName));
+        isDone = polled.done;
+        providerError = polled.error;
+        downloadUri = polled.downloadUri;
+      } else if (overrideMediaClient !== undefined) {
         const op = new GenerateVideosOperation();
         op.name = job.operationName;
         const updated = await overrideMediaClient.operations.getVideosOperation({ operation: op });

@@ -38,8 +38,31 @@ export const FROC_PAGES: Record<string, { label: string; owner: boolean }> = {
   suporte: { label: 'Suporte', owner: true },
 };
 
+const PAGE_ALIASES: Record<string, string> = {
+  inicio: 'home', 'tela-inicial': 'home', conversa: 'home',
+  painel: 'dashboard', central: 'dashboard', 'central-de-operacao': 'dashboard',
+  automacao: 'autopilot', automacoes: 'autopilot', automatizacao: 'autopilot', 'piloto-automatico': 'autopilot', creditos: 'autopilot',
+  projeto: 'projetos', 'meus-projetos': 'projetos', sites: 'projetos',
+  agenda: 'calendario', 'calendario-de-publicacoes': 'calendario', agendamentos: 'calendario',
+  redes: 'redes-sociais', 'redes-sociais-conexoes': 'redes-sociais', conexoes: 'redes-sociais',
+  conteudo: 'conteudos', biblioteca: 'conteudos', 'biblioteca-de-conteudos': 'conteudos',
+  video: 'criar-video', videos: 'criar-video', imagem: 'criar-imagem', artigo: 'criar-artigo', post: 'criar-conteudo',
+  campanha: 'campanhas', agente: 'agentes', estatisticas: 'analytics', metricas: 'analytics',
+  configuracoes: 'perfil', configuracao: 'perfil', administracao: 'admin', chamados: 'admin', ajuda: 'suporte',
+  estrategia: 'froc-ia', posts: 'blog', projetos_vitrine: 'vitrine'
+};
+
+/** Aceita o nome da tela como a IA falar ("Automação", "calendário", "/autopilot") e devolve a chave oficial. */
+export function resolvePageKey(page: unknown): string {
+  const raw = String(page || '').trim().toLowerCase().replace(/^\/+|\/+$/g, '');
+  if (FROC_PAGES[raw]) return raw;
+  const slug = raw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (FROC_PAGES[slug]) return slug;
+  return PAGE_ALIASES[slug] || PAGE_ALIASES[slug.split('-')[0]] || raw;
+}
+
 export function isPageAllowed(page: string, mode: FrocMode): boolean {
-  const p = FROC_PAGES[page];
+  const p = FROC_PAGES[resolvePageKey(page)];
   return !!p && (mode === 'owner' || !p.owner);
 }
 
@@ -148,7 +171,7 @@ export function sanitizeActions(raw: unknown, mode: FrocMode): FrocAction[] {
     const name = String(a.name || '');
     if (mode === 'visitor' && !VISITOR_ACTIONS.has(name)) continue;
     if (name === 'open_page') {
-      const page = String(a.page || a.tab || '').trim();
+      const page = resolvePageKey(a.page || a.tab || a.screen || a.tela);
       if (!isPageAllowed(page, mode)) continue;
       out.push({ name, page });
     } else if (name === 'open_project' || name === 'show_project') {
@@ -412,6 +435,7 @@ O QUE VOCÊ CONSEGUE FAZER (ações no bloco de controle)
 ${pages}
 - open_project {slug}: abre a página do projeto na vitrine. show_project {slug}: mostra o cartão do projeto aqui na conversa (com botões do site e do app).
 - close_window: fecha a tela/janela aberta e volta para a conversa.
+- Só diga "abri" / "abrindo" quando incluir open_page no bloco de controle, com a chave exata da tela (ex.: autopilot para Automação). Se ele disser que não abriu, mande o open_page de novo com a chave exata; nunca só peça desculpas.
 - end_conversation: quando ele se despedir.
 - owner_tool {tool, args}: usa as ferramentas do portal de verdade:
 ${tools}

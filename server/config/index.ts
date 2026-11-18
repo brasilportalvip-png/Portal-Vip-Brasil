@@ -70,7 +70,11 @@ export const config = {
     veoLite: env('GEMINI_MODEL_VEO_LITE', 'veo-3.1-lite-generate-preview'),
     veoFast: env('GEMINI_MODEL_VEO_FAST', 'veo-3.1-fast-generate-preview'),
     veoCinema: env('GEMINI_MODEL_VEO_CINEMA', 'veo-3.1-generate-preview'),
-    veo: env('GEMINI_MODEL_VEO', 'veo-3.1-generate-preview')
+    veo: env('GEMINI_MODEL_VEO', 'veo-3.1-generate-preview'),
+    // O Google desligou o Veo 3.1 preview em 22/10/2026. Substituto oficial: Gemini Omni 1.1 Flash.
+    videoOmni: env('GEMINI_MODEL_VIDEO', 'gemini-omni-1.1-flash'),
+    // Custo por segundo: 360p ≈ US$0,03 · 720p ≈ US$0,10 · 1080p ≈ US$0,15 · 4k ≈ US$0,30.
+    videoResolution: env('GEMINI_VIDEO_RESOLUTION', '360p')
   },
   firebase: {
     projectId: env('FIREBASE_ADMIN_PROJECT_ID'),

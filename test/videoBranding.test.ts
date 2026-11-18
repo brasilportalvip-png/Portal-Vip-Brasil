@@ -65,7 +65,7 @@ test('Cada projeto oficial tem logotipo em PNG e cor própria', () => {
 });
 
 const ffmpeg = resolveFfmpegPath();
-test('ffmpeg real: vídeo sai com marca, mesmo tamanho e áudio preservado', { skip: (!ffmpeg && 'ffmpeg não instalado nesta máquina') || (process.platform === 'win32' && 'validado no CI Linux (mesmo ambiente da Vercel)') }, async () => {
+test('ffmpeg real: vídeo sai com marca, 360p ampliado para 720x1280 e áudio preservado', { skip: (!ffmpeg && 'ffmpeg não instalado nesta máquina') || (process.platform === 'win32' && 'validado no CI Linux (mesmo ambiente da Vercel)') }, async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pvb-test-'));
   const src = path.join(dir, 's.mp4');
   const made = spawnSync(ffmpeg!, ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=0x553366:s=360x640:d=4', '-f', 'lavfi', '-i', 'sine=f=440:d=4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', src]);
@@ -77,7 +77,7 @@ test('ffmpeg real: vídeo sai com marca, mesmo tamanho e áudio preservado', { s
   fs.writeFileSync(path.join(dir, 'o.mp4'), out.buffer);
   const probe = spawnSync(ffmpeg!, ['-hide_banner', '-i', path.join(dir, 'o.mp4')]);
   const info = String(probe.stderr);
-  assert.match(info, /360x640/);
+  assert.match(info, /720x1280/, '360p econômico é ampliado para a legenda/logo ficarem nítidos');
   assert.match(info, /Audio:/);
 
   const img = path.join(dir, 'i.png');

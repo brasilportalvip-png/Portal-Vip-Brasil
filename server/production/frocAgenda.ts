@@ -76,8 +76,11 @@ export function normalizeFailureReason(raw: unknown): string {
 }
 
 /** O que fazer para cada tipo de falha (em linguagem simples). */
-export function failureHint(reason: string): string {
+export function failureHint(reason: string, redes: string[] = []): string {
   const r = reason.toLowerCase();
+  const isX = redes.some((rede) => /^(x|twitter)$/i.test(String(rede)));
+  // Na rede X, "credits depleted" é a API do X (cobra por post). Facebook, Instagram e LinkedIn não usam crédito.
+  if (!/prepayment|ai studio/.test(r) && (isX && /credit|depleted|usage ?cap|402\b/.test(r) || /creditsdepleted|x api|twitter/.test(r))) return 'é a rede X (Twitter): os créditos pagos da API do X acabaram. Facebook, Instagram e LinkedIn não usam crédito e não são afetados. Para voltar a postar no X é preciso recarregar no developer.x.com; se não quiser pagar, ignore — as outras redes seguem normais';
   if (/prepayment|credits? (are )?depleted|billing|402\b|saldo/.test(r)) return 'acabou o saldo pré-pago da API do Gemini (Google AI Studio): recarregar em aistudio.google.com, em Billing do projeto da chave usada no Portal';
   if (/token|expir|session|oauth|code 190|invalid.*access|reconect/.test(r)) return 'reconectar a conta em Redes Sociais';
   if (/permiss|#10\b|#200\b|pages_|instagram_content_publish|not authorized|nao autoriz|não autoriz/.test(r)) return 'reconectar aceitando todas as permissões pedidas';
@@ -176,17 +179,26 @@ export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; pr
   // Motivos das falhas agrupados (últimos 7 dias e histórico), com o que fazer.
   const groupReasons = (list: any[]) => {
     const map = new Map<string, { motivo: string; quantidade: number; redes: Set<string>; ultima: string }>();
-    for (const p of list) {
-      const motivo = normalizeFailureReason(p.errorMessage || p.lastError || p.error);
+    const add = (rawReason: unknown, redes: string[], when: string) => {
+      const motivo = normalizeFailureReason(rawReason);
       const item = map.get(motivo) || { motivo, quantidade: 0, redes: new Set<string>(), ultima: '' };
       item.quantidade++;
-      for (const pl of Array.isArray(p.platforms) ? p.platforms : []) item.redes.add(String(pl));
-      const when = String(p.updatedAt || p.scheduledFor || '');
+      for (const pl of redes) item.redes.add(String(pl));
       if (when > item.ultima) item.ultima = when;
       map.set(motivo, item);
+    };
+    for (const p of list) {
+      const when = String(p.updatedAt || p.scheduledFor || '');
+      // Atribui cada erro à rede que realmente falhou (antes o erro do X aparecia como se fosse do Facebook/Instagram).
+      const failedResults = (Array.isArray(p.publicationResults) ? p.publicationResults : []).filter((r: any) => r && r.success === false && r.error);
+      if (failedResults.length) {
+        for (const r of failedResults) add(r.error, [String(r.platform || r.provider || 'rede')], when);
+      } else {
+        add(p.errorMessage || p.lastError || p.error, Array.isArray(p.platforms) ? p.platforms.map(String) : [], when);
+      }
     }
     return [...map.values()].sort((a, b) => b.quantidade - a.quantidade).slice(0, 8)
-      .map((m) => ({ motivo: m.motivo, quantidade: m.quantidade, redes: [...m.redes], ultima: brTime(m.ultima), oQueFazer: failureHint(m.motivo) }));
+      .map((m) => ({ motivo: m.motivo, quantidade: m.quantidade, redes: [...m.redes], ultima: brTime(m.ultima), oQueFazer: failureHint(m.motivo, [...m.redes]) }));
   };
   const allFailed = all.filter((p: any) => String(p.status) === 'failed');
   const motivosRecentes = groupReasons(failed);

@@ -134,3 +134,36 @@ test('Autopilot de hora em hora: roda 13h/15h/19h, não disputa com as 10h e nã
   assert.equal((await runHourlyAutopilot({ budgetMs: 120_000 }, at('2026-11-18T22:05:00Z'))).reason, 'ciclo_diario_rodando');
   assert.equal(calls, 1);
 });
+
+test('Falha do X não é mostrada como se fosse do Facebook/Instagram', async () => {
+  const { failureHint, buildOwnerAgenda } = await import('../server/production/frocAgenda.js');
+  assert.match(failureHint('credits depleted', ['twitter']), /rede X \(Twitter\)/);
+  assert.match(failureHint('credits depleted', ['twitter']), /Facebook, Instagram e LinkedIn não usam crédito/);
+  resetMemoryDb();
+  const nowMs = Date.parse('2026-11-18T15:00:00Z');
+  await firestore().collection(COLLECTIONS.scheduledPosts).doc('p1').set({
+    id: 'p1', status: 'failed', companyId: 'proj_x', platforms: ['facebook', 'instagram', 'twitter'],
+    scheduledFor: '2026-11-18T13:00:00Z', updatedAt: '2026-11-18T13:01:00Z', errorMessage: 'credits depleted',
+    publicationResults: [
+      { platform: 'facebook', success: true },
+      { platform: 'instagram', success: true },
+      { platform: 'twitter', success: false, error: 'credits depleted' }
+    ]
+  });
+  const agenda: any = await buildOwnerAgenda({ nowMs });
+  const text = JSON.stringify(agenda);
+  assert.match(text, /"redes":\["twitter"\]/);
+  assert.doesNotMatch(text, /"redes":\["facebook"/);
+});
+
+test('Froc abre a tela mesmo quando fala o nome em português ("Automação", "calendário")', async () => {
+  const { resolvePageKey } = await import('../shared/froc/brain.js');
+  assert.equal(resolvePageKey('Automação'), 'autopilot');
+  assert.equal(resolvePageKey('automacao'), 'autopilot');
+  assert.equal(resolvePageKey('/autopilot'), 'autopilot');
+  assert.equal(resolvePageKey('Calendário'), 'calendario');
+  assert.equal(resolvePageKey('Redes Sociais'), 'redes-sociais');
+  const actions = sanitizeActions([{ name: 'open_page', page: 'Automação' }], 'owner');
+  assert.deepEqual(actions, [{ name: 'open_page', page: 'autopilot' }]);
+  assert.deepEqual(sanitizeActions([{ name: 'open_page', page: 'Automação' }], 'visitor'), [], 'visitante continua sem acesso às telas do dono');
+});

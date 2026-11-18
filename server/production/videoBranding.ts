@@ -354,10 +354,21 @@ export function planOverlayTimeline(copy: VideoOverlayCopy, duration: number): O
   return segments;
 }
 
+/** Vídeos abaixo de 720p (ex.: 360p econômico) são ampliados para o lado curto ter 720 px. */
+export function brandingCanvas(width: number, height: number): { width: number; height: number; prescale: boolean } {
+  const short = Math.min(width, height);
+  if (!short || short >= 720) return { width, height, prescale: false };
+  const even = (n: number) => Math.max(2, Math.round(n / 2) * 2);
+  const factor = 720 / short;
+  return { width: even(width * factor), height: even(height * factor), prescale: true };
+}
+
 /** Monta o filtro do ffmpeg (exportado para teste). */
 export function buildBrandingFilter(opts: {
   width: number; height: number; duration: number; copy: VideoOverlayCopy; brandName: string;
   brandColor: string; hasLogo: boolean; dir: string; fontBold: string; fontSemi: string;
+  /** Amplia o vídeo para width x height antes da marca (vídeo 360p fica com texto nítido). */
+  prescale?: boolean;
 }): { filter: string; files: Record<string, string>; outputLabel: string } {
   const { width: W, height: H, duration, copy, brandColor, dir } = opts;
   const base = Math.min(W, H); // lado curto: mesma proporção de texto em vertical e horizontal
@@ -379,6 +390,7 @@ export function buildBrandingFilter(opts: {
     push(`drawtext=expansion=none:fontfile='${esc(font)}':textfile='${esc(file)}':fontsize=${Math.round(size)}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${y}:alpha='${alpha}':${box}shadowcolor=black@0.55:shadowx=2:shadowy=2`);
   };
 
+  if (opts.prescale) push(`scale=${W}:${H}:flags=lanczos,setsar=1`);
   if (opts.hasLogo) {
     const logoSize = Math.round(base * 0.15);
     steps.push(`[1:v]scale=${logoSize}:${logoSize}:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=0.92[logo]`);
@@ -438,9 +450,11 @@ export async function applyVideoBranding(video: Buffer, input: VideoBrandingInpu
     const info = await probeVideo(bin, inFile);
     const duration = input.durationSeconds && input.durationSeconds > 0 ? Math.min(input.durationSeconds, info.duration || input.durationSeconds) : info.duration;
     const hasLogo = Boolean(input.logoPath && fs.existsSync(input.logoPath));
+    const target = brandingCanvas(info.width, info.height);
     const { filter, outputLabel } = buildBrandingFilter({
-      width: info.width, height: info.height, duration, copy: input.copy, brandName: input.brandName,
-      brandColor: input.brandColor || '#B45309', hasLogo, dir, fontBold: FONT_BOLD(), fontSemi: FONT_SEMI()
+      width: target.width, height: target.height, duration, copy: input.copy, brandName: input.brandName,
+      brandColor: input.brandColor || '#B45309', hasLogo, dir, fontBold: FONT_BOLD(), fontSemi: FONT_SEMI(),
+      prescale: target.prescale
     });
     const args = ['-y', '-hide_banner', '-loglevel', 'error', '-i', inFile];
     if (hasLogo) args.push('-i', String(input.logoPath));
