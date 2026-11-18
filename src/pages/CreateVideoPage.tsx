@@ -568,6 +568,15 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                       />
                     </div>
 
+                    {activeJob.branding !== false && activeJob.brandingApplied === false && (
+                      <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
+                        ⚠️ Este vídeo foi salvo <strong>sem logotipo e legendas</strong>. Motivo: {activeJob.brandingReason || 'não informado'}. Mande este motivo para o suporte.
+                      </div>
+                    )}
+                    {activeJob.brandingApplied === true && (
+                      <div className="text-[11px] font-bold text-amber-300">✓ Com logotipo, gancho, legendas e chamada para ação do projeto</div>
+                    )}
+
                     <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                       <div>
                         <div className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
