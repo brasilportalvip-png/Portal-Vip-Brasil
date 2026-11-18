@@ -60,3 +60,29 @@ test('Projeto novo: logo cadastrado (SVG do site ou data:) vira PNG e a cor sai 
   cafe.cleanup();
   void os; void path; void resolveFfmpegPath;
 });
+
+test('Blog de projeto novo: capa mostra o próprio assunto (não vira vela/ritual da Magia das Crenças)', async () => {
+  const { coverSceneGroupFor, coverNeedsThemeFix } = await import('../server/production/coverPhotoEngine.js');
+  assert.equal(coverSceneGroupFor({ title: 'Como dar banho no seu cachorro com amor', relatedProjectId: 'proj_pet_feliz' }), 'tema_geral');
+  assert.equal(coverSceneGroupFor({ title: 'Painel solar vale a pena em 2026?', relatedProjectId: 'proj_casa_solar' }), 'tema_geral');
+  assert.equal(coverSceneGroupFor({ title: 'Qual app de corrida é mais barato?', relatedProjectId: 'proj_dinamico_1' }), 'tema_mobilidade');
+  assert.equal(coverSceneGroupFor({ title: 'Tiragem de tarot do amor', relatedProjectId: 'proj_novo_tarot' }), 'proj_oraculos_ts');
+  // Os iniciais e a revista não mudam.
+  assert.equal(coverSceneGroupFor({ title: 'Oração do amor', relatedProjectId: 'proj_portal_vip_magazine' }), 'proj_portal_vip_magazine');
+  assert.equal(coverSceneGroupFor({ title: 'Simpatia do amor' }), 'proj_maria_padilha');
+  // Capa antiga errada (feita com o padrão da Magia) entra na fila para refazer.
+  assert.equal(coverNeedsThemeFix({ title: 'Painel solar vale a pena?', relatedProjectId: 'proj_casa_solar', coverSceneGroup: 'proj_magia_crencas' }), true);
+});
+
+test('Agentes de IA: dossiê de projeto novo não herda site, logo nem ganchos de outro projeto', async () => {
+  const { resetMemoryDb } = await import('../server/production/store.js');
+  const { createPortalProjectInDb } = await import('../server/production/almaPortfolio.js');
+  const { getMasterBrandDossier } = await import('../server/production/brandDossiers.js');
+  resetMemoryDb();
+  const created: any = await createPortalProjectInDb({ name: 'Pet Feliz Teste', websiteUrl: 'https://petfeliz.com.br', category: 'Pet Shop', description: 'Banho e tosa com produtos naturais para cães e gatos.', socialMarketingAngles: ['Seu pet cheiroso o dia todo', 'Busca e entrega grátis no bairro'] } as any);
+  const d: any = await getMasterBrandDossier(created.id);
+  assert.ok(d);
+  assert.match(String(d.websiteUrl), /petfeliz\.com\.br/);
+  assert.doesNotMatch(String(d.logoUrl), /froc-ia/);
+  assert.deepEqual(d.conversionHooks.slice(0, 2), ['Seu pet cheiroso o dia todo', 'Busca e entrega grátis no bairro']);
+});

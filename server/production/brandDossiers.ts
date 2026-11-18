@@ -780,11 +780,12 @@ export async function getMasterBrandDossier(projectId: string): Promise<MasterBr
     targetAudience: dbProject?.targetAudience || 'Não verificado — confirmação necessária',
     toneOfVoice: 'Profissional, acolhedor e informativo.',
     brandArchetype: 'O Especialista',
-    websiteUrl: dbProject?.websiteUrl || 'https://portal-vip-brasil.vercel.app',
+    // Projeto novo sem site cadastrado: nunca mandar o cliente para o site de outro projeto.
+    websiteUrl: dbProject?.websiteUrl || 'Não verificado — confirmação necessária',
     playStoreUrl: dbProject?.playStoreUrl || 'Não verificado — confirmação necessária',
     appTitle: dbProject?.appTitle || 'Não verificado — confirmação necessária',
     hasApp: Boolean(dbProject?.hasApp),
-    logoUrl: dbProject?.logoUrl || '/icons/projects/froc-ia.svg',
+    logoUrl: dbProject?.logoUrl || '',
     bannerUrl: dbProject?.bannerUrl || 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80',
     colorPalette: {
       primary: '#3B82F6',
@@ -810,9 +811,10 @@ export async function getMasterBrandDossier(projectId: string): Promise<MasterBr
       transactional: ['acessar ' + (dbProject?.name || cleanId)],
       navigational: ['site oficial ' + (dbProject?.name || cleanId)]
     },
-    conversionHooks: [
-      'Conheça agora as novidades exclusivas de ' + (dbProject?.name || cleanId)
-    ],
+    // Ângulos de marketing que o dono cadastrou em Projetos & Sites viram os ganchos do projeto novo.
+    conversionHooks: Array.isArray((dbProject as any)?.socialMarketingAngles) && (dbProject as any).socialMarketingAngles.length
+      ? (dbProject as any).socialMarketingAngles.slice(0, 6)
+      : ['Conheça agora as novidades exclusivas de ' + (dbProject?.name || cleanId)],
     callToActionCatalog: [
       'Visite o site oficial e confira todos os detalhes.'
     ],

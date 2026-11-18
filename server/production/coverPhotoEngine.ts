@@ -97,6 +97,14 @@ SCENES.tema_bruxaria = [
   { lens: '35mm f/2', en: 'Old iron cauldron with herbs and gentle steam over embers in a rustic stone room, candlelight and shadows, folk magic atmosphere', pt: 'caldeirão de ferro com ervas e vapor sobre brasas' },
   { lens: '50mm f/2', en: 'Hands of a wise old sorcerer arranging candles and crystals on a table at night, face hidden in shadow, respectful and mysterious', pt: 'mãos de bruxo arrumando velas e cristais sobre a mesa à noite' }
 ];
+// Projeto cadastrado depois, de qualquer ramo (cafeteria, pet shop, energia solar...): a foto mostra o próprio assunto.
+SCENES.tema_geral = [
+  { lens: '35mm f/2', en: 'Photorealistic editorial scene that literally shows the subject of the article title, real people, real place and real objects of that subject in an authentic Brazilian setting, natural light', pt: 'cena real que mostra o assunto do artigo' },
+  { lens: '50mm f/1.8', en: 'Close-up photorealistic detail of the main object or activity of the article topic, hands in action, rich natural textures, shallow depth of field, warm daylight', pt: 'detalhe em close do assunto principal do artigo' },
+  { lens: '85mm f/2', en: 'Candid photorealistic moment of a satisfied customer enjoying the product or service of the article topic, face partly out of focus, soft window light', pt: 'cliente aproveitando o produto ou serviço do artigo' },
+  { lens: '24mm f/2.8', en: 'Wide photorealistic establishing shot of the real environment where the article topic happens (store, home, street or workplace), clean composition, golden hour light', pt: 'ambiente real onde o assunto do artigo acontece' }
+];
+const INITIAL_PROJECT_IDS = ['proj_maria_padilha', 'proj_exu_responde', 'proj_manual_catolico', 'proj_magia_crencas', 'proj_oraculos_ts', 'proj_frocia2', 'proj_froc_marketing_engine', 'proj_portal_vip_magazine'];
 SCENES.proj_oraculos_ts.push(
   { lens: '50mm f/2', en: 'Cowrie shells (búzios) scattered on a woven straw mat for divination, beads and a white candle, warm natural light, respectful Afro-Brazilian tradition', pt: 'búzios espalhados sobre esteira de palha para consulta' }
 );
@@ -109,6 +117,14 @@ export function coverSceneGroupFor(article: { title?: string; slug?: string; rel
   if (/corrida|motorista|uber|\b99\b|passageiro|carona|mobilidade|froc x|transporte por app|app de transporte/.test(text)) return 'tema_mobilidade';
   if (/fantasma|sobrenatural|assombra|paranormal|cacador de|caca fantasma|detector/.test(text)) return 'tema_sobrenatural';
   if (/cipriano|bruxo|bruxa|bruxaria|feitico|grimorio/.test(text)) return 'tema_bruxaria';
+  if (project && !INITIAL_PROJECT_IDS.includes(project)) {
+    // Projeto novo: só cai num nicho espiritual com palavra forte; senão a foto mostra o próprio assunto.
+    if (/padilha|pombagira|amarracao|seducao/.test(text)) return 'proj_maria_padilha';
+    if (/\bexu\b|umbanda|quimbanda|encruzilhada/.test(text)) return 'proj_exu_responde';
+    if (/catolic|novena|terco|biblia|nossa senhora/.test(text)) return 'proj_manual_catolico';
+    if (/tarot|taro|cigano|runa|oraculo|buzios|astrolog|horoscopo/.test(text)) return 'proj_oraculos_ts';
+    return 'tema_geral';
+  }
   if (/padilha|pombagira|amor|seducao/.test(text)) return 'proj_maria_padilha';
   if (/\bexu\b|umbanda|encruzilhada/.test(text)) return 'proj_exu_responde';
   if (/catolic|novena|terco|santo|oracao|biblia|nossa senhora|dogma/.test(text)) return 'proj_manual_catolico';
@@ -121,7 +137,7 @@ export function coverSceneGroupFor(article: { title?: string; slug?: string; rel
 /** Regra antiga (antes de reconhecer mobilidade/sobrenatural/bruxaria): só para achar capas a refazer. */
 function legacySceneGroupFor(article: { title?: string; slug?: string; relatedProjectId?: string; projectId?: string }): string {
   const project = String(article?.relatedProjectId || article?.projectId || '');
-  if (['proj_maria_padilha', 'proj_exu_responde', 'proj_manual_catolico', 'proj_magia_crencas', 'proj_oraculos_ts', 'proj_frocia2', 'proj_froc_marketing_engine', 'proj_portal_vip_magazine'].includes(project)) return project;
+  if (INITIAL_PROJECT_IDS.includes(project)) return project;
   const text = normalize(`${article?.title || ''} ${article?.slug || ''}`);
   if (/padilha|pombagira|amor|seducao/.test(text)) return 'proj_maria_padilha';
   if (/\bexu\b|umbanda|encruzilhada/.test(text)) return 'proj_exu_responde';
