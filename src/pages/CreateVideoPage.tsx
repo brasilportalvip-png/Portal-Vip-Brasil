@@ -357,9 +357,9 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                 <div className="grid grid-cols-3 gap-2">
                   {(
                     [
-                      { key: 'demo_720p', label: 'Fast 720p', desc: 'Mais rápido' },
-                      { key: 'pro_1080p', label: 'Pro 1080p', desc: 'Full HD Ideal' },
-                      { key: 'cinema_4k', label: 'Cinema 4K', desc: 'Ultra HD' }
+                      { key: 'demo_720p', label: 'Rápido 360p', desc: '≈ R$1,30' },
+                      { key: 'pro_1080p', label: 'Divulgação', desc: 'Igual ao diário' },
+                      { key: 'cinema_4k', label: 'Cinema 1080p', desc: '≈ R$6,50' }
                     ] as const
                   ).map((p) => (
                     <button
