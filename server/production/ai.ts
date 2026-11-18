@@ -771,72 +771,89 @@ function extractGeneratedImage(response: any): { data: string; mimeType: string 
   return null;
 }
 
-function resolveNicheVisualGuidance(company?: any, theme?: string, title?: string): {
+export function resolveNicheVisualGuidance(company?: any, theme?: string, title?: string): {
   styleDescription: string;
   lightingAndAtmosphere: string;
   negativeDirectives: string;
 } {
-  const corpus = `${company?.name || ''} ${company?.category || ''} ${company?.segment || ''} ${theme || ''} ${title || ''}`.toLowerCase();
+  // Sem acentos e por palavra inteira: "Magia" não cai em "IA" e "Oração" acha "oracao".
+  // Primeiro vale a identidade do projeto; se ela não define o nicho, vale o tema do post.
+  const norm = (v: string) => ` ${v} `.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ');
+  const corpora = [
+    norm(`${company?.name || ''} ${company?.category || ''} ${company?.segment || ''} ${company?.slug || ''}`),
+    norm(`${theme || ''} ${title || ''}`)
+  ];
+  for (const corpus of corpora) {
+    const has = (...words: string[]) => words.some((w) => new RegExp(w.length <= 3 ? `(^| )${w}( |$)` : `(^| )${w}`).test(corpus));
 
-  if (corpus.includes('runa') || corpus.includes('viking') || corpus.includes('nordic') || corpus.includes('futhark')) {
-    return {
-      styleDescription: 'Fotografia nórdica mística de altíssima definição, pedras rúnicas esculpidas com símbolos ancestrais verdadeiros, madeira rústica ancestral, névoa escandinava sutil',
-      lightingAndAtmosphere: 'Luz natural suave de aurora boreal ou crepúsculo ártico, névoa cinematográfica, detalhes hiper-realistas',
-      negativeDirectives: 'SEM prédios modernos, SEM escritório, SEM pessoas de terno, SEM computadores, SEM logotipos corporativos, SEM arte abstrata genérica'
-    };
-  }
+    if (has('padilha', 'pombagira', 'amorosa', 'seducao', 'paixao', 'afetiv')) {
+      return {
+        styleDescription: 'Arranjo majestoso de rosas vermelhas aveludadas de pétalas rubras profundas, cálice dourado antigo, fita de cetim escarlate, estética magnética e envolvente',
+        lightingAndAtmosphere: 'Luz tênue e aveludada de velas, reflexos dourados e rubros, contraluz sedutor e elegante',
+        negativeDirectives: 'SEM símbolos caricatos, SEM escritório moderno, SEM estética genérica fria, SEM logotipos ou marcas d\'água'
+      };
+    }
 
-  if (corpus.includes('tarot') || corpus.includes('oraculo') || corpus.includes('cigano') || corpus.includes('arcanos')) {
-    return {
-      styleDescription: 'Mesa de cartomancia refinada com cartas clássicas de tarot e baralho cigano ricamente ilustradas, veludo escuro, cristais de quartzo translúcidos',
-      lightingAndAtmosphere: 'Chama dourada de velas acesas, iluminação chiaroscuro dramática, fumaça tênue de incenso sagrado, atmosfera oracular profunda',
-      negativeDirectives: 'SEM escritório executivo, SEM aperto de mão corporativo, SEM elementos infantis, SEM logos comerciais, SEM desfoque distorcido'
-    };
-  }
+    if (has('exu', 'guardiao', 'quimbanda', 'encruzilhada', 'abrir caminho')) {
+      return {
+        styleDescription: 'Cena noturna solene de encruzilhada ancestral, símbolo imponente de tridente de ferro forjado, brasas ardentes e fumaça mística ascendente',
+        lightingAndAtmosphere: 'Contraste imponente de luz de fogueira sagrada e sombras da noite, reverência espiritual, aura de proteção e firmeza',
+        negativeDirectives: 'SEM caricaturas pejorativas, SEM escritório, SEM computador, SEM logos de bancos, SEM pessoas de terno'
+      };
+    }
 
-  if (corpus.includes('padilha') || corpus.includes('amorosa') || corpus.includes('seducao') || corpus.includes('paixao') || corpus.includes('afetiv')) {
-    return {
-      styleDescription: 'Arranjo majestoso de rosas vermelhas aveludadas de pétalas rubras profundas, cálice dourado antigo, fita de cetim escarlate, estética magnética e envolvente',
-      lightingAndAtmosphere: 'Luz tênue e aveludada de velas, reflexos dourados e rubros, contraluz sedutor e elegante',
-      negativeDirectives: 'SEM símbolos caricatos, SEM escritório moderno, SEM estética genérica fria, SEM logotipos ou marcas d\'água'
-    };
-  }
+    if (has('catolico', 'terco', 'novena', 'oracao', 'biblia', 'santo', 'santa')) {
+      return {
+        styleDescription: 'Altar devocional solene com terço sagrado de contas polidas, bíblia aberta em pergaminho sagrado, velas acesas e vitral sacro iluminado',
+        lightingAndAtmosphere: 'Raios de luz divina dourada atravessando vitrais coloridos, paz celestial, serenidade e reverência de fé inabalável',
+        negativeDirectives: 'SEM escritório corporativo, SEM elementos profanos, SEM caricaturas, SEM computadores, SEM marcas comerciais'
+      };
+    }
 
-  if (corpus.includes('exu') || corpus.includes('guardiao') || corpus.includes('quimbanda') || corpus.includes('encruzilhada') || corpus.includes('abrir caminho')) {
-    return {
-      styleDescription: 'Cena noturna solene de encruzilhada ancestral, símbolo imponente de tridente de ferro forjado, brasas ardentes e fumaça mística ascendente',
-      lightingAndAtmosphere: 'Contraste imponente de luz de fogueira sagrada e sombras da noite, reverência espiritual, aura de proteção e firmeza',
-      negativeDirectives: 'SEM caricaturas pejorativas, SEM escritório, SEM computador, SEM logos de bancos, SEM pessoas de terno'
-    };
-  }
+    if (has('tarot', 'taro', 'oraculo', 'cigano', 'arcanos', 'cartomancia')) {
+      return {
+        styleDescription: 'Mesa de cartomancia refinada com cartas clássicas de tarot e baralho cigano ricamente ilustradas, veludo escuro, cristais de quartzo translúcidos',
+        lightingAndAtmosphere: 'Chama dourada de velas acesas, iluminação chiaroscuro dramática, fumaça tênue de incenso sagrado, atmosfera oracular profunda',
+        negativeDirectives: 'SEM escritório executivo, SEM aperto de mão corporativo, SEM elementos infantis, SEM logos comerciais, SEM desfoque distorcido'
+      };
+    }
 
-  if (corpus.includes('catolico') || corpus.includes('terco') || corpus.includes('novena') || corpus.includes('oracao') || corpus.includes('biblia') || corpus.includes('santo') || corpus.includes('santa')) {
-    return {
-      styleDescription: 'Altar devocional solene com terço sagrado de contas polidas, bíblia aberta em pergaminho sagrado, velas acesas e vitral sacro iluminado',
-      lightingAndAtmosphere: 'Raios de luz divina dourada atravessando vitrais coloridos, paz celestial, serenidade e reverência de fé inabalável',
-      negativeDirectives: 'SEM escritório corporativo, SEM elementos profanos, SEM caricaturas, SEM computadores, SEM marcas comerciais'
-    };
-  }
+    if (has('runa', 'viking', 'nordic', 'futhark')) {
+      return {
+        styleDescription: 'Fotografia nórdica mística de altíssima definição, pedras rúnicas esculpidas com símbolos ancestrais verdadeiros, madeira rústica ancestral, névoa escandinava sutil',
+        lightingAndAtmosphere: 'Luz natural suave de aurora boreal ou crepúsculo ártico, névoa cinematográfica, detalhes hiper-realistas',
+        negativeDirectives: 'SEM prédios modernos, SEM escritório, SEM pessoas de terno, SEM computadores, SEM logotipos corporativos, SEM arte abstrata genérica'
+      };
+    }
 
-  if (corpus.includes('prosperidade') || corpus.includes('gratidao') || corpus.includes('abundancia') || corpus.includes('crenca') || corpus.includes('riqueza')) {
-    return {
-      styleDescription: 'Nascer do sol radiante dourado rompendo nuvens no horizonte, natureza verdejante e florescente, símbolo de colheita abundante e meditação inspiradora',
-      lightingAndAtmosphere: 'Luz dourada da manhã (golden hour) brilhante e acolhedora, atmosfera de paz mental, plenitude e elevação espiritual',
-      negativeDirectives: 'SEM prédios cinzentos de escritórios vazios, SEM pilhas desordenadas de dinheiro falso, SEM logos comerciais'
-    };
-  }
+    if (has('prosperidade', 'gratidao', 'abundancia', 'crenca', 'riqueza')) {
+      return {
+        styleDescription: 'Nascer do sol radiante dourado rompendo nuvens no horizonte, natureza verdejante e florescente, símbolo de colheita abundante e meditação inspiradora',
+        lightingAndAtmosphere: 'Luz dourada da manhã (golden hour) brilhante e acolhedora, atmosfera de paz mental, plenitude e elevação espiritual',
+        negativeDirectives: 'SEM prédios cinzentos de escritórios vazios, SEM pilhas desordenadas de dinheiro falso, SEM logos comerciais'
+      };
+    }
 
-  if (corpus.includes('inteligencia artificial') || corpus.includes('ia') || corpus.includes('froc ia') || corpus.includes('algoritmo') || corpus.includes('tecnologia')) {
+    if (has('magia', 'bruxa', 'feitico', 'ritual', 'umbanda', 'orixa', 'cristal', 'cristais', 'espiritual', 'energia', 'protecao', 'simpatia', 'banho', 'vela', 'buzios')) {
     return {
-      styleDescription: 'Interface cyberfuturista refinada com nós de redes neurais brilhando em tons ciano neon e violeta profundo, dados holográficos tridimensionais, precisão tecnológica de ponta',
-      lightingAndAtmosphere: 'Brilho volumétrico de luz neon ciano sobre fundo escuro obsidiana, estética sci-fi minimalista e premium',
-      negativeDirectives: 'SEM robôs de lata antigos, SEM placas de circuito obsoletas dos anos 90, SEM clip art genérico'
+      styleDescription: 'Fotografia ultra-realista de altar místico artesanal: velas acesas, cristais naturais, ervas frescas, conchas e tecidos de linho, objetos reais com texturas táteis e detalhes nítidos',
+      lightingAndAtmosphere: 'Luz quente e natural de velas com fumaça suave de incenso, profundidade de campo rasa, clima acolhedor, sagrado e respeitoso',
+      negativeDirectives: 'SEM estética de tecnologia ou neon, SEM escritório, SEM computadores, SEM caricaturas, SEM elementos de terror, SEM logotipos'
     };
+    }
+
+    if (has('inteligencia artificial', 'ia', 'froc', 'algoritmo', 'tecnologia', 'software', 'automacao')) {
+      return {
+        styleDescription: 'Interface cyberfuturista refinada com nós de redes neurais brilhando em tons ciano neon e violeta profundo, dados holográficos tridimensionais, precisão tecnológica de ponta',
+        lightingAndAtmosphere: 'Brilho volumétrico de luz neon ciano sobre fundo escuro obsidiana, estética sci-fi minimalista e premium',
+        negativeDirectives: 'SEM robôs de lata antigos, SEM placas de circuito obsoletas dos anos 90, SEM clip art genérico'
+      };
+    }
   }
 
   return {
-    styleDescription: 'Fotografia editorial moderna de altíssimo padrão publicitário, smartphone elegante exibindo métricas de crescimento e aplicativo oficial verificado',
-    lightingAndAtmosphere: 'Estúdio profissional contemporâneo, iluminação suave e limpa, alta definição e elegância visual',
+    styleDescription: 'Fotografia editorial ultra-realista de altíssimo padrão publicitário, cena real que represente literalmente o tema, pessoas e objetos autênticos com texturas naturais',
+    lightingAndAtmosphere: 'Luz natural ou de estúdio suave e direcional, profundidade de campo cinematográfica, cores ricas e equilibradas, alta definição',
     negativeDirectives: 'SEM clichês corporativos ultrapassados, SEM imagens genéricas de bancos de imagem baratos, SEM distorção'
   };
 }
@@ -891,6 +908,8 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
 - Atmosfera e Iluminação: ${nicheGuidance.lightingAndAtmosphere}.
 - Proporção: ${aspectRatio}.
 - Resolução desejada: ${resolution}.
+- Realismo: fotografia ultra-realista, como feita por câmera profissional (lente 50mm ou 85mm), texturas reais, pele e anatomia naturais, mãos com cinco dedos, sem aparência de desenho, 3D ou ilustração, a menos que o estilo pedido diga o contrário.
+- Texto: a imagem não pode ter palavras, letras, números, legendas, placas ou marcas d'água; títulos e legendas são adicionados depois pelo sistema.
 - REGRAS NEGATIVAS E ANTI-REPETIÇÃO: ${nicheGuidance.negativeDirectives}. Não inclua logotipos corporativos genéricos, marcas d'água ou banners com texto excessivo. A imagem deve ser visualmente deslumbrante, hiper-relevante ao nicho exato do projeto e única.`;
 
   let model = config.geminiModels.image || 'gemini-3.1-flash-image';
