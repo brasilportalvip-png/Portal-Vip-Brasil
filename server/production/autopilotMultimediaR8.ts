@@ -1,4 +1,5 @@
 import { generateAutopilotPost, generateMarketingImage, startVideoGenerationJob } from './ai.js';
+import { reserveAutomatedVideoSlot } from './videoQuota.js';
 import { getPortalProjectFromDb, listAllPortalProjectsFromDb } from './almaPortfolio.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso } from './store.js';
 import { isManualPublishChannel, normalizeProvider, type SocialProvider } from './social.js';
@@ -570,8 +571,16 @@ export async function executeAutopilotJob(
       }
     }
 
-    // 3. Vídeo Veo assíncrono (não aguarda renderização)
+    // 3. Vídeo Veo assíncrono (não aguarda renderização) — respeitando o limite diário de vídeos da Automação.
+    let videoQuotaBlocked = false;
     if ((videoTargets.length > 0 || kwaiSelected) && !options?.signal?.aborted) {
+      const quota = await reserveAutomatedVideoSlot({ projectId: ap.companyId }).catch(() => ({ allowed: true, used: 0, limit: 0, day: '' }));
+      if (!quota.allowed) {
+        videoQuotaBlocked = true;
+        console.info(`[Autopilot Multimídia] ${company.name}: limite diário de vídeos atingido (${quota.used}/${quota.limit}). Publicando só imagem e texto hoje.`);
+      }
+    }
+    if ((videoTargets.length > 0 || kwaiSelected) && !videoQuotaBlocked && !options?.signal?.aborted) {
       try {
         const videoPrompt = [
           generated.result.visualPrompt,

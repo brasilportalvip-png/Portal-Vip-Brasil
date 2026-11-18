@@ -1,5 +1,6 @@
 import { COLLECTIONS, firestore } from './store.js';
 import { listAllPortalProjectsFromDb } from './almaPortfolio.js';
+import { withEffectiveStatus } from './scheduledStatus.js';
 
 /**
  * Agenda do dono para o Froc: "o que sai hoje", "o que está atrasado", "o que a automação vai fazer".
@@ -78,7 +79,8 @@ export function normalizeFailureReason(raw: unknown): string {
 /** O que fazer para cada tipo de falha (em linguagem simples). */
 export function failureHint(reason: string): string {
   const r = reason.toLowerCase();
-  if (/prepayment|credits? (are )?depleted|billing|402\b|saldo/.test(r)) return 'acabou o saldo pré-pago da API do Gemini (Google AI Studio): recarregar em aistudio.google.com, em Billing do projeto da chave usada no Portal';
+  if (/^(x|twitter|pinterest)\b|\b(x|twitter): |^credits depleted$/.test(r)) return 'falha do X/Pinterest, que foram retirados do portal: ignore (as outras redes do mesmo post são publicadas normalmente)';
+  if (/prepayment|billing|402\b|saldo/.test(r)) return 'acabou o saldo pré-pago da API do Gemini (Google AI Studio): recarregar em aistudio.google.com, em Billing do projeto da chave usada no Portal';
   if (/token|expir|session|oauth|code 190|invalid.*access|reconect/.test(r)) return 'reconectar a conta em Redes Sociais';
   if (/permiss|#10\b|#200\b|pages_|instagram_content_publish|not authorized|nao autoriz|não autoriz/.test(r)) return 'reconectar aceitando todas as permissões pedidas';
   if (/nenhuma conta|not connected|sem conex|nao conectad|não conectad|no connection|conta .*desconect/.test(r)) return 'conectar a conta dessa rede no projeto';
@@ -113,7 +115,8 @@ export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; pr
     ...(p.errorMessage || p.lastError || p.error ? { erro: String(p.errorMessage || p.lastError || p.error).slice(0, 160) } : {})
   });
 
-  const all = (await db.collection(COLLECTIONS.scheduledPosts).limit(5000).get()).docs.map((d: any) => ({ id: d.id, ...d.data() }))
+  // Falha só do X (retirado) com Facebook/Instagram publicados conta como publicado.
+  const all = (await db.collection(COLLECTIONS.scheduledPosts).limit(5000).get()).docs.map((d: any) => withEffectiveStatus({ id: d.id, ...d.data() }))
     .filter((p: any) => !opts.projectId || p.companyId === opts.projectId || p.projectId === opts.projectId);
 
   // Títulos dos conteúdos só dos itens que vamos mostrar (evita ler a biblioteca inteira).

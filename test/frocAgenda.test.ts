@@ -104,7 +104,8 @@ test('Froc: listar agendadas mostra as PRÓXIMAS, não as de setembro', async ()
 test('Falha por saldo do Gemini esgotado vira instrução clara de recarga', async () => {
   const { failureHint } = await import('../server/production/frocAgenda.js');
   assert.match(failureHint('Your prepayment credits are depleted. Please go to AI Studio'), /saldo pré-pago da API do Gemini/);
-  assert.match(failureHint('credits depleted'), /aistudio\.google\.com/);
+  assert.match(failureHint('credits depleted'), /X\/Pinterest/, 'é a mensagem da API do X, não do Gemini');
+  assert.match(failureHint('x: credits depleted'), /retirados/);
   assert.equal(failureHint('Session has expired'), 'reconectar a conta em Redes Sociais');
 });
 

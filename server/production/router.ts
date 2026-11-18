@@ -58,6 +58,7 @@ import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './video
 import { runVideoRetryWorker, verifyCronAuthorization, getVideoRetryWorkerHealth } from './videoRetryWorker.js';
 import { runSocialPublicationWorker } from './socialPublicationWorker.js';
 import { runHourlyAutopilot } from './autopilotHourly.js';
+import { withEffectiveStatus } from './scheduledStatus.js';
 import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { inventoryAllArticlesFailClosed, recoverArticleBatch } from './articleRecoveryEngine.js';
 import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap, querySearchAnalytics } from './googleSearchConsole.js';
@@ -1014,7 +1015,7 @@ async function scheduledForUser(userId: string, companyId?: string) {
 
 router.get('/content/scheduled', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const scheduledPosts = await scheduledForUser(req.user!.id, req.query.companyId ? String(req.query.companyId) : undefined);
-  const annotated = scheduledPosts.map(annotateLegacyImageRecord);
+  const annotated = scheduledPosts.map((post: any) => withEffectiveStatus(annotateLegacyImageRecord(post)));
   res.json({ scheduledPosts: annotated, scheduled: annotated });
 }));
 
@@ -1024,7 +1025,7 @@ router.get('/content/calendar', requireAuth, asyncRoute(async (req: Authenticate
   let query: any = firestore().collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id);
   if (companyId) query = query.where('companyId', '==', companyId);
   const items = queryData<any>(await query.get());
-  const annotatedScheduled = scheduled.map(annotateLegacyImageRecord);
+  const annotatedScheduled = scheduled.map((post: any) => withEffectiveStatus(annotateLegacyImageRecord(post)));
   // Mesma lista leve da biblioteca (o calendário também ficava grande demais para a Vercel).
   const annotatedItems = items.sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 600).map((item: any) => slimContentItem(annotateLegacyImageRecord(item)));
   res.json({ scheduled: annotatedScheduled, items: annotatedItems });
