@@ -12,6 +12,7 @@ import { checkUniversalConnectionReady } from './socialMediaPublisher.js';
 import { computePerceptualHash, checkImageUniqueness, recordImageFingerprint } from './imageGuard.js';
 import { assertAutomationAllowed } from './automationGate.js';
 import { preflightReserveBudget, reconcileBudgetReservation } from './financialGuardian.js';
+import { applyImageBranding, applyVideoBranding, brandColorFor, downloadLogo, fallbackOverlayCopy, localLogoFor, sanitizeOverlayCopy, type VideoOverlayCopy } from './videoBranding.js';
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_FINALIZATION_LEASE_MS = 10 * 60 * 1000;
@@ -227,8 +228,13 @@ DIRETRIZ DE GROUNDING E PROIBIÇÕES:
 
   // 1. Canais e Destinos Efetivamente Verificados
   const verifiedDestinations: Record<string, string> = {};
-  if (company.website && typeof company.website === 'string' && company.website.trim()) {
-    verifiedDestinations.website = company.website.trim();
+  const officialSite = [company.website, company.websiteUrl].find((v) => typeof v === 'string' && v.trim());
+  if (officialSite) {
+    verifiedDestinations.website = String(officialSite).trim();
+  }
+  const officialApp = [company.playStoreUrl, company.androidApp].find((v) => typeof v === 'string' && v.trim());
+  if (officialApp) {
+    verifiedDestinations.app = String(officialApp).trim();
   }
   if (company.whatsapp && typeof company.whatsapp === 'string' && company.whatsapp.trim()) {
     verifiedDestinations.whatsapp = company.whatsapp.trim();
@@ -309,10 +315,24 @@ DIRETRIZ DE GROUNDING E PROIBIÇÕES:
   if (Array.isArray(company.keywords) && company.keywords.length > 0) {
     factualLines.push(`Palavras-chave: ${company.keywords.join(', ')}`);
   }
+  // Direcionamento cadastrado no projeto (Projetos & Sites): é a estratégia que o dono definiu.
+  if (company.tagline) {
+    factualLines.push(`Promessa/Slogan Oficial: ${company.tagline}`);
+  }
+  if (Array.isArray(company.highlights) && company.highlights.length > 0) {
+    factualLines.push(`Destaques Oficiais: ${company.highlights.join(' | ')}`);
+  }
+  if (Array.isArray(company.socialMarketingAngles) && company.socialMarketingAngles.length > 0) {
+    factualLines.push(`Ângulos de Marketing Aprovados pelo Dono (priorize estes): ${company.socialMarketingAngles.join(' | ')}`);
+  }
+  if (company.hasApp && (company.appTitle || company.playStoreUrl)) {
+    factualLines.push(`Aplicativo Oficial: ${company.appTitle || 'App na Play Store'}`);
+  }
 
   // 4. Seção de Destinos para CTA
   const destinationLines: string[] = [];
   if (verifiedDestinations.website) destinationLines.push(`- Website Oficial: ${verifiedDestinations.website} (Permitido CTA para o site)`);
+  if (verifiedDestinations.app) destinationLines.push(`- Aplicativo Oficial (Play Store): ${verifiedDestinations.app} (Permitido CTA para baixar o app)`);
   if (verifiedDestinations.whatsapp) destinationLines.push(`- WhatsApp Oficial: ${verifiedDestinations.whatsapp} (Permitido CTA para WhatsApp)`);
   if (verifiedDestinations.phone) destinationLines.push(`- Telefone Oficial: ${verifiedDestinations.phone} (Permitido CTA para ligação)`);
   if (verifiedDestinations.email) destinationLines.push(`- E-mail Oficial: ${verifiedDestinations.email} (Permitido CTA para e-mail)`);
@@ -870,6 +890,8 @@ export async function generateMarketingImage(data: {
   dateIso?: string;
   /** Prompt fotográfico completo (ex.: capas do blog). Quando informado, substitui o prompt publicitário padrão. */
   rawPrompt?: string;
+  /** Peça de feed com logotipo, título e CTA do projeto. Padrão: ligado (capas do blog com rawPrompt ficam limpas). */
+  branding?: boolean;
 }): Promise<{
   imageUrl: string;
   storagePath: string;
@@ -1004,10 +1026,32 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
         throw new Error(`Imagem reprovada no controle de unicidade visual: ${uniqueness.reason || 'Imagem idêntica ou excessivamente similar detectada.'}`);
       }
 
-      const ext = image.mimeType.includes('png') ? 'png' : image.mimeType.includes('webp') ? 'webp' : 'jpg';
+      let finalBuffer: Buffer = buffer;
+      let finalMime = image.mimeType;
+      if (!data.rawPrompt && data.branding !== false && data.company) {
+        try {
+          // Título curto e persuasivo escrito a partir do cadastro do projeto (o tema pode ser só a descrição da cena).
+          const fb = await generateVideoOverlayCopy(data.company, title);
+          const uploaded = String(data.company.logoUrl || '');
+          let logoPath = localLogoFor(data.company);
+          let tmp: string | null = null;
+          if (/^https:\/\//i.test(uploaded) && !/\.svg(\?|$)/i.test(uploaded)) {
+            tmp = fs.mkdtempSync(path.join((await import('os')).tmpdir(), 'pvb-logo-'));
+            logoPath = (await downloadLogo(uploaded, tmp)) || logoPath;
+          }
+          const branded = await applyImageBranding(buffer, { headline: fb.hook || title, cta: fb.cta, ctaDetail: fb.ctaDetail, brandName: String(data.company.name || project), logoPath, brandColor: brandColorFor(data.company) });
+          if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+          if (branded.applied) { finalBuffer = branded.buffer; finalMime = branded.mimeType; }
+          else console.warn('[AI Image Branding] Imagem salva sem marca:', branded.reason);
+        } catch (brandErr) {
+          console.warn('[AI Image Branding] Falha ao aplicar a marca:', sanitizeSecretText(brandErr));
+        }
+      }
+
+      const ext = finalMime.includes('png') ? 'png' : finalMime.includes('webp') ? 'webp' : 'jpg';
       storagePath = `generated/${data.userId}/${executionId}.${ext}`;
-      imageUrl = `data:${image.mimeType};base64,${image.data}`;
-      mimeType = image.mimeType;
+      imageUrl = `data:${finalMime};base64,${finalBuffer.toString('base64')}`;
+      mimeType = finalMime;
 
       const adminStorage = getAdminStorage();
       if (adminStorage) {
@@ -1015,10 +1059,10 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
           const token = crypto.randomUUID();
           const bucket = adminStorage.bucket();
           const file = bucket.file(storagePath);
-          await file.save(buffer, {
+          await file.save(finalBuffer, {
             resumable: false,
             metadata: {
-              contentType: image.mimeType,
+              contentType: finalMime,
               cacheControl: 'public,max-age=31536000,immutable',
               metadata: { firebaseStorageDownloadTokens: token }
             }
@@ -1132,12 +1176,64 @@ export type VideoJobStatus =
   | 'failed'
   | 'failed_permanent';
 
+/**
+ * Copywriter do vídeo: lê o cadastro do projeto (promessa, destaques, ângulos aprovados,
+ * público, app/site) e escreve gancho, legendas e CTA com gatilhos verdadeiros.
+ */
+export async function generateVideoOverlayCopy(project: any, theme: string): Promise<VideoOverlayCopy> {
+  const fallback = fallbackOverlayCopy(project, theme);
+  if (!project || process.env.NODE_ENV === 'test') return fallback;
+  try {
+    const raw = await generateRaw({
+      prompt: `${companyContext(project)}
+
+Tema deste vídeo: ${theme}
+
+Escreva os TEXTOS QUE APARECEM NA TELA de um vídeo vertical curto (Reels/TikTok/Shorts/Kwai) deste projeto.
+Objetivo: parar a rolagem, encantar e levar a pessoa a agir (seguir, acessar o site ou baixar o app).
+- "hook": gancho dos 2 primeiros segundos, até 55 caracteres. Use um gatilho forte e verdadeiro: curiosidade, identificação com a dor/desejo do público, pergunta direta ou promessa do próprio projeto.
+- "points": exatamente 2 frases de legenda, até 65 caracteres cada: benefício concreto e autoridade/diferencial reais do cadastro.
+- "cta": chamada para ação, até 28 caracteres, verbo no imperativo, combinando com o destino real (app ou site) do cadastro.
+Regras: português do Brasil natural; sem emojis e sem hashtags; nada de números, depoimentos, descontos, prazos ou garantias que não estejam no cadastro; priorize os ângulos aprovados pelo dono.
+Responda só JSON: {"hook":"...","points":["...","..."],"cta":"..."}`,
+      jsonOutput: true,
+      maxTokens: 400
+    });
+    return sanitizeOverlayCopy(safeJsonParse<any>(raw.text, {}), fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+async function brandVideoForProject(video: Buffer, job: VideoJobData): Promise<{ buffer: Buffer; applied: boolean; reason?: string; copy?: VideoOverlayCopy }> {
+  const { getPortalProjectFromDb } = await import('./almaPortfolio.js');
+  const project: any = (await getPortalProjectFromDb(String(job.companyId || job.projectId || '')).catch(() => undefined)) || null;
+  if (!project) return { buffer: video, applied: false, reason: 'projeto não encontrado para aplicar a marca' };
+  const theme = String(job.title || job.sourcePrompt || job.prompt || project.name).slice(0, 300);
+  const copy = await generateVideoOverlayCopy(project, theme);
+  let logoPath = localLogoFor(project);
+  let tmpDir: string | null = null;
+  const uploaded = String(project.logoUrl || '');
+  if (/^https:\/\//i.test(uploaded) && !/\.svg(\?|$)/i.test(uploaded)) {
+    tmpDir = fs.mkdtempSync(path.join((await import('os')).tmpdir(), 'pvb-logo-'));
+    logoPath = (await downloadLogo(uploaded, tmpDir)) || logoPath;
+  }
+  try {
+    const result = await applyVideoBranding(video, { copy, brandName: String(project.name || 'Portal Vip Brasil'), logoPath, brandColor: brandColorFor(project), durationSeconds: job.durationSeconds });
+    return { ...result, copy };
+  } finally {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 export interface VideoJobData {
   id: string;
   userId: string;
   companyId: string;
   /** Avisar no celular para postar no Kwai quando o vídeo ficar pronto (Autopilot com Kwai marcado). */
   kwaiReminder?: boolean;
+  /** false = entregar o vídeo limpo, sem logotipo/legendas/CTA. Padrão: com marca. */
+  branding?: boolean;
   projectId?: string;
   destinations?: string[];
   scheduledDate?: string;
@@ -1475,6 +1571,8 @@ export async function startVideoGenerationJob(data: {
   autoPublishPlatforms?: string[];
   autoPublishProviderOptions?: { youtubePrivacyStatus?: 'private' | 'unlisted' | 'public' };
   kwaiReminder?: boolean;
+  /** false = vídeo limpo, sem logotipo, legendas e CTA. */
+  branding?: boolean;
 }): Promise<VideoJobData> {
   await assertAutomationAllowed({ userId: data.userId, projectId: data.company?.id });
   const preset: VideoPreset = data.preset === 'cinema_4k' ? 'cinema_4k' : data.preset === 'pro_1080p' ? 'pro_1080p' : 'demo_720p';
@@ -1512,6 +1610,7 @@ export async function startVideoGenerationJob(data: {
       : {}),
     ...(data.autoPublishProviderOptions ? { autoPublishProviderOptions: data.autoPublishProviderOptions } : {}),
     ...(data.kwaiReminder ? { kwaiReminder: true } : {}),
+    ...(data.branding === false ? { branding: false } : {}),
     status: 'queued',
     pipelineState: 'provider_starting',
     progressPct: 2,
@@ -2309,6 +2408,20 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
         });
       }
 
+      // Identidade do projeto no vídeo: logotipo, gancho, legendas e chamada para ação.
+      let branding: { applied: boolean; reason?: string; copy?: VideoOverlayCopy } = { applied: false, reason: 'desativado' };
+      if (workingJob.branding !== false && (process.env.NODE_ENV !== 'test' || process.env.PVB_BRANDING_TEST === '1')) {
+        try {
+          const brand = await brandVideoForProject(videoBuffer, workingJob);
+          branding = { applied: brand.applied, reason: brand.reason, copy: brand.copy };
+          if (brand.applied && brand.buffer.length <= MAX_VIDEO_BYTES && isValidMp4Buffer(brand.buffer)) videoBuffer = brand.buffer;
+          else if (brand.applied) branding = { applied: false, reason: 'vídeo marcado inválido; mantido o original', copy: brand.copy };
+        } catch (error) {
+          branding = { applied: false, reason: String(sanitizeSecretText(error)).slice(0, 300) };
+        }
+        if (!branding.applied) console.warn('[Portal Vip Video Branding] Vídeo salvo sem marca:', branding.reason);
+      }
+
       const renewedBeforeStorage = await renewVideoFinalizationLease(docRef, ownerToken, ownerFence);
       if (!renewedBeforeStorage) return (await readLatestVideoJob(docRef)) || workingJob;
       workingJob = renewedBeforeStorage;
@@ -2400,7 +2513,10 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
           aspectRatio: workingJob.aspectRatio,
           modelUsed: workingJob.modelUsed,
           finalPrompt: workingJob.finalPrompt,
-          finalizationFence: ownerFence
+          finalizationFence: ownerFence,
+          brandingApplied: branding.applied,
+          brandingReason: branding.applied ? null : branding.reason || null,
+          overlayCopy: branding.copy || null
         }
       };
       const contentRef = db.collection(COLLECTIONS.contentItems).doc(contentItemId);

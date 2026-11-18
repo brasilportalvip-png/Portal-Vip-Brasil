@@ -35,6 +35,7 @@ export const CreateImagePage: React.FC<Props> = ({
   const [theme, setTheme] = useState('');
   const [platform, setPlatform] = useState('Instagram Feed (1:1)');
   const [resolution, setResolution] = useState<'1K' | '2K' | '4K'>('1K');
+  const [withBranding, setWithBranding] = useState(true);
   const [style, setStyle] = useState('Fotografia comercial premium, realista e moderna');
   const [lighting, setLighting] = useState('Iluminação de estúdio suave e cinematográfica');
   const [loadingPrompt, setLoadingPrompt] = useState(false);
@@ -96,7 +97,8 @@ export const CreateImagePage: React.FC<Props> = ({
           title: theme,
           style: briefing,
           aspectRatio,
-          resolution
+          resolution,
+          branding: withBranding
         }
       });
       setGeneratedImage({
@@ -167,6 +169,13 @@ export const CreateImagePage: React.FC<Props> = ({
               className="froc-input mt-1.5 resize-y"
             />
           </div>
+
+          <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 cursor-pointer">
+            <input type="checkbox" checked={withBranding} onChange={(e) => setWithBranding(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" />
+            <span className="text-xs text-slate-300">
+              <strong className="text-amber-300">Peça de marketing pronta</strong> — logotipo do projeto, título persuasivo e chamada para ação (site ou app do cadastro). Desmarque para receber só a foto.
+            </span>
+          </label>
 
           {/* Seletor de Resolução */}
           <div>

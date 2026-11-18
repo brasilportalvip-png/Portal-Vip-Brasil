@@ -485,9 +485,11 @@ router.post('/ai/generate-image', requireAuth, asyncRoute(async (req: Authentica
     userId: req.user!.id,
     company,
     theme,
+    title: safeString(req.body?.title, 300) || undefined,
     style: safeString(req.body?.style, 3000),
     aspectRatio: safeString(req.body?.aspectRatio, 20),
-    resolution
+    resolution,
+    branding: req.body?.branding === false ? false : undefined
   });
   const id = newId('content');
   const item = {
@@ -538,7 +540,8 @@ router.post('/ai/generate-video', requireAuth, asyncRoute(async (req: Authentica
     initialImageBase64: typeof req.body?.initialImage === 'string' && req.body.initialImage.length > 50 ? req.body.initialImage : undefined,
     cameraMotion: safeString(req.body?.cameraMotion, 200),
     lighting: safeString(req.body?.lighting, 200),
-    mood: safeString(req.body?.mood, 200)
+    mood: safeString(req.body?.mood, 200),
+    branding: req.body?.branding === false ? false : undefined
   });
 
   res.status(202).json({
