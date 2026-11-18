@@ -48,6 +48,7 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
   const [videoTitle, setVideoTitle] = useState('');
   const [preset, setPreset] = useState<'demo_720p' | 'pro_1080p' | 'cinema_4k'>('pro_1080p');
   const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9'>('9:16');
+  const [withBranding, setWithBranding] = useState(true);
   const [cameraMotion, setCameraMotion] = useState('Pan suave com aproximação dinâmica');
   const [lighting, setLighting] = useState('Iluminação cinematográfica com luz de preenchimento suave');
   const [mood, setMood] = useState('Sofisticado, moderno e envolvente');
@@ -179,7 +180,8 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
           aspectRatio,
           cameraMotion,
           lighting,
-          mood
+          mood,
+          branding: withBranding
         }
       });
 
@@ -419,6 +421,13 @@ export const CreateVideoPage: React.FC<CreateVideoPageProps> = ({
                   <option>Cyberpunk / Neon urbano vibrante</option>
                 </select>
               </div>
+
+              <label className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 cursor-pointer">
+                <input type="checkbox" checked={withBranding} onChange={(e) => setWithBranding(e.target.checked)} className="mt-0.5 h-4 w-4 accent-amber-500" />
+                <span className="text-xs text-slate-300">
+                  <strong className="text-amber-300">Vídeo de marketing completo</strong> — logotipo do projeto, gancho nos primeiros segundos, legendas com os benefícios e chamada para ação no final (site ou app do cadastro). Desmarque para receber o vídeo limpo.
+                </span>
+              </label>
 
               {videoError && <p className="text-xs text-rose-400">⚠️ {videoError}</p>}
 
