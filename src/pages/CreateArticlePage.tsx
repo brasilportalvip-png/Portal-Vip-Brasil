@@ -13,6 +13,7 @@ import {
 import { Company } from '../types';
 import { apiRequest } from '../lib/api';
 import { YoastSeoAuditor } from '../components/YoastSeoAuditor';
+import { copyText } from '../lib/clipboard';
 
 interface CreateArticlePageProps {
   selectedCompany: Company | null;
@@ -115,8 +116,8 @@ export const CreateArticlePage: React.FC<CreateArticlePageProps> = ({
     return text;
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(getFullArticleText());
+  const handleCopy = async () => {
+    if (!(await copyText(getFullArticleText()))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

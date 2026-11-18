@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { NICHE_VIDEO_TEMPLATES, detectNicheForVideo, type NicheVideoTemplate } from '../lib/nicheVideoCatalog';
 import type { Company } from '../types';
+import { copyText } from '../lib/clipboard';
 
 interface NicheVideoCatalogSectionProps {
   selectedCompany: Company | null;
@@ -73,8 +74,8 @@ export const NicheVideoCatalogSection: React.FC<NicheVideoCatalogSectionProps> =
     setIsMuted(videoRef.current.muted);
   };
 
-  const handleCopyCaption = () => {
-    navigator.clipboard.writeText(selectedTemplate.viralScript.caption);
+  const handleCopyCaption = async () => {
+    if (!(await copyText(selectedTemplate.viralScript.caption))) return;
     setCopiedCaption(true);
     setTimeout(() => setCopiedCaption(false), 2000);
   };

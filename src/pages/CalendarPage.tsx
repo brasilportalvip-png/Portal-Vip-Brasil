@@ -417,7 +417,7 @@ export const CalendarPage: React.FC<Props> = ({
                 }`}
               >
                 <span>⚡ Auto-Publicação</span>
-                <span className="text-[9px] font-normal opacity-80">PRO / Business / Agency</span>
+                <span className="text-[9px] font-normal opacity-80">Redes conectadas</span>
               </button>
               <button
                 type="button"

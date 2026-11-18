@@ -3,6 +3,7 @@ import { AlertTriangle, Check, CheckCircle2, Clock, Copy, ExternalLink, FileVide
 import type { Company, SocialConnection } from '../types';
 import { apiRequest } from '../lib/api';
 import { enablePush, getPushState, sendTestPush } from '../lib/push';
+import { copyText } from '../lib/clipboard';
 
 interface SocialNetworksPageProps { selectedCompany: Company | null; onNavigate: (tab:string)=>void; }
 
@@ -288,8 +289,8 @@ export const SocialNetworksPage:React.FC<SocialNetworksPageProps> = ({ selectedC
     }
   };
 
-  const handleCopyPublishId = (id: string) => {
-    navigator.clipboard.writeText(id);
+  const handleCopyPublishId = async (id: string) => {
+    if (!(await copyText(id))) return;
     setCopiedPublishId(true);
     setTimeout(() => setCopiedPublishId(false), 2000);
   };

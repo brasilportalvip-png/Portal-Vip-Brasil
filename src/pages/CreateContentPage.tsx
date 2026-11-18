@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Company, ContentItem } from '../types';
 import { apiRequest } from '../lib/api';
+import { copyText } from '../lib/clipboard';
 
 interface CreateContentPageProps {
   companies: Company[];
@@ -175,8 +176,8 @@ export const CreateContentPage: React.FC<CreateContentPageProps> = ({
     }
   };
 
-  const handleCopyText = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopyText = async (text: string) => {
+    if (!(await copyText(text))) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

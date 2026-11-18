@@ -26,6 +26,7 @@ import { BrandLogo } from '../components/BrandLogo';
 import { USER_PORTFOLIO_PROJECTS, PORTAL_VIP_BRAND } from '../data/portalProjects';
 import type { Campaign, Company, ScheduledPost, User } from '../types';
 import { apiRequest } from '../lib/api';
+import { copyText } from '../lib/clipboard';
 
 interface Props {
   user: User | null;
@@ -104,12 +105,10 @@ export const DashboardPage: React.FC<Props> = ({
     { reach: 0, clicks: 0, leads: 0, conversions: 0 }
   );
 
-  const handleCopyLink = (text: string, id: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    }
+  const handleCopyLink = async (text: string, id: string) => {
+    if (!(await copyText(text))) return;
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   const handleTriggerDailyPulse = async () => {

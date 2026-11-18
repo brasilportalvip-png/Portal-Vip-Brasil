@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Check, Copy, Download, Image as ImageIcon, Sparkles, Wand2, Zap, Layers, RefreshCw } from 'lucide-react';
 import type { Company } from '../types';
 import { apiRequest } from '../lib/api';
+import { copyText } from '../lib/clipboard';
 
 interface Props {
   selectedCompany: Company | null;
@@ -112,7 +113,7 @@ export const CreateImagePage: React.FC<Props> = ({
 
   const copy = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      if (!(await copyText(text))) throw new Error('copy');
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {

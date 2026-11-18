@@ -1768,7 +1768,7 @@ router.post('/admin/blog/generate-now', requireAdmin, asyncRoute(async (req: Aut
   const id = newId('blog');
   const slug = `${slugify(article.suggestedSlug || article.title || topic)}-${id.slice(-6)}`;
   const post = { id, title:safeString(article.title,180), slug, summary:safeString(article.summary || article.metaDescription,500), content:safeString(article.content,120000), featuredImageUrl:'', author:config.blog.author, category:safeString(article.category,100)||'Marketing & IA', tags:stringArray(article.tags,12), seoTitle:safeString(article.title,70), seoDescription:safeString(article.metaDescription || article.summary,180), status:'draft', createdAt:nowIso(), updatedAt:nowIso(), generatedBy:'admin_ai', modelUsed:generated.modelUsed };
-  if (!post.title || !post.content) throw new Error('A IA não retornou artigo completo.');
+  if (!post.title || !post.content) return res.status(502).json({ error: 'A IA não devolveu um artigo completo desta vez. Tente de novo em instantes.' });
   await firestore().collection(COLLECTIONS.blogPosts).doc(id).set(post);
   await writeAdminLog({ operatorId:req.user!.id, operatorEmail:req.user!.email, action:'generate_blog', details:{ postId:id, topic } });
   res.status(201).json({ message:'Rascunho gerado. Revise antes de publicar.', post });
