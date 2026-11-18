@@ -473,127 +473,132 @@ export const SERVER_NICHE_VIDEO_TEMPLATES: Record<string, ServerNicheVideoTempla
   }
 };
 
-export function serverDetectNicheForVideo(text?: string, projectSlugOrId?: string): ServerNicheVideoTemplate {
-  const normalized = `${text || ''} ${projectSlugOrId || ''}`.toLowerCase();
+function matchNicheForVideo(text?: string, projectSlugOrId?: string): ServerNicheVideoTemplate | null {
+  // Sem acentos e por início de palavra: "caso" não vira "aso", "magia " não vira "ia ".
+  const normalized = ` ${text || ''} ${projectSlugOrId || ''} `.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ');
+  const has = (word: string) => {
+    const w = word.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    return new RegExp(w.length <= 3 ? `(^| )${w}( |$)` : `(^| )${w}`).test(normalized);
+  };
 
   // 1. Runas nórdicas
   if (
-    normalized.includes('runa') ||
-    normalized.includes('viking') ||
-    normalized.includes('futhark') ||
-    normalized.includes('odin') ||
-    normalized.includes('nordic') ||
-    normalized.includes('valhalla')
+    has('runa') ||
+    has('viking') ||
+    has('futhark') ||
+    has('odin') ||
+    has('nordic') ||
+    has('valhalla')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.runes_viking;
   }
 
   // 2. Maria Padilha & Amor
   if (
-    normalized.includes('padilha') ||
-    normalized.includes('mariapadilha') ||
-    normalized.includes('encruzilhada') ||
-    normalized.includes('pombagira') ||
-    normalized.includes('pomba gira') ||
-    normalized.includes('simpatia amor') ||
-    normalized.includes('reconquista') ||
-    normalized.includes('sedução') ||
-    normalized.includes('amorosa') ||
-    normalized.includes('trazer amor')
+    has('padilha') ||
+    has('mariapadilha') ||
+    has('encruzilhada') ||
+    has('pombagira') ||
+    has('pomba gira') ||
+    has('simpatia amor') ||
+    has('reconquista') ||
+    has('sedução') ||
+    has('amorosa') ||
+    has('trazer amor')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.love_maria_padilha;
   }
 
   // 3. Exu Responde & Guardiões
   if (
-    normalized.includes('exu') ||
-    normalized.includes('guardiao') ||
-    normalized.includes('guardião') ||
-    normalized.includes('tranca rua') ||
-    normalized.includes('abertura de caminho') ||
-    normalized.includes('porteira') ||
-    normalized.includes('quebra de demanda') ||
-    normalized.includes('oraculo dos caminhos')
+    has('exu') ||
+    has('guardiao') ||
+    has('guardião') ||
+    has('tranca rua') ||
+    has('abertura de caminho') ||
+    has('porteira') ||
+    has('quebra de demanda') ||
+    has('oraculo dos caminhos')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.exu_guardioes;
   }
 
   // 4. Católico & Devoção
   if (
-    normalized.includes('catolico') ||
-    normalized.includes('católico') ||
-    normalized.includes('manual catolico') ||
-    normalized.includes('santo do dia') ||
-    normalized.includes('santo terço') ||
-    normalized.includes('novena') ||
-    normalized.includes('santa igreja') ||
-    normalized.includes('liturgia') ||
-    normalized.includes('jesus') ||
-    normalized.includes('nossa senhora') ||
-    normalized.includes('aparecida') ||
-    normalized.includes('terco')
+    has('catolico') ||
+    has('católico') ||
+    has('manual catolico') ||
+    has('santo do dia') ||
+    has('santo terço') ||
+    has('novena') ||
+    has('santa igreja') ||
+    has('liturgia') ||
+    has('jesus') ||
+    has('nossa senhora') ||
+    has('aparecida') ||
+    has('terco')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.catolico_devocao;
   }
 
   // 5. Prosperidade & Crenças
   if (
-    normalized.includes('magia das crencas') ||
-    normalized.includes('magia das crenças') ||
-    normalized.includes('prosperidade') ||
-    normalized.includes('abundancia') ||
-    normalized.includes('abundância') ||
-    normalized.includes('decreto') ||
-    normalized.includes('lei da atracao') ||
-    normalized.includes('lei da atração') ||
-    normalized.includes('riqueza') ||
-    normalized.includes('reprogramacao mental')
+    has('magia das crencas') ||
+    has('magia das crenças') ||
+    has('prosperidade') ||
+    has('abundancia') ||
+    has('abundância') ||
+    has('decreto') ||
+    has('lei da atracao') ||
+    has('lei da atração') ||
+    has('riqueza') ||
+    has('reprogramacao mental')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.prosperidade_crencas;
   }
 
   // 6. Tarot & Baralho Cigano
   if (
-    normalized.includes('tarot') ||
-    normalized.includes('cigano') ||
-    normalized.includes('cartomancia') ||
-    normalized.includes('arcanos') ||
-    normalized.includes('oraculos') ||
-    normalized.includes('oráculos') ||
-    normalized.includes('tiragem') ||
-    normalized.includes('lenormand')
+    has('tarot') ||
+    has('cigano') ||
+    has('cartomancia') ||
+    has('arcanos') ||
+    has('oraculos') ||
+    has('oráculos') ||
+    has('tiragem') ||
+    has('lenormand')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.tarot_oraculos;
   }
 
   // 7. Froc IA & Automação
   if (
-    normalized.includes('froc') ||
-    normalized.includes('frocia') ||
-    normalized.includes('inteligencia artificial') ||
-    normalized.includes('inteligência artificial') ||
-    normalized.includes('ia ') ||
-    normalized.includes('prompt') ||
-    normalized.includes('veo') ||
-    normalized.includes('automacao') ||
-    normalized.includes('automação')
+    has('froc') ||
+    has('frocia') ||
+    has('inteligencia artificial') ||
+    has('inteligência artificial') ||
+    has('ia ') ||
+    has('prompt') ||
+    has('veo') ||
+    has('automacao') ||
+    has('automação')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.ia_inteligencia_artificial;
   }
 
   // 8. Tráfego orgânico & Growth
   if (
-    normalized.includes('trafego') ||
-    normalized.includes('tráfego') ||
-    normalized.includes('organico') ||
-    normalized.includes('orgânico') ||
-    normalized.includes('google play') ||
-    normalized.includes('play store') ||
-    normalized.includes('aso') ||
-    normalized.includes('downloads') ||
-    normalized.includes('crescimento') ||
-    normalized.includes('tiktok growth') ||
-    normalized.includes('marketing')
+    has('trafego') ||
+    has('tráfego') ||
+    has('organico') ||
+    has('orgânico') ||
+    has('google play') ||
+    has('play store') ||
+    has('aso') ||
+    has('downloads') ||
+    has('crescimento') ||
+    has('tiktok growth') ||
+    has('marketing')
   ) {
     return SERVER_NICHE_VIDEO_TEMPLATES.trafego_organico_growth;
   }
@@ -609,5 +614,59 @@ export function serverDetectNicheForVideo(text?: string, projectSlugOrId?: strin
     if (slug.includes('froc')) return SERVER_NICHE_VIDEO_TEMPLATES.ia_inteligencia_artificial;
   }
 
-  return SERVER_NICHE_VIDEO_TEMPLATES.trafego_organico_growth;
+  return null;
+}
+
+export function serverDetectNicheForVideo(text?: string, projectSlugOrId?: string): ServerNicheVideoTemplate {
+  return matchNicheForVideo(text, projectSlugOrId) || SERVER_NICHE_VIDEO_TEMPLATES.trafego_organico_growth;
+}
+
+/** Estética neutra para projetos cujo nicho não está no catálogo (todo projeto novo que você cadastrar). */
+const GENERIC_PROJECT_TEMPLATE: ServerNicheVideoTemplate = {
+  ...SERVER_NICHE_VIDEO_TEMPLATES.trafego_organico_growth,
+  id: 'projeto_personalizado',
+  nicheName: 'Projeto personalizado',
+  badge: 'Marca do projeto',
+  icon: '✨',
+  headline: '',
+  videoPrompt: 'Cinematic, photorealistic scene that literally shows the subject of the project and the theme of the post, real people and real objects, natural textures, shallow depth of field, premium commercial look.',
+  cameraMotion: 'Smooth slow dolly-in with gentle parallax',
+  lighting: 'Natural cinematic key light with soft fill and warm highlights',
+  mood: 'Authentic, aspirational, warm and trustworthy'
+};
+
+function slugTag(value: string): string {
+  return '#' + String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+}
+
+/**
+ * Nicho do vídeo para QUALQUER projeto (os iniciais e os novos):
+ * 1) o nicho vem da identidade do projeto (nome, categoria, segmento); 2) se ela não diz, do tema do post;
+ * 3) senão, estética neutra. O app, o CTA e as hashtags são SEMPRE do próprio projeto — um projeto novo
+ * nunca divulga o app de outro.
+ */
+export function projectVideoNiche(company: any, text?: string): ServerNicheVideoTemplate {
+  if (!company) return serverDetectNicheForVideo(text);
+  const identity = `${company.name || ''} ${company.category || ''} ${company.segment || ''}`;
+  const base = matchNicheForVideo(identity, company.slug || company.id) || matchNicheForVideo(text) || GENERIC_PROJECT_TEMPLATE;
+  const slug = String(company.slug || '');
+  if (slug && base.appProjectSlug === slug) return base;
+  const app = String(company.playStoreUrl || company.androidApp || '').trim();
+  const site = String(company.websiteUrl || company.website || '').trim();
+  let domain = '';
+  try { domain = site ? new URL(site).hostname.replace(/^www\./, '') : ''; } catch { domain = ''; }
+  const keywords: string[] = Array.isArray(company.keywords) ? company.keywords : [];
+  const hashtags = Array.from(new Set([slugTag(company.name), ...keywords.slice(0, 6).map(slugTag)])).filter((h) => h.length > 2);
+  return {
+    ...base,
+    appProjectSlug: slug,
+    appName: String(company.name || base.appName),
+    playStoreUrl: app || undefined,
+    category: String(company.category || base.category),
+    viralScript: {
+      ...base.viralScript,
+      callToAction: app ? `Baixe o app ${company.name} na Play Store.` : domain ? `Acesse ${domain} e conheça ${company.name}.` : `Siga ${company.name} para ver mais.`,
+      hashtags: hashtags.length ? hashtags : base.viralScript.hashtags
+    }
+  };
 }

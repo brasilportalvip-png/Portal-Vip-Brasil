@@ -5,14 +5,14 @@ import { GoogleGenAI, GenerateVideosOperation } from '@google/genai';
 import { config } from '../config/index.js';
 import { getAdminStorage } from '../providers/firebaseAdmin.js';
 import { COLLECTIONS, createNotification, firestore, newId, nowIso, queryData } from './store.js';
-import { serverDetectNicheForVideo, SERVER_NICHE_VIDEO_TEMPLATES } from './videoCatalog.js';
+import { projectVideoNiche, serverDetectNicheForVideo, SERVER_NICHE_VIDEO_TEMPLATES } from './videoCatalog.js';
 import { diagnoseAiError, calculateNextAttemptAt, sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { normalizeProvider } from './social.js';
 import { checkUniversalConnectionReady } from './socialMediaPublisher.js';
 import { computePerceptualHash, checkImageUniqueness, recordImageFingerprint } from './imageGuard.js';
 import { assertAutomationAllowed } from './automationGate.js';
 import { preflightReserveBudget, reconcileBudgetReservation } from './financialGuardian.js';
-import { applyImageBranding, applyVideoBranding, brandColorFor, downloadLogo, fallbackOverlayCopy, localLogoFor, sanitizeOverlayCopy, type VideoOverlayCopy } from './videoBranding.js';
+import { applyImageBranding, applyVideoBranding, fallbackOverlayCopy, resolveProjectBrand, sanitizeOverlayCopy, type VideoOverlayCopy } from './videoBranding.js';
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_FINALIZATION_LEASE_MS = 10 * 60 * 1000;
@@ -596,7 +596,7 @@ Responda SOMENTE JSON: {"carouselTitle":"","slides":[{"slideNumber":1,"title":""
 }
 
 export async function generateVideoScript(data: { userId: string; company?: any; topic: string; durationSeconds?: number; format?: string }) {
-  const niche = serverDetectNicheForVideo(data.topic, data.company?.slug || data.company?.id);
+  const niche = projectVideoNiche(data.company, data.topic);
   const prompt = `Você é o estrategista sênior de conteúdo viral e roteirista de vídeos verticais (9:16) para TikTok, Instagram Reels e YouTube Shorts do Portal Vip Brasil.
 Crie um roteiro viral magnético, com altíssima taxa de retenção nos primeiros 3 segundos, sobre "${data.topic}".
 Duração estimada: aproximadamente ${data.durationSeconds || 45}s.
@@ -610,7 +610,7 @@ DIRETRIZES ESSENCIAIS DE RETENÇÃO E ALGORITMO DO TIKTOK:
 1. HOOK (0 a 3 segundos): Gancho de impacto que quebra a rolagem do feed (pattern interrupt). Proibido ganchos genéricos ou lentos.
 2. CENAS (3 a 5 cenas): Cada cena deve ter número, minutagem precisa (ex: "0-3s", "4-12s"), descrição visual cinematográfica imersiva, fala natural e magnética da locução, e texto de destaque na tela (onScreenText) em letras maiúsculas para quem assiste sem som.
 3. TRILHA SONORA: Estilo de música ou som viral específico adequado ao nicho (ex: instrumental épico, 432Hz místico, tambores ancestrais, som devocional ou batida tech moderna).
-4. CHAMADA PARA AÇÃO (CTA): Direcione com clareza para baixar o aplicativo ou acessar o link na bio.
+4. CHAMADA PARA AÇÃO (CTA): Direcione com clareza para o destino real do projeto (app ou site cadastrados). Não invente link na bio nem canais.
 5. LEGENDA (CAPTION): Legenda pronta para publicação no TikTok contendo o gancho, resumo instigante, CTA claro e 5 a 8 hashtags de alta conversão do nicho.
 
 Responda SOMENTE JSON válido no seguinte formato:
@@ -854,7 +854,7 @@ export function resolveNicheVisualGuidance(company?: any, theme?: string, title?
       };
     }
 
-    if (has('magia', 'bruxa', 'feitico', 'ritual', 'umbanda', 'orixa', 'cristal', 'cristais', 'espiritual', 'energia', 'protecao', 'simpatia', 'banho', 'vela', 'buzios')) {
+    if (has('magia', 'bruxa', 'feitico', 'ritual', 'umbanda', 'orixa', 'cristal', 'cristais', 'espiritual', 'esoteric', 'holistic', 'energia espiritual', 'protecao espiritual', 'simpatia', 'banho de ervas', 'banho de descarrego', 'velas', 'buzios')) {
     return {
       styleDescription: 'Fotografia ultra-realista de altar místico artesanal: velas acesas, cristais naturais, ervas frescas, conchas e tecidos de linho, objetos reais com texturas táteis e detalhes nítidos',
       lightingAndAtmosphere: 'Luz quente e natural de velas com fumaça suave de incenso, profundidade de campo rasa, clima acolhedor, sagrado e respeitoso',
@@ -1032,15 +1032,9 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
         try {
           // Título curto e persuasivo escrito a partir do cadastro do projeto (o tema pode ser só a descrição da cena).
           const fb = await generateVideoOverlayCopy(data.company, title);
-          const uploaded = String(data.company.logoUrl || '');
-          let logoPath = localLogoFor(data.company);
-          let tmp: string | null = null;
-          if (/^https:\/\//i.test(uploaded) && !/\.svg(\?|$)/i.test(uploaded)) {
-            tmp = fs.mkdtempSync(path.join((await import('os')).tmpdir(), 'pvb-logo-'));
-            logoPath = (await downloadLogo(uploaded, tmp)) || logoPath;
-          }
-          const branded = await applyImageBranding(buffer, { headline: fb.hook || title, cta: fb.cta, ctaDetail: fb.ctaDetail, brandName: String(data.company.name || project), logoPath, brandColor: brandColorFor(data.company) });
-          if (tmp) fs.rmSync(tmp, { recursive: true, force: true });
+          const brand = await resolveProjectBrand(data.company, config.appUrl);
+          const branded = await applyImageBranding(buffer, { headline: fb.hook || title, cta: fb.cta, ctaDetail: fb.ctaDetail, brandName: String(data.company.name || project), logoPath: brand.logoPath, brandColor: brand.brandColor });
+          brand.cleanup();
           if (branded.applied) { finalBuffer = branded.buffer; finalMime = branded.mimeType; }
           else console.warn('[AI Image Branding] Imagem salva sem marca:', branded.reason);
         } catch (brandErr) {
@@ -1211,18 +1205,12 @@ async function brandVideoForProject(video: Buffer, job: VideoJobData): Promise<{
   if (!project) return { buffer: video, applied: false, reason: 'projeto não encontrado para aplicar a marca' };
   const theme = String(job.title || job.sourcePrompt || job.prompt || project.name).slice(0, 300);
   const copy = await generateVideoOverlayCopy(project, theme);
-  let logoPath = localLogoFor(project);
-  let tmpDir: string | null = null;
-  const uploaded = String(project.logoUrl || '');
-  if (/^https:\/\//i.test(uploaded) && !/\.svg(\?|$)/i.test(uploaded)) {
-    tmpDir = fs.mkdtempSync(path.join((await import('os')).tmpdir(), 'pvb-logo-'));
-    logoPath = (await downloadLogo(uploaded, tmpDir)) || logoPath;
-  }
+  const brand = await resolveProjectBrand(project, config.appUrl);
   try {
-    const result = await applyVideoBranding(video, { copy, brandName: String(project.name || 'Portal Vip Brasil'), logoPath, brandColor: brandColorFor(project), durationSeconds: job.durationSeconds });
+    const result = await applyVideoBranding(video, { copy, brandName: String(project.name || 'Portal Vip Brasil'), logoPath: brand.logoPath, brandColor: brand.brandColor, durationSeconds: job.durationSeconds });
     return { ...result, copy };
   } finally {
-    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    brand.cleanup();
   }
 }
 
@@ -1504,7 +1492,7 @@ export async function generateVideoDirection(data: {
   cameraMotion?: string;
   lighting?: string;
 }): Promise<{ visualPrompt: string; cameraMotion: string; lighting: string; mood: string; nicheId?: string }> {
-  const niche = serverDetectNicheForVideo(data.prompt, data.company?.slug || data.company?.id);
+  const niche = projectVideoNiche(data.company, data.prompt);
   const systemInstruction = `Você é um diretor de fotografia e cinematógrafo publicitário de alto nível da Froc.IA e Portal Vip Brasil.
 Sua missão é expandir a ideia bruta do usuário em uma especificação visual cinematográfica de alta precisão, realismo fotográfico e apelo comercial para o modelo Veo 3.1.
 NICHO IDENTIFICADO DO PROJETO/APP: ${niche.nicheName} (${niche.category}).
