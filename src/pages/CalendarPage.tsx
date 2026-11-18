@@ -136,6 +136,24 @@ export const CalendarPage: React.FC<Props> = ({
     }
   };
 
+  const [redoBusy, setRedoBusy] = useState(false);
+  const [redoMsg, setRedoMsg] = useState('');
+  // Refaz o que não saiu hoje: divulgação diária sem rede e artigos de hoje sem divulgação. Não duplica.
+  const redoToday = async () => {
+    if (!window.confirm('Refazer as publicações de HOJE que não saíram? Projetos que já publicaram não são repetidos.')) return;
+    setRedoBusy(true);
+    setRedoMsg('');
+    try {
+      const r: any = await apiRequest('/api/admin/redo-today', { method: 'POST', body: {} });
+      setRedoMsg(r?.message || 'Pronto.');
+      await onRefreshSchedule();
+    } catch (err: any) {
+      setError(err.message || 'Falha ao refazer as publicações de hoje.');
+    } finally {
+      setRedoBusy(false);
+    }
+  };
+
   const cancel = async (id: string) => {
     if (!window.confirm('Cancelar este agendamento?')) return;
     try {
@@ -207,11 +225,15 @@ export const CalendarPage: React.FC<Props> = ({
           <button onClick={() => void Promise.all([onRefreshSchedule(), onRefreshContents()])} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 text-xs font-semibold text-slate-300 hover:border-slate-600">
             <RefreshCw size={14} /> Atualizar
           </button>
+          <button onClick={() => void redoToday()} disabled={redoBusy} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 hover:border-amber-400 disabled:opacity-60">
+            {redoBusy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} Refazer o que não saiu hoje
+          </button>
           <button onClick={openScheduleModal} className="froc-primary flex items-center justify-center gap-2">
             <Plus size={15} /> Agendar publicação
           </button>
         </div>
       </div>
+      {redoMsg && <div role="status" className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">{redoMsg}</div>}
 
       {!selectedCompany && (
         <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-xs text-amber-200">

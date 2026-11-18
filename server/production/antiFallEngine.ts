@@ -162,7 +162,7 @@ function normalizeUserId(value: unknown): string {
   return id && id.length <= 128 && !id.includes('/') ? id : '';
 }
 
-async function resolvePortalOwnerUserId(explicitUserId?: string): Promise<string> {
+export async function resolvePortalOwnerUserId(explicitUserId?: string): Promise<string> {
   const explicit = normalizeUserId(explicitUserId);
   if (explicit) return explicit;
 

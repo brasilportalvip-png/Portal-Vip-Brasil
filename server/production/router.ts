@@ -28,7 +28,7 @@ function annotateLegacyImageRecord<T extends { imageUrl?: string; metadata?: any
 }
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, createPortalProjectInDb, deletePortalProjectInDb, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
-import { executeAiWith2SecAntiFall, runDailyMarketingCatchUp, runDailyPortalMarketingCycle } from './antiFallEngine.js';
+import { executeAiWith2SecAntiFall, resolvePortalOwnerUserId, runDailyMarketingCatchUp, runDailyPortalMarketingCycle } from './antiFallEngine.js';
 import {
   listBlogArticles,
   getBlogArticleBySlug,
@@ -58,6 +58,7 @@ import { SERVER_NICHE_VIDEO_TEMPLATES, serverDetectNicheForVideo } from './video
 import { runVideoRetryWorker, verifyCronAuthorization, getVideoRetryWorkerHealth } from './videoRetryWorker.js';
 import { runSocialPublicationWorker } from './socialPublicationWorker.js';
 import { runHourlyAutopilot } from './autopilotHourly.js';
+import { redoTodayMissingPublications } from './redoToday.js';
 import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { inventoryAllArticlesFailClosed, recoverArticleBatch } from './articleRecoveryEngine.js';
 import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap, querySearchAnalytics } from './googleSearchConsole.js';
@@ -1751,6 +1752,13 @@ router.get('/admin/projects', requireAdmin, asyncRoute(async (_req: Authenticate
 
 router.get('/admin/scheduler/diagnostics', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {
   res.json({ diagnostics: await getSchedulerDiagnostics() });
+}));
+
+// Refaz o que não saiu HOJE (divulgação diária sem rede e artigos sem divulgação). Não duplica.
+router.post('/admin/redo-today', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const owner = await resolvePortalOwnerUserId(req.user!.id);
+  const result = await redoTodayMissingPublications(owner);
+  res.json({ success: true, ...result, message: `${result.dailyReleased.length} divulgação(ões) liberada(s) para refazer (sai em até 5 min) e ${result.articlesScheduled.length} artigo(s) agendado(s) nas redes.` });
 }));
 
 router.post('/admin/scheduler/run-now', requireAdmin, asyncRoute(async (req: AuthenticatedRequest, res) => {
