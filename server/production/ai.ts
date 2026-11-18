@@ -17,6 +17,11 @@ import { applyImageBranding, applyVideoBranding, fallbackOverlayCopy, resolvePro
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_FINALIZATION_LEASE_MS = 10 * 60 * 1000;
 const VIDEO_PROVIDER_START_TIMEOUT_MS = 15 * 60 * 1000;
+// O Veo entrega em minutos. Um vídeo que continua "processando" depois de 6 h
+// nunca vai sair (operação expirada no provedor) e só ocupa a fila do worker.
+export const VIDEO_PROCESSING_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+export const VIDEO_PROCESSING_EXPIRED_CODE = 'PROVIDER_PROCESSING_EXPIRED';
+const VIDEO_PROCESSING_EXPIRED_MESSAGE = 'O provedor de vídeo não entregou este vídeo em 6 horas. Ele foi encerrado sem nova cobrança e o próximo ciclo diário gera um novo.';
 const VIDEO_DOWNLOAD_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_VIDEO_DOWNLOAD_REDIRECTS = 3;
 
@@ -2947,6 +2952,11 @@ async function recoverCompletedVideoSchedules(signal?: AbortSignal): Promise<num
   return recovered;
 }
 
+export function isVideoProcessingExpired(job: Pick<VideoJobData, 'createdAt'> & { providerStartedAt?: string }, nowMs = Date.now()): boolean {
+  const startedAt = new Date(job.providerStartedAt || job.createdAt || 0).getTime();
+  return Number.isFinite(startedAt) && startedAt > 0 && nowMs - startedAt >= VIDEO_PROCESSING_MAX_AGE_MS;
+}
+
 export async function processPendingVideoJobs(options?: { signal?: AbortSignal; trigger?: string }): Promise<VideoJobWorkerTelemetry> {
   const telemetry: VideoJobWorkerTelemetry = {
     checked: 0,
@@ -2970,14 +2980,17 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal; 
       .limit(10)
       .get();
 
+    // Sem orderBy o Firestore devolve sempre os mesmos documentos (ordem do id).
+    // Com limit(5) e 11 projetos gerando 1 vídeo/dia, os vídeos novos nunca eram
+    // consultados. Busca a fila inteira (pequena) e ordena em memória abaixo.
     const processingSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
       .where('status', '==', 'processing')
-      .limit(5)
+      .limit(200)
       .get();
 
     const finalizingSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
       .where('status', '==', 'finalizing')
-      .limit(5)
+      .limit(50)
       .get();
 
     const queuedSnap = await db.collection(COLLECTIONS.mediaGenerationJobs)
@@ -3096,7 +3109,16 @@ export async function processPendingVideoJobs(options?: { signal?: AbortSignal; 
       telemetry.checked++;
       try {
         if (options?.signal?.aborted) break;
-        const res = await checkAndCompleteVideoJob(job.userId, job.id);
+        let res = await checkAndCompleteVideoJob(job.userId, job.id);
+        if (res.status === 'processing' && isVideoProcessingExpired(res)) {
+          res = await failVideoJob({
+            docRef: db.collection(COLLECTIONS.mediaGenerationJobs).doc(job.id),
+            userId: job.userId,
+            reservationId: job.reservationId,
+            errorCode: VIDEO_PROCESSING_EXPIRED_CODE,
+            errorMessage: VIDEO_PROCESSING_EXPIRED_MESSAGE
+          });
+        }
         if (res.status === 'published') {
           telemetry.published++;
           telemetry.completed++;

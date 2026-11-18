@@ -24,19 +24,20 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$CRON_SECRET" ]; then
-            echo "::error::Secret CRON_SECRET não configurado no repositório GitHub. Cadastre em Settings -> Secrets and variables -> Actions."
+            echo "::error::Secret CRON_SECRET não configurado em Settings -> Secrets and variables -> Actions."
             exit 1
           fi
-
-          echo "Disparando worker de retentativas de vídeo no domínio oficial de produção..."
-
-          RESPONSE=$(curl -sS --fail-with-body \
-            --max-time 270 \
+          CODE=$(curl -sS --fail-with-body -o resposta.json -w '%{http_code}' --max-time 270 \
             -X POST "https://portal-vip-brasil.vercel.app/api/cron/video-retries" \
             -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "User-Agent: GitHubActions-VideoRetryWorker/1.0" \
             -H "Content-Type: application/json" \
-            -d '{"trigger":"github_actions"}')
-
-          echo "Resposta sanitizada do worker:"
-          echo "$RESPONSE"
+            -d '{"trigger":"github_actions"}' \
+            || true)
+          echo "HTTP $CODE"
+          head -c 3000 resposta.json 2>/dev/null || true
+          echo
+          # 409 = a execução anterior ainda está trabalhando; não é erro.
+          if [ "$CODE" = "200" ] || [ "$CODE" = "409" ]; then exit 0; fi
+          echo "::error::Worker respondeu HTTP $CODE"
+          exit 1
