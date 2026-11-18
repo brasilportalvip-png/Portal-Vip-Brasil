@@ -37,6 +37,17 @@ test('Texto do vídeo: gancho, legendas e CTA com destino real do cadastro', () 
   assert.deepEqual(wrapLines('um dois tres quatro cinco seis', 9, 2), ['um dois', 'tres…']);
 });
 
+test('Texto com %, aspas, emoji e palavra gigante não quebra a legenda', async () => {
+  const { buildBrandingFilter } = await import('../server/production/videoBranding.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pvb-f-'));
+  const { filter } = buildBrandingFilter({ width: 720, height: 1280, duration: 8, copy: { hook: '100% 🙏 fé', points: ['x'.repeat(200)], cta: 'Já', ctaDetail: 'site.com' }, brandName: 'Marca', brandColor: '#112233', hasLogo: false, dir, fontBold: 'a.otf', fontSemi: 'b.otf' });
+  assert.ok(!/drawtext=(?!expansion=none)/.test(filter), 'todo texto precisa de expansion=none (senão % some)');
+  const texts = fs.readdirSync(dir).map((f) => fs.readFileSync(path.join(dir, f), 'utf8'));
+  assert.ok(texts.includes('100% fé'));
+  assert.ok(texts.every((t) => t.length <= 40), 'linha longa demais para a tela');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('Linha do tempo: gancho no início, legendas no meio e CTA no final', () => {
   const tl = planOverlayTimeline({ hook: 'H', points: ['A', 'B'], cta: 'C', ctaDetail: 'D' }, 8);
   assert.deepEqual(tl.map((s) => s.kind), ['hook', 'point', 'point', 'cta']);

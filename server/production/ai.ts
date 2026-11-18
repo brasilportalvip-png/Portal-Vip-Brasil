@@ -1234,6 +1234,9 @@ export interface VideoJobData {
   kwaiReminder?: boolean;
   /** false = entregar o vídeo limpo, sem logotipo/legendas/CTA. Padrão: com marca. */
   branding?: boolean;
+  /** Resultado da marcação (logotipo/legendas/CTA) e o motivo quando não foi aplicada. */
+  brandingApplied?: boolean;
+  brandingReason?: string | null;
   projectId?: string;
   destinations?: string[];
   scheduledDate?: string;
@@ -2420,6 +2423,7 @@ export async function checkAndCompleteVideoJob(userId: string, jobId: string): P
           branding = { applied: false, reason: String(sanitizeSecretText(error)).slice(0, 300) };
         }
         if (!branding.applied) console.warn('[Portal Vip Video Branding] Vídeo salvo sem marca:', branding.reason);
+        await docRef.set({ brandingApplied: branding.applied, brandingReason: branding.applied ? null : branding.reason || null, updatedAt: nowIso() }, { merge: true }).catch(() => undefined);
       }
 
       const renewedBeforeStorage = await renewVideoFinalizationLease(docRef, ownerToken, ownerFence);

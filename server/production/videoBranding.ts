@@ -110,9 +110,9 @@ export async function downloadLogo(url: string, dir: string): Promise<string | n
 
 /** Remove emojis e símbolos que a fonte não desenha, mantém acentos do português. */
 export function cleanOverlayText(value: string, max: number): string {
+  // Só letras, números e pontuação que a fonte desenha: emoji e símbolos raros virariam um quadrado.
   const text = String(value || '')
-    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '')
-    .replace(/[#*_`~<>{}\[\]|\\]/g, '')
+    .replace(/[^\p{L}\p{N}\s.,;:!?'"()\-–—•%&@/+…ºª$]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
   if (text.length <= max) return text;
@@ -122,7 +122,8 @@ export function cleanOverlayText(value: string, max: number): string {
 }
 
 export function wrapLines(text: string, maxChars: number, maxLines = 3): string[] {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const words = String(text || '').split(/\s+/).filter(Boolean)
+    .flatMap((w) => (w.length > maxChars ? w.match(new RegExp(`.{1,${Math.max(1, maxChars - 1)}}`, 'g')) || [w] : [w]));
   const lines: string[] = [];
   let current = '';
   for (const word of words) {
@@ -163,7 +164,7 @@ export function fallbackOverlayCopy(project: any, title?: string): VideoOverlayC
     hook,
     points,
     cta: hasApp ? 'Baixe o app oficial' : site ? 'Acesse agora' : 'Siga para mais',
-    ctaDetail: hasApp ? (site ? `Na Play Store • ${site}` : 'Na Play Store') : site || cleanOverlayText(project?.name || '', 40)
+    ctaDetail: hasApp ? (site && site.length <= 26 ? `Na Play Store • ${site}` : 'Na Play Store') : site || cleanOverlayText(project?.name || '', 40)
   };
 }
 
@@ -192,8 +193,26 @@ export function resolveFfmpegPath(): string | null {
     // pacote não instalado: tenta o ffmpeg do sistema
   }
   candidates.push('/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg');
-  cachedFfmpeg = candidates.find((c) => { try { return fs.existsSync(c); } catch { return false; } }) || null;
+  const found = candidates.find((c) => { try { return fs.existsSync(c); } catch { return false; } }) || null;
+  cachedFfmpeg = found ? ensureExecutable(found) : null;
   return cachedFfmpeg;
+}
+
+/** Na Vercel a pasta do código é só leitura: se o binário perdeu a permissão de execução, usa uma cópia em /tmp. */
+function ensureExecutable(bin: string): string | null {
+  try {
+    fs.accessSync(bin, fs.constants.X_OK);
+    return bin;
+  } catch {
+    try {
+      const copy = path.join(os.tmpdir(), 'pvb-ffmpeg');
+      if (!fs.existsSync(copy)) fs.copyFileSync(bin, copy);
+      fs.chmodSync(copy, 0o755);
+      return copy;
+    } catch {
+      return null;
+    }
+  }
 }
 
 function runFfmpeg(bin: string, args: string[], timeoutMs: number): Promise<void> {
@@ -266,7 +285,7 @@ export function buildBrandingFilter(opts: {
   brandColor: string; hasLogo: boolean; dir: string; fontBold: string; fontSemi: string;
 }): { filter: string; files: Record<string, string>; outputLabel: string } {
   const { width: W, height: H, duration, copy, brandColor, dir } = opts;
-  const base = Math.min(W, H * 0.5625); // mede pelo lado curto em 9:16 e pela altura em 16:9
+  const base = Math.min(W, H); // lado curto: mesma proporção de texto em vertical e horizontal
   const files: Record<string, string> = {};
   const color = brandColor.replace('#', '0x');
   const steps: string[] = [];
@@ -282,7 +301,7 @@ export function buildBrandingFilter(opts: {
     const file = path.join(dir, `${key}.txt`);
     files[key] = file;
     fs.writeFileSync(file, text, 'utf8');
-    push(`drawtext=fontfile='${esc(font)}':textfile='${esc(file)}':fontsize=${Math.round(size)}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${y}:alpha='${alpha}':${box}shadowcolor=black@0.55:shadowx=2:shadowy=2`);
+    push(`drawtext=expansion=none:fontfile='${esc(font)}':textfile='${esc(file)}':fontsize=${Math.round(size)}:fontcolor=${fontColor}:x=(w-text_w)/2:y=${y}:alpha='${alpha}':${box}shadowcolor=black@0.55:shadowx=2:shadowy=2`);
   };
 
   if (opts.hasLogo) {
@@ -297,25 +316,31 @@ export function buildBrandingFilter(opts: {
     const file = path.join(dir, `${key}.txt`);
     files[key] = file;
     fs.writeFileSync(file, cleanOverlayText(opts.brandName, 34), 'utf8');
-    push(`drawtext=fontfile='${esc(opts.fontSemi)}':textfile='${esc(file)}':fontsize=${Math.round(brandSize)}:fontcolor=white:x=${nameX}:y=${Math.round(H * 0.035 + base * 0.075 - brandSize / 2)}:shadowcolor=black@0.7:shadowx=2:shadowy=2`);
+    push(`drawtext=expansion=none:fontfile='${esc(opts.fontSemi)}':textfile='${esc(file)}':fontsize=${Math.round(brandSize)}:fontcolor=white:x=${nameX}:y=${Math.round(H * 0.035 + base * 0.075 - brandSize / 2)}:shadowcolor=black@0.7:shadowx=2:shadowy=2`);
   }
 
   for (const seg of planOverlayTimeline(copy, duration)) {
     const alpha = fade(seg.start, seg.end);
+    seg.text = seg.kind === 'cta' ? seg.text : cleanOverlayText(seg.text, seg.kind === 'hook' ? 60 : 70);
+    if (seg.kind !== 'cta' && !seg.text) continue;
     if (seg.kind === 'hook') {
       const size = base * 0.074;
       const lines = wrapLines(seg.text, Math.max(12, Math.floor((W * 0.84) / (size * 0.56))), 3);
-      lines.forEach((line, i) => textLine(line, opts.fontBold, size, `${Math.round(H * 0.17 + i * size * 1.32)}`, alpha, `box=1:boxcolor=black@0.55:boxborderw=${Math.round(size * 0.28)}:`));
+      const hookTop = Math.max(H * 0.17, H * 0.035 + base * 0.15 + base * 0.05);
+      lines.forEach((line, i) => textLine(line, opts.fontBold, size, `${Math.round(hookTop + i * size * 1.32)}`, alpha, `box=1:boxcolor=black@0.55:boxborderw=${Math.round(size * 0.28)}:`));
     } else if (seg.kind === 'point') {
       const size = base * 0.058;
       const lines = wrapLines(seg.text, Math.max(14, Math.floor((W * 0.86) / (size * 0.55))), 3);
       const top = H * 0.66;
       lines.forEach((line, i) => textLine(line, opts.fontBold, size, `${Math.round(top + i * size * 1.34)}`, alpha, `box=1:boxcolor=black@0.6:boxborderw=${Math.round(size * 0.26)}:`));
     } else {
-      const size = base * 0.078;
+      const ctaText = cleanOverlayText(seg.text, 32);
+      const detail = cleanOverlayText(copy.ctaDetail, 52);
+      const size = Math.min(base * 0.078, (W * 0.8) / (Math.max(ctaText.length, 8) * 0.58));
+      const detailSize = Math.min(base * 0.046, (W * 0.9) / (Math.max(detail.length, 8) * 0.55));
       const top = H * 0.7;
-      textLine(cleanOverlayText(seg.text, 32), opts.fontBold, size, `${Math.round(top)}`, alpha, `box=1:boxcolor=${color}@0.95:boxborderw=${Math.round(size * 0.42)}:`);
-      if (copy.ctaDetail) textLine(cleanOverlayText(copy.ctaDetail, 40), opts.fontSemi, base * 0.046, `${Math.round(top + size * 1.75)}`, alpha, `box=1:boxcolor=black@0.6:boxborderw=${Math.round(base * 0.016)}:`);
+      if (ctaText) textLine(ctaText, opts.fontBold, size, `${Math.round(top)}`, alpha, `box=1:boxcolor=${color}@0.95:boxborderw=${Math.round(size * 0.42)}:`);
+      if (detail) textLine(detail, opts.fontSemi, detailSize, `${Math.round(top + size * 1.75)}`, alpha, `box=1:boxcolor=black@0.6:boxborderw=${Math.round(base * 0.016)}:`);
     }
   }
 
@@ -347,11 +372,13 @@ export async function applyVideoBranding(video: Buffer, input: VideoBrandingInpu
     args.push('-filter_complex', filter, '-map', outputLabel);
     if (info.hasAudio) args.push('-map', '0:a?', '-c:a', 'copy');
     // Função serverless tem tempo curto: preset rápido e teto de 40 s (se passar, entrega o vídeo limpo).
-    const preset = info.width * info.height > 1280 * 720 ? 'ultrafast' : 'veryfast';
-    args.push('-c:v', 'libx264', '-preset', preset, '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', outFile);
+    args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', outFile);
     await runFfmpeg(bin, args, Number(process.env.PVB_BRANDING_TIMEOUT_MS || 40_000));
     const out = fs.readFileSync(outFile);
     if (out.length < 1000) return { buffer: video, applied: false, reason: 'saída do ffmpeg vazia' };
+    const outInfo = await probeVideo(bin, outFile);
+    if (info.duration > 0 && outInfo.duration < info.duration * 0.9) return { buffer: video, applied: false, reason: 'vídeo marcado ficou mais curto que o original' };
+    if (info.hasAudio && !outInfo.hasAudio) return { buffer: video, applied: false, reason: 'vídeo marcado perdeu o áudio' };
     return { buffer: out, applied: true };
   } catch (error: any) {
     return { buffer: video, applied: false, reason: String(error?.message || error).slice(0, 300) };
@@ -395,7 +422,7 @@ export async function applyImageBranding(image: Buffer, input: ImageBrandingInpu
     const text = (value: string, font: string, size: number, x: string, y: number, extra = '') => {
       const file = path.join(dir, `t${t++}.txt`);
       fs.writeFileSync(file, value, 'utf8');
-      push(`drawtext=fontfile='${esc(font)}':textfile='${esc(file)}':fontsize=${Math.round(size)}:fontcolor=white:x=${x}:y=${Math.round(y)}:${extra}shadowcolor=black@0.6:shadowx=2:shadowy=2`);
+      push(`drawtext=expansion=none:fontfile='${esc(font)}':textfile='${esc(file)}':fontsize=${Math.round(size)}:fontcolor=white:x=${x}:y=${Math.round(y)}:${extra}shadowcolor=black@0.6:shadowx=2:shadowy=2`);
     };
     // Faixas escuras em degradê no topo e na base para o texto respirar sem esconder a foto.
     push(`drawbox=x=0:y=0:w=iw:h=ih*0.16:color=black@0.28:t=fill,drawbox=x=0:y=ih*0.6:w=iw:h=ih*0.4:color=black@0.42:t=fill`);
@@ -415,8 +442,10 @@ export async function applyImageBranding(image: Buffer, input: ImageBrandingInpu
     const headTop = ctaY - base * 0.05 - lines.length * hSize * 1.22;
     lines.forEach((line, i) => text(line, FONT_BOLD(), hSize, '(w-text_w)/2', headTop + i * hSize * 1.22));
     const color = (input.brandColor || '#B45309').replace('#', '0x');
-    text(cleanOverlayText(input.cta, 32), FONT_BOLD(), ctaSize, '(w-text_w)/2', ctaY, `box=1:boxcolor=${color}@0.95:boxborderw=${Math.round(ctaSize * 0.4)}:`);
-    if (input.ctaDetail) text(cleanOverlayText(input.ctaDetail, 44), FONT_SEMI(), detailSize, '(w-text_w)/2', bottom - detailSize);
+    const ctaText = cleanOverlayText(input.cta, 32);
+    const detail = cleanOverlayText(input.ctaDetail, 52);
+    if (ctaText) text(ctaText, FONT_BOLD(), Math.min(ctaSize, (W * 0.8) / (Math.max(ctaText.length, 8) * 0.58)), '(w-text_w)/2', ctaY, `box=1:boxcolor=${color}@0.95:boxborderw=${Math.round(ctaSize * 0.4)}:`);
+    if (detail) text(detail, FONT_SEMI(), Math.min(detailSize, (W * 0.9) / (Math.max(detail.length, 8) * 0.55)), '(w-text_w)/2', bottom - detailSize);
     const args = ['-y', '-hide_banner', '-loglevel', 'error', '-i', inFile];
     if (hasLogo) args.push('-i', String(input.logoPath));
     args.push('-filter_complex', steps.join(';'), '-map', label, '-frames:v', '1', '-q:v', '2', outFile);

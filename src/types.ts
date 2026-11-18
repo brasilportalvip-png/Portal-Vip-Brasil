@@ -26,6 +26,9 @@ export interface VideoJob {
   status: 'queued' | 'pending' | 'processing' | 'retry_scheduled' | 'rendering' | 'ready_to_publish' | 'publishing' | 'published' | 'finalizing' | 'completed' | 'failed' | 'failed_permanent';
   progressPct: number;
   videoUrl?: string;
+  branding?: boolean;
+  brandingApplied?: boolean;
+  brandingReason?: string | null;
   storagePath?: string;
   contentItemId?: string;
   attemptCount?: number;
