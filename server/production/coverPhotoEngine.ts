@@ -110,11 +110,11 @@ SCENES.proj_oraculos_ts.push(
 );
 
 /** Grupo de cenas pelo tema do texto (usado quando o projeto não tem cenas próprias). */
-export function coverSceneGroupFor(article: { title?: string; slug?: string; relatedProjectId?: string; projectId?: string; relatedProjectName?: string }): string {
+export function coverSceneGroupFor(article: { title?: string; slug?: string; relatedProjectId?: string; projectId?: string; relatedProjectName?: string; category?: string }): string {
   const project = String(article?.relatedProjectId || article?.projectId || '');
   if (SCENES[project]) return project;
-  const text = normalize(`${article?.title || ''} ${article?.slug || ''} ${article?.relatedProjectName || ''}`).replace(/-/g, ' ');
-  if (/corrida|motorista|uber|\b99\b|passageiro|carona|mobilidade|froc x|transporte por app|app de transporte/.test(text)) return 'tema_mobilidade';
+  const text = normalize(`${article?.title || ''} ${article?.slug || ''} ${article?.relatedProjectName || ''} ${article?.category || ''} ${project}`).replace(/[-_]/g, ' ');
+  if (/corrida|motorista|uber|\b99\b|passageir|carona|mobilidade|froc ?x\b|transporte|dirigir|dirigindo|veiculo|carro|transito|taxi|combustivel|gasolina/.test(text)) return 'tema_mobilidade';
   if (/fantasma|sobrenatural|assombra|paranormal|cacador de|caca fantasma|detector/.test(text)) return 'tema_sobrenatural';
   if (/cipriano|bruxo|bruxa|bruxaria|feitico|grimorio/.test(text)) return 'tema_bruxaria';
   if (project && !INITIAL_PROJECT_IDS.includes(project)) {

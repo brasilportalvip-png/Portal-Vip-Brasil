@@ -140,6 +140,7 @@ export function App() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
   const [contentItems, setContentItems] = useState<ContentItem[]>([]);
+  const [contentsError, setContentsError] = useState('');
   const [authOpen, setAuthOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -212,8 +213,13 @@ export function App() {
     try {
       const data = await apiRequest<{ items: ContentItem[] }>('/api/content');
       if (Array.isArray(data?.items)) setContentItems(data.items);
+      setContentsError('');
     } catch (err) {
-      if (!isApiAbortError(err)) console.warn('Erro ao carregar conteúdos:', err);
+      if (!isApiAbortError(err)) {
+        console.warn('Erro ao carregar conteúdos:', err);
+        // Antes a tela ficava vazia em silêncio; agora mostra o motivo.
+        setContentsError(`Não foi possível carregar a biblioteca: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }, [user]);
 
@@ -524,6 +530,7 @@ export function App() {
           <ContentsLibraryPage
             companies={companies}
             contentItems={contentItems}
+            loadError={contentsError}
             onRefreshContents={refreshContents}
             onNavigate={navigate}
           />

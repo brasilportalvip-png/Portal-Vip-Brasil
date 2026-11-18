@@ -697,6 +697,19 @@ export const THEMATIC_NICHE_IMAGES: Record<string, Array<{ url: string; alt: str
 };
 
 // Aliases para manter compatibilidade com chaves de projetos legados
+// Mobilidade (Froc X e outros apps de corrida): carros, ruas, motoristas e passageiros.
+THEMATIC_NICHE_IMAGES.mobilidade_transporte = [
+  { url: 'https://images.unsplash.com/photo-1615049977061-3297aa104b1e?auto=format&fit=crop&w=1200&q=80', alt: 'Carro preto rodando na avenida à noite, luzes da cidade refletindo na lataria' },
+  { url: 'https://images.unsplash.com/photo-1768753025396-bace64edd60d?auto=format&fit=crop&w=1200&q=80', alt: 'Carro passando por rua iluminada à noite com efeito de movimento' },
+  { url: 'https://images.unsplash.com/photo-1761579340221-e50ba39c3e57?auto=format&fit=crop&w=1200&q=80', alt: 'Rua molhada à noite com faróis de carros refletidos no asfalto' },
+  { url: 'https://images.unsplash.com/photo-1437326479284-36af1c6136ea?auto=format&fit=crop&w=1200&q=80', alt: 'Rastros de luz de carros numa avenida movimentada à noite' },
+  { url: 'https://images.unsplash.com/photo-1635930919419-f935f8902b0f?auto=format&fit=crop&w=1200&q=80', alt: 'Fila de carros circulando na cidade à noite' },
+  { url: 'https://images.unsplash.com/photo-1514041181368-bca62cceffcd?auto=format&fit=crop&w=1200&q=80', alt: 'Motorista ao volante de um carro moderno à noite' },
+  { url: 'https://images.unsplash.com/photo-1733952767792-bf57dc8b1cb4?auto=format&fit=crop&w=1200&q=80', alt: 'Avenida urbana com trânsito intenso no começo da noite' },
+  { url: 'https://images.unsplash.com/photo-1562993610-121a6b465200?auto=format&fit=crop&w=1200&q=80', alt: 'Pessoa segurando o celular dentro do carro, pronta para a corrida' },
+  { url: 'https://images.unsplash.com/photo-1635459618438-a92081ce250b?auto=format&fit=crop&w=1200&q=80', alt: 'Motorista dentro do carro conferindo o aplicativo no celular' },
+  { url: 'https://images.unsplash.com/photo-1646798415079-535838e69049?auto=format&fit=crop&w=1200&q=80', alt: 'Passageira no carro falando ao celular durante a viagem' }
+];
 THEMATIC_NICHE_IMAGES.proj_magia_crencas = THEMATIC_NICHE_IMAGES.prosperidade_crencas;
 THEMATIC_NICHE_IMAGES.proj_exu_responde = THEMATIC_NICHE_IMAGES.exu_guardioes;
 THEMATIC_NICHE_IMAGES.proj_maria_padilha = THEMATIC_NICHE_IMAGES.love_maria_padilha;
@@ -736,6 +749,8 @@ export function detectServerArticleNiche(meta: {
   slug?: string;
   category?: string;
   projectId?: string;
+  /** Nome/categoria do projeto (projetos cadastrados depois não têm nicho fixo no código). */
+  projectHint?: string;
 }): string {
   const titleAndSlug = normalizeTextForNiche(`${meta.title || ''} ${meta.topic || ''} ${meta.slug || ''}`);
   const fullCorpus = normalizeTextForNiche(`${meta.title || ''} ${meta.topic || ''} ${meta.slug || ''} ${meta.category || ''}`);
@@ -757,6 +772,8 @@ export function detectServerArticleNiche(meta: {
     if (projectNiche[proj] === 'tarot_oraculos' && /runa|viking|nordic|futhark/.test(titleAndSlug)) return 'runes_viking';
     return projectNiche[proj];
   }
+  const mobilityCorpus = `${fullCorpus} ${normalizeTextForNiche(`${meta.projectHint || ''} ${proj}`)}`.replace(/[-_]/g, ' ');
+  if (/corrida|motorista|uber|\b99\b|passageir|carona|mobilidade|froc ?x\b|transporte|dirigir|dirigindo|veiculo|carro|transito|taxi|combustivel|gasolina/.test(mobilityCorpus)) return 'mobilidade_transporte';
 
   // === FASE 1: Detecção de Alta Precisão pelo TÍTULO e SLUG do artigo ===
   if (
@@ -893,9 +910,10 @@ export function resolveThematicCoverForProject(
   topic?: string,
   slug?: string,
   id?: string,
-  category?: string
+  category?: string,
+  projectHint?: string
 ): { url: string; alt: string } {
-  const nicheKey = detectServerArticleNiche({ title: topic, topic, slug, category, projectId });
+  const nicheKey = detectServerArticleNiche({ title: topic, topic, slug, category, projectId, projectHint });
   const list = THEMATIC_NICHE_IMAGES[nicheKey] || THEMATIC_NICHE_IMAGES.prosperidade_crencas;
   const seed = `${id || ''}::${slug || ''}::${topic || ''}`;
   const hash = computeServerHash(seed);
@@ -1596,8 +1614,8 @@ export function serializeBlogArticleForPublic(article: StoredBlogArticle, projec
     category: article.category,
     targetAudience: knownProject?.targetAudience || '',
     searchIntent,
-    coverImage: publicCoverUrl(article),
-    coverImageAlt: article.coverAlt || resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category).alt,
+    coverImage: fixWrongNicheStockCover(article, publicCoverUrl(article), `${knownProject?.name || article.relatedProjectName || ''} ${(knownProject as any)?.category || ''}`),
+    coverImageAlt: article.coverAlt || resolveThematicCoverForProject(article.relatedProjectId, article.title, article.slug, article.id, article.category, `${knownProject?.name || article.relatedProjectName || ''} ${(knownProject as any)?.category || ''}`).alt,
     readingTimeMinutes: Number.parseInt(article.readTime || '', 10) || 5,
     readTime: article.readTime,
     contentMarkdown: words.join('\n\n'),
@@ -1820,6 +1838,25 @@ export function publicCoverUrl(article: { slug?: string; coverImage?: string; re
     return resolveThematicCoverForProject(article?.relatedProjectId || '', article?.title, article?.slug, article?.id, article?.category).url;
   }
   return cover;
+}
+
+/**
+ * Capa de banco de imagens que é de OUTRO nicho (ex.: mulher na praia num post de motorista do Froc X)
+ * é trocada por uma do nicho certo. Capas de IA e enviadas pelo dono nunca são mexidas.
+ */
+export function fixWrongNicheStockCover(article: { relatedProjectId?: string; title?: string; slug?: string; id?: string; category?: string }, cover: string, projectHint?: string): string {
+  const key = (u: string) => (String(u).match(/images\.unsplash\.com\/(photo-[a-z0-9-]+)/i)?.[1] || '').toLowerCase();
+  const k = key(cover);
+  if (!k) return cover;
+  let stockNiche = '';
+  for (const [niche, list] of Object.entries(THEMATIC_NICHE_IMAGES)) {
+    if (niche.startsWith('proj_')) continue;
+    if (list.some((item) => key(item.url) === k)) { stockNiche = niche; break; }
+  }
+  if (!stockNiche) return cover;
+  const wanted = detectServerArticleNiche({ title: article.title, slug: article.slug, category: article.category, projectId: article.relatedProjectId, projectHint });
+  if (wanted === stockNiche) return cover;
+  return resolveThematicCoverForProject(article.relatedProjectId || '', article.title, article.slug, article.id, article.category, projectHint).url;
 }
 
 export function decodeDataUriImage(url: string): { mime: string; buffer: Buffer } | null {
@@ -2445,7 +2482,7 @@ RESPONDA APENAS COM JSON VÁLIDO, exatamente nesta estrutura:
     }
   };
 
-  const thematicCover = resolveThematicCoverForProject(project.id, parsed?.title || topic, finalSlug, articleId, parsed?.category);
+  const thematicCover = resolveThematicCoverForProject(project.id, parsed?.title || topic, finalSlug, articleId, parsed?.category, `${project.name || ''} ${(project as any).category || ''}`);
   let coverImage = thematicCover.url;
   let coverAlt = parsed.coverAlt || thematicCover.alt;
   let coverImageStoragePath: string | undefined;

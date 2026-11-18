@@ -7,6 +7,49 @@ export interface CoverAsset {
 }
 
 export const NICHE_PHOTO_CATALOG: Record<string, CoverAsset[]> = {
+  // 0. Mobilidade: carros, ruas, motoristas e passageiros de aplicativo (Froc X e afins)
+  mobilidade_transporte: [
+    {
+      url: 'https://images.unsplash.com/photo-1615049977061-3297aa104b1e?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Carro preto rodando na avenida à noite, luzes da cidade refletindo na lataria'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1768753025396-bace64edd60d?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Carro passando por rua iluminada à noite com efeito de movimento'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1761579340221-e50ba39c3e57?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Rua molhada à noite com faróis de carros refletidos no asfalto'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1437326479284-36af1c6136ea?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Rastros de luz de carros numa avenida movimentada à noite'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1635930919419-f935f8902b0f?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Fila de carros circulando na cidade à noite'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1514041181368-bca62cceffcd?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Motorista ao volante de um carro moderno à noite'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1733952767792-bf57dc8b1cb4?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Avenida urbana com trânsito intenso no começo da noite'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1562993610-121a6b465200?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Pessoa segurando o celular dentro do carro, pronta para a corrida'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1635459618438-a92081ce250b?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Motorista dentro do carro conferindo o aplicativo no celular'
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1646798415079-535838e69049?auto=format&fit=crop&w=1200&q=80',
+      alt: 'Passageira no carro falando ao celular durante a viagem'
+    }
+  ],
   // 1. Runas Nórdicas, Mitologia Viking e Sabedoria Ancestral
   runes_viking: [
     {
@@ -351,6 +394,7 @@ export function detectArticleNiche(meta: {
   category?: string;
   tags?: string[];
   relatedProjectId?: string;
+  relatedProjectName?: string;
 }): string {
   const titleAndSlug = normalizeText(`${meta.title || ''} ${meta.slug || ''}`);
   const fullCorpus = normalizeText(
@@ -359,8 +403,8 @@ export function detectArticleNiche(meta: {
   const proj = meta.relatedProjectId || '';
 
   // === FASE 0: projetos novos (as capas definitivas são geradas por IA no servidor) ===
-  const themeCorpus = `${titleAndSlug} ${normalizeText(meta.relatedProjectId || '')}`.replace(/-/g, ' ');
-  if (/corrida|motorista|uber|passageiro|carona|mobilidade|froc x/.test(themeCorpus)) return 'trafego_organico_growth';
+  const themeCorpus = `${titleAndSlug} ${normalizeText(meta.relatedProjectId || '')} ${normalizeText(meta.relatedProjectName || '')} ${normalizeText(meta.category || '')} ${normalizeText((meta.tags || []).join(' '))}`.replace(/[-_]/g, ' ');
+  if (/corrida|motorista|uber|\b99\b|passageir|carona|mobilidade|froc ?x\b|transporte|dirigir|dirigindo|veiculo|carro|transito|taxi|combustivel|gasolina|viagem de app/.test(themeCorpus)) return 'mobilidade_transporte';
   if (/fantasma|sobrenatural|assombra|paranormal|detector/.test(themeCorpus)) return 'runes_viking';
   if (/cipriano|bruxo|bruxa|bruxaria|feitico|grimorio|buzios/.test(themeCorpus)) return 'tarot_oraculos';
 
@@ -593,7 +637,10 @@ export function resolveArticleCover(
   tags?: string[]
 ): string {
   if (!isInvalidOrLogoImage(currentCover)) {
-    return (currentCover as string).trim();
+    // Foto de banco de imagens de OUTRO nicho gravada no artigo (ex.: mulher na praia num post de motorista): troca.
+    const stockNiche = CATALOG_NICHE_BY_KEY.get(coverImageKey(currentCover));
+    const wanted = stockNiche ? detectArticleNiche({ relatedProjectId: projectId, title: articleTitle, slug: articleSlug, category, tags }) : '';
+    if (!stockNiche || stockNiche === wanted) return (currentCover as string).trim();
   }
   return getSmartThematicCover({
     relatedProjectId: projectId,
@@ -641,6 +688,7 @@ export function coverImageKey(url?: string | null): string {
 }
 
 const ALL_CATALOG_PHOTOS: CoverAsset[] = Object.values(NICHE_PHOTO_CATALOG).flat();
+const CATALOG_NICHE_BY_KEY = new Map<string, string>(Object.entries(NICHE_PHOTO_CATALOG).flatMap(([niche, photos]) => photos.map((p) => [coverImageKey(p.url), niche] as [string, string])));
 
 /**
  * Garante que nenhuma capa se repita numa listagem (blog, relacionados, vitrine).
@@ -659,10 +707,15 @@ export function withUniqueCovers<T extends { id?: string; slug?: string; title?:
       used.add(key);
       return { ...item, coverImage: current };
     }
-    const niche = detectArticleNiche({ title: item.title, slug: item.slug, category: item.category, tags: item.tags, relatedProjectId: item.relatedProjectId });
-    const pool = [...(NICHE_PHOTO_CATALOG[niche] || []), ...ALL_CATALOG_PHOTOS];
+    const niche = detectArticleNiche({ title: item.title, slug: item.slug, category: item.category, tags: item.tags, relatedProjectId: item.relatedProjectId, relatedProjectName: (item as any).relatedProjectName });
+    // Só fotos do MESMO nicho: foto de outro assunto (ex.: praia num post de motorista) é pior que repetir.
+    const pool = NICHE_PHOTO_CATALOG[niche] || [];
     const replacement = pool.find((photo) => !used.has(coverImageKey(photo.url)));
-    if (!replacement) return { ...item, coverImage: current };
+    if (!replacement) {
+      // Acabaram as fotos do nicho: fundo da marca, único por artigo, até a capa de IA ficar pronta.
+      const seed = `${item.id || ''}:${item.slug || ''}:${item.title || ''}`;
+      return { ...item, coverImage: brandedCoverFallback(seed), coverImageAlt: item.title || 'Capa do artigo' };
+    }
     used.add(coverImageKey(replacement.url));
     return { ...item, coverImage: replacement.url, coverImageAlt: replacement.alt };
   });
