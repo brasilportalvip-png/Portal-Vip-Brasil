@@ -6,6 +6,7 @@ import { listAllPortalProjectsFromDb, PORTAL_VIP_PROJECTS, type PortalProjectIte
 import { CANONICAL_BRAND_DOSSIERS } from './brandDossiers.js';
 import { COLLECTIONS, consumeRateLimit, firestore, newId, nowIso } from './store.js';
 import { checkVisitorBudget as checkBudget } from './frocGuard.js';
+import { buildOwnerAgenda } from './frocAgenda.js';
 import { signSpeech, verifySpeech } from './frocSeal.js';
 import { cleanSpeechText, createLiveTranscriptionToken, FROC_SPEECH_SAMPLE_RATE, synthesizeFrocSpeechStream } from './frocSpeech.js';
 import {
@@ -283,6 +284,16 @@ router.post('/froc/owner/note', requireAdmin, safe(async (req: AuthenticatedRequ
 router.get('/froc/owner/notes', requireAdmin, safe(async (_req: AuthenticatedRequest, res: Response) => {
   const snap = await firestore().collection(FROC_NOTES_COLLECTION).orderBy('createdAt', 'desc').limit(50).get();
   res.json({ notes: snap.docs.map((d: any) => d.data()) });
+}));
+
+// Agenda do dia/período para o Froc responder "o que sai hoje?" com dados reais.
+router.get('/froc/owner/agenda', requireAdmin, safe(async (req: AuthenticatedRequest, res: Response) => {
+  const agenda = await buildOwnerAgenda({
+    day: req.query.day,
+    days: req.query.days,
+    projectId: req.query.projectId ? String(req.query.projectId).slice(0, 120) : undefined
+  });
+  res.json({ agenda });
 }));
 
 router.post('/froc/owner/live-token', requireAdmin, safe(async (_req: AuthenticatedRequest, res: Response) => {

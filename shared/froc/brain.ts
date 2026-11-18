@@ -61,7 +61,14 @@ export const OWNER_TOOLS: Record<string, OwnerToolSpec> = {
   admin_overview: { label: 'Ver resumo da administração', args: [], confirm: false },
   list_projects: { label: 'Listar projetos da vitrine', args: [], confirm: false },
   list_content: { label: 'Listar conteúdos criados', args: [], confirm: false },
-  list_scheduled: { label: 'Listar publicações agendadas', args: [], confirm: false },
+  agenda: { label: 'Agenda: o que sai hoje/amanhã/na semana, atrasados, falhas, automação prevista, blog, avisos do Kwai e vídeos em produção (day = hoje, amanhã, AAAA-MM-DD ou DD/MM; days = quantos dias)', args: ['day', 'days', 'projectId'], confirm: false },
+  list_scheduled: { label: 'Listar as próximas publicações agendadas (a partir de agora; status opcional: pending, failed, published...)', args: ['status', 'projectId'], confirm: false },
+  project_details: { label: 'Ver o cadastro completo de um projeto (slogan, destaques, ângulos, público, site, app, automação)', args: ['projectId'], confirm: false },
+  list_campaigns: { label: 'Listar campanhas', args: ['projectId'], confirm: false },
+  video_jobs: { label: 'Ver vídeos em produção e os últimos gerados', args: [], confirm: false },
+  support_tickets: { label: 'Ver chamados de suporte', args: [], confirm: false },
+  system_health: { label: 'Ver a saúde do sistema: agendador, cron, erros recentes e blog', args: [], confirm: false },
+  owner_notes: { label: 'Ver os pedidos do dono já anotados', args: [], confirm: false },
   autopilot_overview: { label: 'Ver situação da automação', args: [], confirm: false },
   cost_summary: { label: 'Ver custos da automação', args: [], confirm: false },
   social_readiness: { label: 'Ver redes sociais conectadas', args: [], confirm: false },
@@ -87,6 +94,9 @@ export const OWNER_TOOLS: Record<string, OwnerToolSpec> = {
   update_project: { label: 'Editar dados de um projeto da vitrine', args: ['projectId', 'tagline', 'description', 'highlights', 'keywords', 'targetAudience', 'websiteUrl', 'playStoreUrl', 'active', 'dailyMarketingEnabled', 'dailyBlogEnabled'], confirm: true },
   set_article_status: { label: 'Publicar / despublicar artigo do blog', args: ['articleId', 'status'], confirm: true },
   schedule_content: { label: 'Agendar a publicação de um conteúdo nas redes', args: ['contentItemId', 'scheduledFor', 'projectId', 'platforms'], confirm: true },
+  cancel_scheduled: { label: 'Cancelar uma publicação agendada', args: ['scheduledId'], confirm: true },
+  retry_scheduled: { label: 'Tentar de novo uma publicação que falhou', args: ['scheduledId'], confirm: true },
+  run_scheduler_now: { label: 'Rodar o publicador agora (solta o que estiver na hora ou atrasado)', args: [], confirm: true, slow: true },
 };
 
 export type FrocAction =
@@ -103,6 +113,7 @@ const VISITOR_ACTIONS = new Set(['open_page', 'open_project', 'show_project', 'c
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,80}$/;
 const BOOL_ARGS = new Set(['active', 'dailyMarketingEnabled', 'dailyBlogEnabled', 'globalEnabled', 'pauseAllExternalApis', 'enabled']);
 const LIST_ARGS = new Set(['highlights', 'keywords', 'platforms']);
+const NUMBER_ARGS = new Set(['days']);
 
 function cleanArg(key: string, value: unknown): string | number | boolean | string[] | undefined {
   if (value == null) return undefined;
@@ -112,6 +123,10 @@ function cleanArg(key: string, value: unknown): string | number | boolean | stri
     if (['true', 'sim', 'ligar', 'ligado', '1'].includes(s)) return true;
     if (['false', 'nao', 'não', 'desligar', 'desligado', '0'].includes(s)) return false;
     return undefined;
+  }
+  if (NUMBER_ARGS.has(key)) {
+    const n = Math.round(Number(String(value).replace(/[^0-9.]/g, '')));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 31) : undefined;
   }
   if (LIST_ARGS.has(key)) {
     const arr = Array.isArray(value) ? value : String(value).split(/\n|;/);
@@ -407,6 +422,9 @@ REGRAS DAS FERRAMENTAS
 - Você não altera o código do site em tempo real. Se ele pedir uma função nova, mudança de layout ou programação, use save_owner_note com o pedido detalhado (fica salvo para ele mandar ao desenvolvedor) e diga isso com clareza.
 - Quando aparecer [O APLICATIVO JÁ FEZ AGORA: ...] ou [RESULTADOS DAS FERRAMENTAS], a ação já aconteceu: NÃO repita; comente o resultado em poucas palavras (número, título, link já aparece na tela) e sugira o próximo passo.
 - Nunca diga que fez algo que não fez e nunca invente números: use só o que voltou das ferramentas.
+- Perguntas sobre o dia ("o que sai hoje?", "o que está programado?", "o que atrasou?", "e amanhã?"): use agenda (day "hoje", "amanhã" ou a data). Ela já filtra por data no horário de Brasília e diz o que está atrasado e o que a automação vai fazer. Não diga que não consegue filtrar por data.
+- Você tem acesso ao portal inteiro pelas ferramentas: projetos (project_details), conteúdos, agenda, campanhas, vídeos, blog, automação, custos, redes sociais, suporte e saúde do sistema. Antes de dizer que não sabe algo, consulte a ferramenta certa.
+- Se a agenda mostrar publicações atrasadas ou falhas, diga quantas e o motivo que veio, e ofereça retry_scheduled ou run_scheduler_now.
 - Ele pode dizer "pare", "encerra", "fecha", "nova conversa", "apagar conversa": o site faz na hora.
 
 ${vitrine}

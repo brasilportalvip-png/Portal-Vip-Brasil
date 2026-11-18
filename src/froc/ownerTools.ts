@@ -65,10 +65,67 @@ export async function runOwnerTool(a: OwnerAction, req: Req, ctx: { selectedProj
       const items = (r?.items || []).slice(0, 12).map((i: any) => `${i.type} "${cut(i.title || i.headline, 70)}" (id ${i.id}, projeto ${i.companyId}, ${i.status})`);
       return { ok: true, summary: `${(r?.items || []).length} conteúdos. Mais recentes: ${items.join('; ') || 'nenhum'}` };
     }
+    case 'agenda': {
+      const q = new URLSearchParams();
+      if (s(arg.day)) q.set('day', s(arg.day));
+      if (arg.days) q.set('days', s(arg.days));
+      if (pid && s(arg.projectId)) q.set('projectId', pid);
+      const r: any = await req(`/api/froc/owner/agenda?${q.toString()}`);
+      const a = r?.agenda || {};
+      return { ok: true, summary: cut(a.resumo || JSON.stringify(a), 3500) };
+    }
     case 'list_scheduled': {
-      const r: any = await req('/api/content/scheduled');
-      const items = (r?.scheduledPosts || []).slice(0, 12).map((p: any) => `${cut(p.title || p.contentItemId, 60)} → ${p.scheduledFor} (${(p.platforms || []).join('/')}, ${p.status})`);
-      return { ok: true, summary: `${(r?.scheduledPosts || []).length} agendamentos: ${items.join('; ') || 'nenhum'}` };
+      const r: any = await req(`/api/content/scheduled${s(arg.projectId) ? `?companyId=${encodeURIComponent(pid)}` : ''}`);
+      const all: any[] = r?.scheduledPosts || [];
+      const status = s(arg.status).toLowerCase();
+      const now = Date.now();
+      // Antes: mostrava os 12 MAIS ANTIGOS (setembro). Agora: os próximos a partir de agora, ou o status pedido (mais recentes).
+      const list = status
+        ? all.filter((p) => String(p.status).toLowerCase() === status).sort((a, b) => String(b.scheduledFor).localeCompare(String(a.scheduledFor)))
+        : all.filter((p) => Date.parse(p.scheduledFor) >= now).sort((a, b) => String(a.scheduledFor).localeCompare(String(b.scheduledFor)));
+      const byStatus: Record<string, number> = {};
+      for (const p of all) byStatus[p.status] = (byStatus[p.status] || 0) + 1;
+      const br = (iso: string) => { const t = Date.parse(iso); return Number.isNaN(t) ? iso : new Date(t - 3 * 3600_000).toISOString().slice(0, 16).replace('T', ' '); };
+      const items = list.slice(0, 15).map((p: any) => `${br(p.scheduledFor)} ${cut(p.title || p.contentItemId, 60)} (id ${p.id}, ${(p.platforms || []).join('/')}, ${p.status}${p.lastError ? `, erro: ${cut(p.lastError, 80)}` : ''})`);
+      return { ok: true, summary: `${all.length} agendamentos no total (${Object.entries(byStatus).map(([k, v]) => `${v} ${k}`).join(', ')}). ${status ? `Com status ${status}` : 'Próximos a partir de agora'} (${list.length}): ${items.join('; ') || 'nenhum'}` };
+    }
+    case 'project_details': {
+      const r: any = await req('/api/admin/projects');
+      const p = (r?.projects || []).find((x: any) => x.id === pid || x.slug === pid || String(x.name).toLowerCase() === s(arg.projectId).toLowerCase());
+      if (!p) return { ok: false, summary: `Projeto ${pid || '(não informado)'} não encontrado. Use list_projects para ver os ids.` };
+      const keep = ['id', 'slug', 'name', 'category', 'segment', 'tagline', 'description', 'highlights', 'socialMarketingAngles', 'targetAudience', 'keywords', 'websiteUrl', 'playStoreUrl', 'hasApp', 'logoUrl', 'active', 'dailyMarketingEnabled', 'dailyBlogEnabled'];
+      const out: Record<string, any> = {};
+      for (const k of keep) if (p[k] !== undefined && p[k] !== '') out[k] = p[k];
+      return { ok: true, summary: `Cadastro de ${p.name}: ${cut(JSON.stringify(out), 3000)}` };
+    }
+    case 'list_campaigns': {
+      const r: any = await req(`/api/campaigns${pid && s(arg.projectId) ? `?companyId=${encodeURIComponent(pid)}` : ''}`);
+      const list = (r?.campaigns || []).slice(0, 15).map((c: any) => `"${cut(c.name, 60)}" (${c.status || 'rascunho'}, ${(c.targetPlatforms || []).join('/')}${c.startDate ? `, início ${String(c.startDate).slice(0, 10)}` : ''})`);
+      return { ok: true, summary: `${(r?.campaigns || []).length} campanhas: ${list.join('; ') || 'nenhuma'}` };
+    }
+    case 'video_jobs': {
+      const r: any = await req('/api/ai/video-jobs');
+      const jobs: any[] = r?.jobs || r?.videoJobs || [];
+      const list = jobs.slice(0, 12).map((j: any) => `${cut(j.title || j.prompt, 60)} (${j.status}${j.brandingApplied === false && j.brandingReason ? `, sem marca: ${cut(j.brandingReason, 80)}` : ''}${j.errorMessage ? `, erro: ${cut(j.errorMessage, 80)}` : ''})`);
+      return { ok: true, summary: `${jobs.length} vídeos: ${list.join('; ') || 'nenhum'}` };
+    }
+    case 'support_tickets': {
+      const r: any = await req('/api/admin/support/tickets');
+      const list = (r?.tickets || []).slice(0, 12).map((t: any) => `"${cut(t.subject, 60)}" (${t.status || 'aberto'}, ${String(t.createdAt || '').slice(0, 10)})`);
+      return { ok: true, summary: `${(r?.tickets || []).length} chamados: ${list.join('; ') || 'nenhum'}` };
+    }
+    case 'system_health': {
+      const [diag, blog, dash]: any[] = await Promise.all([
+        req('/api/admin/scheduler/diagnostics').catch((e: any) => ({ erro: String(e?.message || e) })),
+        req('/api/portal/blog/diagnostics').catch((e: any) => ({ erro: String(e?.message || e) })),
+        req('/api/dashboard/status').catch((e: any) => ({ erro: String(e?.message || e) }))
+      ]);
+      return { ok: true, summary: `Agendador: ${cut(JSON.stringify(diag), 900)} | Blog: ${cut(JSON.stringify(blog), 900)} | Painel: ${cut(JSON.stringify(dash), 900)}` };
+    }
+    case 'owner_notes': {
+      const r: any = await req('/api/froc/owner/notes');
+      const list = (r?.notes || []).slice(0, 15).map((n: any) => `${String(n.createdAt || '').slice(0, 10)} [${n.status}] ${cut(n.text, 120)}`);
+      return { ok: true, summary: `${(r?.notes || []).length} pedidos anotados: ${list.join('; ') || 'nenhum'}` };
     }
     case 'autopilot_overview': {
       const r: any = await req('/api/autopilot/overview');
@@ -195,6 +252,20 @@ export async function runOwnerTool(a: OwnerAction, req: Req, ctx: { selectedProj
       const platforms = Array.isArray(arg.platforms) && arg.platforms.length ? arg.platforms : ['instagram'];
       const r: any = await req('/api/content/schedule', { method: 'POST', body: { contentItemId: s(arg.contentItemId), scheduledFor: s(arg.scheduledFor), companyId: pid, platforms } });
       return { ok: true, summary: `Agendado para ${s(arg.scheduledFor)} em ${platforms.join(', ')}: ${cut(r?.message || r?.status || 'ok', 200)}` };
+    }
+    case 'cancel_scheduled': {
+      if (!s(arg.scheduledId)) return { ok: false, summary: 'Qual agendamento cancelar? (scheduledId — aparece na agenda/list_scheduled)' };
+      const r: any = await req(`/api/content/scheduled/${encodeURIComponent(s(arg.scheduledId))}/cancel`, { method: 'POST', body: {} });
+      return { ok: true, summary: `Agendamento ${s(arg.scheduledId)} cancelado. ${cut(r?.message || '', 160)}` };
+    }
+    case 'retry_scheduled': {
+      if (!s(arg.scheduledId)) return { ok: false, summary: 'Qual agendamento tentar de novo? (scheduledId)' };
+      const r: any = await req(`/api/content/scheduled/${encodeURIComponent(s(arg.scheduledId))}/retry`, { method: 'POST', body: {} });
+      return { ok: true, summary: `Agendamento ${s(arg.scheduledId)} voltou para a fila. ${cut(r?.message || '', 160)}` };
+    }
+    case 'run_scheduler_now': {
+      const r: any = await req('/api/admin/scheduler/run-now', { method: 'POST', timeoutMs: slow, body: {} });
+      return { ok: true, summary: `Publicador rodou agora: ${cut(JSON.stringify(r), 900)}` };
     }
   }
   return { ok: false, summary: `Ferramenta ${a.tool} não reconhecida.` };
