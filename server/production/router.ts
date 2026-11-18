@@ -28,7 +28,7 @@ function annotateLegacyImageRecord<T extends { imageUrl?: string; metadata?: any
 }
 import { parseAlmaIntent, executeAlmaOrchestration, getSmartDevicesList, updateSmartDeviceState } from './almaCore.js';
 import { PORTAL_VIP_PROJECTS, PORTAL_VIP_OFFICIAL_ASSETS, createPortalProjectInDb, deletePortalProjectInDb, getProjectBySlug, listAllPortalProjectsFromDb, getPortalProjectFromDb, seedPortalProjectsIfEmpty, updatePortalProjectInDb } from './almaPortfolio.js';
-import { executeAiWith2SecAntiFall, runDailyPortalMarketingCycle } from './antiFallEngine.js';
+import { executeAiWith2SecAntiFall, runDailyMarketingCatchUp, runDailyPortalMarketingCycle } from './antiFallEngine.js';
 import {
   listBlogArticles,
   getBlogArticleBySlug,
@@ -682,6 +682,13 @@ router.post('/cron/social-publications', asyncRoute(async (req, res) => {
   }
   const startedAt = Date.now();
   const result = await runSocialPublicationWorker();
+  // Divulgação diária com tempo de sobra para a IA (120 s por projeto), uma vez por dia, a partir das 10h.
+  let dailyMarketing: any = null;
+  try {
+    dailyMarketing = await runDailyMarketingCatchUp({ budgetMs: 250_000 - (Date.now() - startedAt) });
+  } catch (error) {
+    dailyMarketing = { ran: false, error: sanitizeSecretText(error).slice(0, 300) };
+  }
   // Horários do Autopilot fora das 10h (13h, 15h, 19h...): roda aqui, pois o cron da Vercel é só 1x/dia.
   let autopilotHourly: any = null;
   try {
@@ -690,12 +697,12 @@ router.post('/cron/social-publications', asyncRoute(async (req, res) => {
     autopilotHourly = { ran: false, error: sanitizeSecretText(error).slice(0, 300) };
   }
   if (result.status === 'skipped_concurrent') {
-    return res.status(409).json({ success: false, status: result.status, telemetry: result.telemetry, durationMs: result.durationMs, autopilotHourly });
+    return res.status(409).json({ success: false, status: result.status, telemetry: result.telemetry, durationMs: result.durationMs, autopilotHourly, dailyMarketing });
   }
   if (result.status === 'error') {
-    return res.status(500).json({ success: false, status: result.status, error: result.error, telemetry: result.telemetry, durationMs: result.durationMs, autopilotHourly });
+    return res.status(500).json({ success: false, status: result.status, error: result.error, telemetry: result.telemetry, durationMs: result.durationMs, autopilotHourly, dailyMarketing });
   }
-  return res.status(200).json({ ...result, autopilotHourly });
+  return res.status(200).json({ ...result, autopilotHourly, dailyMarketing });
 }));
 
 router.get('/admin/video-retries/health', requireAdmin, asyncRoute(async (_req: AuthenticatedRequest, res) => {

@@ -38,3 +38,18 @@ test('Sem nenhuma conta conectada, nada é agendado (só gera para revisão)', a
   assert.ok(result.generatedCount > 0);
   assert.equal(result.scheduledCount, 0);
 });
+
+test('Repescagem da divulgação: roda das 10h às 22h, uma vez por dia, e respeita o tempo', async () => {
+  const { runDailyMarketingCatchUp } = await import('../server/production/antiFallEngine.js');
+  resetMemoryDb();
+  await seedPortalProjectsIfEmpty();
+  await updateMasterAutomationControl('owner_3', { globalEnabled: true, pauseAllExternalApis: false } as any);
+  const at = (iso: string) => Date.parse(iso);
+  assert.equal((await runDailyMarketingCatchUp({ budgetMs: 200_000, nowMs: at('2026-11-18T11:00:00Z') })).reason, 'fora_do_horario', '8h de Brasília');
+  assert.equal((await runDailyMarketingCatchUp({ budgetMs: 100_000, nowMs: at('2026-11-18T14:00:00Z') })).reason, 'sem_tempo_neste_ciclo');
+  const first = await runDailyMarketingCatchUp({ budgetMs: 200_000, nowMs: at('2026-11-18T14:00:00Z'), userId: 'owner_3' });
+  assert.equal(first.ran, true);
+  assert.ok((first.generatedCount || 0) > 0);
+  const second = await runDailyMarketingCatchUp({ budgetMs: 200_000, nowMs: at('2026-11-18T14:05:00Z'), userId: 'owner_3' });
+  assert.equal(second.reason, 'ja_concluido_hoje');
+});

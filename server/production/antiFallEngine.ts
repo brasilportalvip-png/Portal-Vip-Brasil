@@ -189,7 +189,11 @@ async function acquireDailyMarketingClaim(db: any, userId: string, projectId: st
     const current = snap.data() as any;
     if (current?.status === 'completed') return false;
     if (current?.status === 'processing' && Number(current?.lockedUntil || 0) > now) return false;
+    // A repescagem roda a cada 5 min: no máximo 3 tentativas por projeto por dia (não gasta IA à toa).
+    const attempts = Number(current?.attempts || 0);
+    if (attempts >= 3) return false;
     tx.set(ref, {
+      attempts: attempts + 1,
       id,
       kind: 'portal_daily_marketing',
       userId,
@@ -333,8 +337,8 @@ Responda em JSON com: "headline", "body", "cta", "hashtags", "keywords", "visual
         systemInstruction: 'Você é o Diretor de Marketing do Portal Vip Brasil. Nunca misture identidade, links, aplicativos ou características entre projetos.',
         jsonOutput: true,
         maxTokens: 2500,
-        // 2 s não dá para a IA escrever um post completo; o ciclo do dia tem ~30 s para todos em paralelo.
-        timeoutMs: 22_000,
+        // 2 s não dá para a IA escrever um post completo: até 120 s por projeto, todos em paralelo.
+        timeoutMs: 120_000,
         fallbackProject: project
       });
 
@@ -446,6 +450,12 @@ Responda em JSON com: "headline", "body", "cta", "hashtags", "keywords", "visual
     }
   }
 
+  if (!signal?.aborted && errors.length === 0) {
+    await db.collection(COLLECTIONS.systemSettings).doc(`daily_marketing_done_${todayDate}`)
+      .set({ date: todayDate, userId: targetUserId, generatedCount: itemsGenerated.length, skippedCount, completedAt: nowIso() }, { merge: true })
+      .catch(() => undefined);
+  }
+
   return {
     success: errors.length === 0,
     publishedCount: 0,
@@ -456,4 +466,31 @@ Responda em JSON com: "headline", "body", "cta", "hashtags", "keywords", "visual
     itemsGenerated,
     errors: errors.length ? errors : undefined
   };
+}
+
+
+/**
+ * Repescagem da divulgação diária pelo worker de 5 em 5 minutos (até 250 s por execução).
+ * A IA tem até 120 s por projeto; o ciclo das 10h da Vercel nem sempre tem esse tempo sobrando.
+ * Projetos já concluídos no dia são pulados (trava por projeto), então nunca duplica.
+ */
+export async function runDailyMarketingCatchUp(options: { budgetMs: number; nowMs?: number; userId?: string }): Promise<{ ran: boolean; reason?: string; generatedCount?: number; scheduledCount?: number }> {
+  const nowMs = options.nowMs ?? Date.now();
+  const br = new Date(nowMs - 3 * 3600_000);
+  const hour = br.getUTCHours();
+  if (hour < 10 || hour >= 22) return { ran: false, reason: 'fora_do_horario' };
+  if (options.budgetMs < 130_000) return { ran: false, reason: 'sem_tempo_neste_ciclo' };
+  // Mesma data usada pelo ciclo (runDailyPortalMarketingCycle) para gravar o 'concluído'.
+  const todayDate = new Date().toISOString().slice(0, 10);
+  const done = await firestore().collection(COLLECTIONS.systemSettings).doc(`daily_marketing_done_${todayDate}`).get().catch(() => null);
+  if (done && done.exists) return { ran: false, reason: 'ja_concluido_hoje' };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.budgetMs);
+  if (typeof (timer as any).unref === 'function') (timer as any).unref();
+  try {
+    const r = await runDailyPortalMarketingCycle({ userId: options.userId, signal: controller.signal });
+    return { ran: true, generatedCount: r.generatedCount, scheduledCount: r.scheduledCount };
+  } finally {
+    clearTimeout(timer);
+  }
 }
