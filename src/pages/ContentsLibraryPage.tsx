@@ -9,11 +9,14 @@ interface ContentsLibraryPageProps {
   companies: Company[];
   onRefreshContents: () => void | Promise<void>;
   onNavigate: (tab: string) => void;
+  /** Motivo quando a lista não carregou (antes a tela ficava vazia sem explicar). */
+  loadError?: string;
 }
 
 export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
   contentItems,
   companies,
+  loadError,
   onRefreshContents,
   onNavigate
 }) => {
@@ -110,7 +113,19 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
     });
   };
 
-  const copy = async (item: ContentItem) => {
+  // A lista traz o texto resumido nos itens longos; para copiar, busca o texto completo.
+  const fullItem = async (item: ContentItem): Promise<ContentItem> => {
+    if (!(item as any).bodyTruncated) return item;
+    try {
+      const data = await apiRequest<{ item: ContentItem }>(`/api/content/${encodeURIComponent(item.id)}`);
+      return data?.item || item;
+    } catch {
+      return item;
+    }
+  };
+
+  const copy = async (listed: ContentItem) => {
+    const item = await fullItem(listed);
     const text = [item.headline, item.body, item.cta, item.hashtags?.join(' ')].filter(Boolean).join('\n\n');
     try {
       if (!(await copyText(text))) throw new Error('copy');
@@ -187,6 +202,12 @@ export const ContentsLibraryPage: React.FC<ContentsLibraryPageProps> = ({
       </div>
 
       {error && <div role="alert" className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-200">{error}</div>}
+      {loadError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-200">
+          <span>{loadError}</span>
+          <button onClick={() => void onRefreshContents()} className="min-h-9 rounded-xl border border-amber-400/40 px-3 font-bold text-amber-100">Tentar de novo</button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-3 rounded-3xl border border-[#334155] bg-[#0F172A] p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_280px]">

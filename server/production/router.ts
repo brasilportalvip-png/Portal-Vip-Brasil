@@ -821,13 +821,47 @@ router.get('/portal/brand-dossiers/:id', asyncRoute(async (req, res) => {
 }));
 
 // Content library + calendar
+/**
+ * Item leve para listas: a Vercel recusa respostas acima de ~4,5 MB e a biblioteca cresce todo dia
+ * (artigos longos, imagens em base64). Sem isto a tela de Conteúdos ficava VAZIA.
+ */
+export const CONTENT_LIST_BODY_MAX = 4000;
+export function slimContentItem(item: any): any {
+  const { metadata, ...rest } = item || {};
+  const out: any = { ...rest };
+  if (typeof out.body === 'string' && out.body.length > CONTENT_LIST_BODY_MAX) {
+    out.body = `${out.body.slice(0, CONTENT_LIST_BODY_MAX)}…`;
+    out.bodyTruncated = true;
+  }
+  for (const key of ['imageUrl', 'thumbnailUrl', 'coverImageUrl']) {
+    if (typeof out[key] === 'string' && out[key].startsWith('data:')) out[key] = `/api/content/${encodeURIComponent(out.id)}/image?field=${key}`;
+  }
+  for (const key of ['visualPrompt', 'videoScript']) {
+    if (typeof out[key] === 'string' && out[key].length > 2000) out[key] = `${out[key].slice(0, 2000)}…`;
+  }
+  if (metadata && typeof metadata === 'object') {
+    out.metadata = {
+      brandingApplied: metadata.brandingApplied,
+      brandingReason: metadata.brandingReason,
+      imageDuplicateDetected: metadata.imageDuplicateDetected
+    };
+  }
+  return out;
+}
+
 router.get('/content', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   let query: any = firestore().collection(COLLECTIONS.contentItems).where('userId', '==', req.user!.id);
   if (req.query.companyId) query = query.where('companyId', '==', String(req.query.companyId));
-  const rawItems = queryData<any>(await query.get()).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
-  const items = rawItems.map(annotateLegacyImageRecord);
-  res.json({ contents: items, items });
+  const limit = Math.max(1, Math.min(1000, Number(req.query.limit) || 400));
+  const all = queryData<any>(await query.get()).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  let items = all.slice(0, limit).map((item) => slimContentItem(annotateLegacyImageRecord(item)));
+  // Garantia final de tamanho: corta os mais antigos até caber com folga.
+  while (items.length > 20 && Buffer.byteLength(JSON.stringify(items)) > 2_800_000) items = items.slice(0, Math.floor(items.length * 0.8));
+  // Antes a lista ia DUAS vezes (contents e items): o dobro do tamanho. Agora só items.
+  res.json({ items, total: all.length, returned: items.length });
 }));
+
+
 
 router.post('/content', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const title = safeString(req.body?.title, 500);
@@ -991,8 +1025,9 @@ router.get('/content/calendar', requireAuth, asyncRoute(async (req: Authenticate
   if (companyId) query = query.where('companyId', '==', companyId);
   const items = queryData<any>(await query.get());
   const annotatedScheduled = scheduled.map(annotateLegacyImageRecord);
-  const annotatedItems = items.map(annotateLegacyImageRecord);
-  res.json({ scheduled: annotatedScheduled, scheduledPosts: annotatedScheduled, items: annotatedItems, contents: annotatedItems });
+  // Mesma lista leve da biblioteca (o calendário também ficava grande demais para a Vercel).
+  const annotatedItems = items.sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 600).map((item: any) => slimContentItem(annotateLegacyImageRecord(item)));
+  res.json({ scheduled: annotatedScheduled, items: annotatedItems });
 }));
 
 router.post('/content/scheduled/:id/retry', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
@@ -1071,6 +1106,27 @@ router.post('/content/scheduled/:id/cancel', requireAuth, asyncRoute(async (req:
   res.json({ message: 'Agendamento cancelado com sucesso.' });
 }));
 
+router.get('/content/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const snap = await firestore().collection(COLLECTIONS.contentItems).doc(String(req.params.id)).get();
+  if (!snap.exists || snap.data()?.userId !== req.user!.id) return res.status(404).json({ error: 'Conteúdo não encontrado.' });
+  const item: any = { id: snap.id, ...snap.data() };
+  for (const key of ['imageUrl', 'thumbnailUrl', 'coverImageUrl']) {
+    if (typeof item[key] === 'string' && item[key].startsWith('data:')) item[key] = `/api/content/${encodeURIComponent(item.id)}/image?field=${key}`;
+  }
+  res.json({ item: annotateLegacyImageRecord(item) });
+}));
+
+// Imagem gravada em base64 no conteúdo (quando o Storage falhou): servida como arquivo, não dentro da lista.
+router.get('/content/:id/image', asyncRoute(async (req, res) => {
+  const field = ['imageUrl', 'thumbnailUrl', 'coverImageUrl'].includes(String(req.query.field)) ? String(req.query.field) : 'imageUrl';
+  const snap = await firestore().collection(COLLECTIONS.contentItems).doc(String(req.params.id)).get();
+  const value = snap.exists ? String(snap.data()?.[field] || '') : '';
+  const match = value.match(/^data:(image\/(?:png|jpe?g|webp|gif));base64,(.+)$/);
+  if (!match) return res.status(404).json({ error: 'Imagem não encontrada.' });
+  res.setHeader('Content-Type', match[1]);
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  res.send(Buffer.from(match[2], 'base64'));
+}));
 router.delete('/content/:id', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const ref = firestore().collection(COLLECTIONS.contentItems).doc(req.params.id);
   const snap = await ref.get();
