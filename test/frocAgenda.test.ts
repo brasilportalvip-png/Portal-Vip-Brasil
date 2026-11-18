@@ -100,3 +100,37 @@ test('Froc: listar agendadas mostra as PRÓXIMAS, não as de setembro', async ()
   const f = await runOwnerTool({ name: 'owner_tool', tool: 'list_scheduled', args: { status: 'published' } } as any, req);
   assert.match(f.summary, /Com status published \(20\)/);
 });
+
+test('Falha por saldo do Gemini esgotado vira instrução clara de recarga', async () => {
+  const { failureHint } = await import('../server/production/frocAgenda.js');
+  assert.match(failureHint('Your prepayment credits are depleted. Please go to AI Studio'), /saldo pré-pago da API do Gemini/);
+  assert.match(failureHint('credits depleted'), /aistudio\.google\.com/);
+  assert.equal(failureHint('Session has expired'), 'reconectar a conta em Redes Sociais');
+});
+
+test('Autopilot de hora em hora: roda 13h/15h/19h, não disputa com as 10h e não repete fora da janela', async () => {
+  const { runHourlyAutopilot } = await import('../server/production/autopilotHourly.js');
+  resetMemoryDb();
+  const db = firestore();
+  await db.collection(COLLECTIONS.autopilotConfigs).doc('u_proj_magia_crencas').set({ userId: 'u', companyId: 'proj_magia_crencas', enabled: true, preferredDays: [3], preferredHours: [10, 15, 19], timezone: 'America/Sao_Paulo' });
+  let calls = 0;
+  const fake = async () => { calls++; return { processed: 1, successCount: 1, failedCount: 0, skippedCount: 0, jobs: [] } as any; };
+  const at = (iso: string) => ({ process: fake as any, globalOn: async () => true, now: () => new Date(iso) });
+  // quarta 18/11 15h05 em Brasília = 18:05Z → roda
+  const r15 = await runHourlyAutopilot({ budgetMs: 120_000 }, at('2026-11-18T18:05:00Z'));
+  assert.equal(r15.ran, true); assert.equal(calls, 1);
+  // 15h40: fora da janela de 15 min
+  assert.equal((await runHourlyAutopilot({ budgetMs: 120_000 }, at('2026-11-18T18:40:00Z'))).reason, 'fora_da_janela_da_hora');
+  // 10h: é do ciclo diário da Vercel
+  assert.equal((await runHourlyAutopilot({ budgetMs: 120_000 }, at('2026-11-18T13:05:00Z'))).reason, 'horario_do_ciclo_diario');
+  // 14h: ninguém tem horário
+  assert.equal((await runHourlyAutopilot({ budgetMs: 120_000 }, at('2026-11-18T17:05:00Z'))).reason, 'nenhum_projeto_neste_horario');
+  // quinta não está nos dias
+  assert.equal((await runHourlyAutopilot({ budgetMs: 120_000 }, at('2026-11-19T22:05:00Z'))).reason, 'nenhum_projeto_neste_horario');
+  // Botão Mestre desligado
+  assert.equal((await runHourlyAutopilot({ budgetMs: 120_000 }, { ...at('2026-11-18T22:05:00Z'), globalOn: async () => false })).reason, 'botao_mestre_desligado');
+  // Ciclo diário rodando: não entra
+  await db.collection(COLLECTIONS.schedulerLocks).doc('process').set({ lockedUntil: Date.now() + 60_000 });
+  assert.equal((await runHourlyAutopilot({ budgetMs: 120_000 }, at('2026-11-18T22:05:00Z'))).reason, 'ciclo_diario_rodando');
+  assert.equal(calls, 1);
+});

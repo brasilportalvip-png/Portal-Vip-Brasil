@@ -78,6 +78,7 @@ export function normalizeFailureReason(raw: unknown): string {
 /** O que fazer para cada tipo de falha (em linguagem simples). */
 export function failureHint(reason: string): string {
   const r = reason.toLowerCase();
+  if (/prepayment|credits? (are )?depleted|billing|402\b|saldo/.test(r)) return 'acabou o saldo pré-pago da API do Gemini (Google AI Studio): recarregar em aistudio.google.com, em Billing do projeto da chave usada no Portal';
   if (/token|expir|session|oauth|code 190|invalid.*access|reconect/.test(r)) return 'reconectar a conta em Redes Sociais';
   if (/permiss|#10\b|#200\b|pages_|instagram_content_publish|not authorized|nao autoriz|não autoriz/.test(r)) return 'reconectar aceitando todas as permissões pedidas';
   if (/nenhuma conta|not connected|sem conex|nao conectad|não conectad|no connection|conta .*desconect/.test(r)) return 'conectar a conta dessa rede no projeto';
@@ -142,7 +143,10 @@ export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; pr
     const dayIso = new Date(startMs + i * 86400_000 + 12 * 3600_000).toISOString().slice(0, 10);
     const weekday = new Date(`${dayIso}T12:00:00Z`).getUTCDay();
     for (const c of configs) {
-      const prefDays = Array.isArray(c.preferredDays) && c.preferredDays.length ? c.preferredDays : [1, 2, 3, 4, 5];
+      // Mesma regra do Autopilot (isDue): sem dias escolhidos, a frequência decide.
+      const prefDays = Array.isArray(c.preferredDays) && c.preferredDays.length
+        ? c.preferredDays
+        : (c.frequency === 'daily' || !c.frequency) ? [0, 1, 2, 3, 4, 5, 6] : c.frequency === '3_times_week' ? [1, 3, 5] : [1];
       if (!prefDays.includes(weekday)) continue;
       previsto.push({ projeto: nameOf(c.companyId), dia: dayIso, horas: Array.isArray(c.preferredHours) && c.preferredHours.length ? c.preferredHours : [10], canais: Array.isArray(c.targetPlatforms) ? c.targetPlatforms : [] });
     }
