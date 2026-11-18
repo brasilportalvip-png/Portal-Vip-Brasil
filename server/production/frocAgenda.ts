@@ -25,7 +25,8 @@ export interface OwnerAgenda {
   periodo: { de: string; ate: string; dias: number; agora: string };
   publicacoes: { total: number; porStatus: Record<string, number>; itens: AgendaPost[] };
   atrasadas: { total: number; itens: AgendaPost[] };
-  falhasRecentes: { total: number; itens: AgendaPost[] };
+  falhasRecentes: { total: number; itens: AgendaPost[]; motivos: Array<{ motivo: string; quantidade: number; redes: string[]; ultima: string; oQueFazer: string }> };
+  falhasHistorico: { total: number; maisDeDoisDias: number; motivos: Array<{ motivo: string; quantidade: number; redes: string[]; ultima: string; oQueFazer: string }> };
   totalGeral: { total: number; porStatus: Record<string, number>; proxima: AgendaPost | null; ultimaPublicada: AgendaPost | null };
   automacao: { projetosLigados: number; previstoNoPeriodo: Array<{ projeto: string; dia: string; horas: number[]; canais: string[] }> };
   blog: { publicadosNoPeriodo: Array<{ titulo: string; projeto: string; quando: string }> };
@@ -68,6 +69,24 @@ function count(map: Record<string, number>, key: string) {
   map[key] = (map[key] || 0) + 1;
 }
 
+/** Tira ids, números e links do erro para agrupar falhas iguais. */
+export function normalizeFailureReason(raw: unknown): string {
+  const text = String(raw || '').replace(/https?:\/\/\S+/g, '').replace(/\b[0-9a-f]{12,}\b/gi, '#').replace(/\d{3,}/g, '#').replace(/\s+/g, ' ').trim();
+  return text.slice(0, 140) || 'sem motivo registrado';
+}
+
+/** O que fazer para cada tipo de falha (em linguagem simples). */
+export function failureHint(reason: string): string {
+  const r = reason.toLowerCase();
+  if (/token|expir|session|oauth|code 190|invalid.*access|reconect/.test(r)) return 'reconectar a conta em Redes Sociais';
+  if (/permiss|#10\b|#200\b|pages_|instagram_content_publish|not authorized|nao autoriz|não autoriz/.test(r)) return 'reconectar aceitando todas as permissões pedidas';
+  if (/nenhuma conta|not connected|sem conex|nao conectad|não conectad|no connection|conta .*desconect/.test(r)) return 'conectar a conta dessa rede no projeto';
+  if (/media|mídia|imagem|image|video|vídeo|aspect|format|resolu|duration|duração/.test(r)) return 'formato de mídia não aceito pela rede (tamanho, proporção ou tipo)';
+  if (/rate|limit|too many|429|quota/.test(r)) return 'limite da rede: tentar mais tarde';
+  if (/timeout|timed out|econn|network|fetch failed|503|502|500/.test(r)) return 'falha temporária da rede: pode tentar de novo';
+  return 'ver o detalhe do erro';
+}
+
 export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; projectId?: string; nowMs?: number } = {}): Promise<OwnerAgenda> {
   const nowMs = opts.nowMs ?? Date.now();
   const day = resolveAgendaDay(opts.day, nowMs);
@@ -90,7 +109,7 @@ export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; pr
     titulo: String(p.title || p.caption || contentTitles.get(String(p.contentItemId)) || p.contentItemId || '').replace(/\s+/g, ' ').slice(0, 90),
     plataformas: Array.isArray(p.platforms) ? p.platforms.map(String) : [],
     status: String(p.status || 'desconhecido'),
-    ...(p.lastError || p.error || p.errorMessage ? { erro: String(p.lastError || p.error || p.errorMessage).slice(0, 160) } : {})
+    ...(p.errorMessage || p.lastError || p.error ? { erro: String(p.errorMessage || p.lastError || p.error).slice(0, 160) } : {})
   });
 
   const all = (await db.collection(COLLECTIONS.scheduledPosts).limit(5000).get()).docs.map((d: any) => ({ id: d.id, ...d.data() }))
@@ -150,6 +169,26 @@ export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; pr
     .slice(0, 15)
     .map((j: any) => ({ titulo: String(j.title || j.prompt || '').slice(0, 80), projeto: nameOf(j.companyId), status: String(j.status), desde: brTime(j.createdAt || '') }));
 
+  // Motivos das falhas agrupados (últimos 7 dias e histórico), com o que fazer.
+  const groupReasons = (list: any[]) => {
+    const map = new Map<string, { motivo: string; quantidade: number; redes: Set<string>; ultima: string }>();
+    for (const p of list) {
+      const motivo = normalizeFailureReason(p.errorMessage || p.lastError || p.error);
+      const item = map.get(motivo) || { motivo, quantidade: 0, redes: new Set<string>(), ultima: '' };
+      item.quantidade++;
+      for (const pl of Array.isArray(p.platforms) ? p.platforms : []) item.redes.add(String(pl));
+      const when = String(p.updatedAt || p.scheduledFor || '');
+      if (when > item.ultima) item.ultima = when;
+      map.set(motivo, item);
+    }
+    return [...map.values()].sort((a, b) => b.quantidade - a.quantidade).slice(0, 8)
+      .map((m) => ({ motivo: m.motivo, quantidade: m.quantidade, redes: [...m.redes], ultima: brTime(m.ultima), oQueFazer: failureHint(m.motivo) }));
+  };
+  const allFailed = all.filter((p: any) => String(p.status) === 'failed');
+  const motivosRecentes = groupReasons(failed);
+  const motivosHistorico = groupReasons(allFailed);
+  const failedOld = allFailed.filter((p: any) => Date.parse(p.scheduledFor) < nowMs - 2 * 86400_000).length;
+
   const itens = inWindow.sort(byTime).slice(0, 40).map(toPost);
   const atrasadas = overdue.sort(byTime);
   const label = days === 1 ? `o dia ${day.slice(8, 10)}/${day.slice(5, 7)}` : `${days} dias a partir de ${day.slice(8, 10)}/${day.slice(5, 7)}`;
@@ -158,7 +197,8 @@ export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; pr
     `Agenda para ${label}: ${inWindow.length} publicação(ões) (${st(statusWindow)}).`,
     itens.length ? `Itens: ${itens.slice(0, 15).map((p) => `${p.hora} ${p.projeto} "${p.titulo}" em ${p.plataformas.join('/') || '—'} [${p.status}]`).join('; ')}.` : 'Nenhuma publicação marcada nesse período.',
     atrasadas.length ? `ATRASADAS (horário já passou e não saíram): ${atrasadas.length}; as mais recentes: ${atrasadas.slice(-5).map(toPost).map((p) => `${p.hora} ${p.projeto} [${p.status}]${p.erro ? ` erro: ${p.erro}` : ''}`).join('; ')}.` : 'Nada atrasado.',
-    failed.length ? `Falhas nos últimos 7 dias: ${failed.length}.` : '',
+    failed.length ? `Falhas nos últimos 7 dias: ${failed.length}. Motivos: ${motivosRecentes.map((m) => `${m.quantidade}x "${m.motivo}" (${m.redes.join('/') || 'rede?'}, última ${m.ultima}) → ${m.oQueFazer}`).join('; ')}.` : '',
+    allFailed.length ? `Falhas no histórico inteiro: ${allFailed.length} (${failedOld} com mais de 2 dias: são posts velhos, NÃO devem ser republicados em massa). Principais motivos: ${motivosHistorico.slice(0, 4).map((m) => `${m.quantidade}x "${m.motivo}" → ${m.oQueFazer}`).join('; ')}.` : '',
     `Total no sistema: ${all.length} (${st(statusAll)}). Próxima: ${upcoming ? `${toPost(upcoming).hora} ${toPost(upcoming).projeto}` : 'nenhuma'}. Última publicada: ${lastPublished ? `${brTime(lastPublished.publishedAt || lastPublished.updatedAt || lastPublished.scheduledFor)} ${nameOf(lastPublished.companyId)}` : 'nenhuma'}.`,
     `Automação: ${configs.length} projeto(s) ligado(s)${previsto.length ? `; previsto: ${previsto.slice(0, 12).map((a) => `${a.projeto} às ${a.horas.join('h, ')}h`).join('; ')}` : '; nada previsto no período'}.`,
     blog.length ? `Blog publicado no período: ${blog.map((b) => `"${b.titulo}" (${b.projeto})`).join('; ')}.` : 'Nenhum artigo do blog publicado no período ainda.',
@@ -170,7 +210,8 @@ export async function buildOwnerAgenda(opts: { day?: unknown; days?: unknown; pr
     periodo: { de: new Date(startMs).toISOString(), ate: new Date(endMs).toISOString(), dias: days, agora: new Date(nowMs).toISOString() },
     publicacoes: { total: inWindow.length, porStatus: statusWindow, itens },
     atrasadas: { total: atrasadas.length, itens: atrasadas.slice(-20).map(toPost) },
-    falhasRecentes: { total: failed.length, itens: failed.slice(-10).map(toPost) },
+    falhasRecentes: { total: failed.length, itens: failed.slice(-10).map(toPost), motivos: motivosRecentes },
+    falhasHistorico: { total: allFailed.length, maisDeDoisDias: failedOld, motivos: motivosHistorico },
     totalGeral: { total: all.length, porStatus: statusAll, proxima: upcoming ? toPost(upcoming) : null, ultimaPublicada: lastPublished ? toPost(lastPublished) : null },
     automacao: { projetosLigados: configs.length, previstoNoPeriodo: previsto },
     blog: { publicadosNoPeriodo: blog },

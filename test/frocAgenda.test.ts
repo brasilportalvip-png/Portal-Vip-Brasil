@@ -28,6 +28,8 @@ test('Agenda de hoje: separa o que sai hoje, o que atrasou, falhas, automação,
   await sp.doc('hoje_2').set({ id: 'hoje_2', userId: 'u', companyId: 'proj_magia_crencas', scheduledFor: '2026-11-18T21:30:00.000Z', status: 'pending', platforms: ['tiktok'], title: 'Oração da noite' });
   await sp.doc('atrasada').set({ id: 'atrasada', userId: 'u', companyId: 'proj_manual_catolico', scheduledFor: '2026-11-18T11:00:00.000Z', status: 'pending', platforms: ['instagram'], title: 'Santo do dia' });
   await sp.doc('falhou').set({ id: 'falhou', userId: 'u', companyId: 'proj_oraculos_ts', scheduledFor: '2026-11-17T13:00:00.000Z', updatedAt: '2026-11-17T13:01:00.000Z', status: 'failed', platforms: ['instagram'], title: 'Tarot', lastError: 'Token do Instagram expirou' });
+  await sp.doc('falhou2').set({ id: 'falhou2', userId: 'u', companyId: 'proj_exu_responde', scheduledFor: '2026-11-16T13:00:00.000Z', updatedAt: '2026-11-16T13:01:00.000Z', status: 'failed', platforms: ['facebook'], errorMessage: 'Token do Instagram expirou' });
+  await sp.doc('velha').set({ id: 'velha', userId: 'u', companyId: 'proj_exu_responde', scheduledFor: '2026-09-10T13:00:00.000Z', updatedAt: '2026-09-10T13:01:00.000Z', status: 'failed', platforms: ['instagram'], errorMessage: '(#10) Application does not have permission for this action 123456789' });
   await sp.doc('amanha').set({ id: 'amanha', userId: 'u', companyId: 'proj_exu_responde', scheduledFor: '2026-11-19T13:00:00.000Z', status: 'scheduled', platforms: ['instagram'], title: 'Amanhã' });
   // 00h30 de 19/11 em Brasília ainda NÃO é hoje (é 03:30Z do dia 19)
   await sp.doc('madrugada').set({ id: 'madrugada', userId: 'u', companyId: 'proj_exu_responde', scheduledFor: '2026-11-19T03:30:00.000Z', status: 'scheduled', platforms: ['instagram'], title: 'Madrugada' });
@@ -43,9 +45,15 @@ test('Agenda de hoje: separa o que sai hoje, o que atrasou, falhas, automação,
   assert.equal(a.publicacoes.itens[1].projeto, 'Exu Responde');
   assert.equal(a.atrasadas.total, 1);
   assert.equal(a.atrasadas.itens[0].id, 'atrasada');
-  assert.equal(a.falhasRecentes.total, 1);
+  assert.equal(a.falhasRecentes.total, 2);
+  assert.equal(a.falhasRecentes.motivos[0].quantidade, 2);
+  assert.equal(a.falhasRecentes.motivos[0].oQueFazer, 'reconectar a conta em Redes Sociais');
+  assert.equal(a.falhasHistorico.total, 3);
+  assert.equal(a.falhasHistorico.maisDeDoisDias, 1);
+  assert.ok(a.falhasHistorico.motivos.some((m) => m.oQueFazer.includes('permissões') && !/\d{5}/.test(m.motivo)));
+  assert.match(a.resumo, /NÃO devem ser republicados/);
   assert.match(a.resumo, /Token do Instagram expirou|Falhas nos últimos 7 dias: 1/);
-  assert.equal(a.totalGeral.total, 566);
+  assert.equal(a.totalGeral.total, 568);
   assert.equal(a.totalGeral.proxima?.id, 'hoje_1');
   assert.deepEqual(a.automacao.previstoNoPeriodo.map((x) => x.projeto), ['Exu Responde'], 'quarta-feira: só quem tem dia 3');
   assert.equal(a.blog.publicadosNoPeriodo.length, 1);
@@ -71,6 +79,8 @@ test('Froc: ferramenta de agenda existe, aceita dia/dias e o prompt manda usá-l
   const prompt = buildFrocSystemPrompt({ mode: 'owner', nowMs: NOW, ownerName: 'Flavio', projects: [] });
   assert.match(prompt, /use agenda/);
   assert.match(prompt, /Não diga que não consegue filtrar por data/);
+  assert.match(prompt, /Nunca ofereça reenviar tudo/);
+  assert.match(prompt, /NÃO reenvia o que falhou/);
 });
 
 test('Froc: listar agendadas mostra as PRÓXIMAS, não as de setembro', async () => {
