@@ -15,7 +15,6 @@
 | 1 | CI / Smoke pós-merge | O "Production Smoke After Merge" **falhava em todo merge** (PRs #72, #73, #74 e #75). Ele exigia `socialRepurpose.twitter.thread`, mas o X foi retirado do produto e outro teste (`finalCommittee`) exige justamente que o `twitter` **não** exista. | O smoke valida o contrato atual: sem X, com Instagram e Kwai. |
 | 2 | Redes sociais | Todos os projetos usam **a mesma conta** em cada rede. Com mais de 10 projetos postando no mesmo dia, o LinkedIn bloqueava por limite de compartilhamento (53 falhas), o TikTok marcava risco de spam (13 falhas) e o YouTube estourava o limite de envio. | Teto diário por conta: LinkedIn 4, TikTok 3 e YouTube 5, ajustável por `SOCIAL_DAILY_CAP_*`. O excedente, ou a rede que responde "limite/spam", é **adiado uma vez para o dia seguinte**, em horário espalhado entre 11h e 18h. As redes que já publicaram nunca são reenviadas. Na segunda vez, a rede não é chamada, para proteger a conta. |
 | 3 | Imagens com IA | O `gemini-3.1-flash-image` (modelo padrão) foi **desligado pelo Google em 29/10/2026**. Toda imagem gastava uma chamada que falhava antes de cair no modelo Lite, de qualidade menor. | O padrão passa a ser o `gemini-nano-banana-2.1`, substituto oficial. Um modelo antigo configurado na Vercel é trocado automaticamente pelo substituto. |
-| 4 | Voz do Froc | O `gemini-3.1-flash-tts-preview` foi **desligado em 17/11/2026**: o Froc ficou sem voz neural. | O Froc tenta o `gemini-3.8-flash-tts` e, se ele falhar, o `gemini-3.8-flash-lite-tts`. Um modelo antigo configurado em `GEMINI_TTS_MODEL` é ignorado. |
 | 5 | Visão e Alma | Chamadas fixas ao `gemini-3.7-flash`, substituído pelo 3.8. | Passam a usar o modelo de texto configurado (`gemini-3.8-flash`). |
 | 6 | Anti-queda da IA | O último recurso chamava `gemini-3.1-pro`, um modelo que não existe, desperdiçando uma tentativa. | Troca por `gemini-3.6-flash`. |
 | 7 | Instagram / Facebook / TikTok | Quando o Storage falha, a imagem do conteúdo fica salva como `data:` URI. As redes **não aceitam** esse formato (precisam de uma URL pública), então a publicação falhava. Caminhos relativos também quebravam. | Antes do envio, a mídia vira URL pública: o endpoint `/api/content/:id/image` ou a URL absoluta do Portal. |
@@ -42,5 +41,7 @@ Os workflows do GitHub continuam ativos como reserva. A trava de execução impe
 
 ## Ajustes opcionais na Vercel
 
-- `GEMINI_MODEL_IMAGE` e `GEMINI_TTS_MODEL`: se estiverem preenchidos com modelos antigos, podem ser apagados. O código já troca pelo substituto sozinho.
+- `GEMINI_MODEL_IMAGE`: se estiver preenchido com um modelo antigo, pode ser apagado. O código já troca pelo substituto sozinho.
+
+> Voz do Froc: a troca do modelo de voz feita nesta rodada foi **desfeita a pedido do proprietário**. A voz voltou a ser exatamente como era antes (PR de reversão).
 - `SOCIAL_DAILY_CAP_LINKEDIN`, `SOCIAL_DAILY_CAP_TIKTOK` e `SOCIAL_DAILY_CAP_YOUTUBE`: só se quiser mudar os tetos (padrão 4, 3 e 5).

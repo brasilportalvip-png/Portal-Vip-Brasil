@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { frocTtsModelCandidates } from '../server/production/frocSpeech.js';
 import { publicMediaUrl } from '../server/production/socialMediaPublisher.js';
 import { config } from '../server/config/index.js';
 
@@ -42,12 +41,6 @@ test('Rodada 2: nenhum código chama gemini-3.7-flash nem o alias inexistente ge
     assert.ok(!code.includes("model: 'gemini-3.7-flash'"), `${file} ainda chama gemini-3.7-flash`);
     assert.ok(!code.includes("'gemini-3.1-pro'"), `${file} ainda usa gemini-3.1-pro`);
   }
-});
-
-test('Rodada 2: voz do Froc troca o TTS preview desligado pelos substitutos oficiais', () => {
-  assert.deepEqual(frocTtsModelCandidates(undefined), ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts']);
-  assert.deepEqual(frocTtsModelCandidates('gemini-3.1-flash-tts-preview'), ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts']);
-  assert.deepEqual(frocTtsModelCandidates('modelo-custom-tts'), ['modelo-custom-tts', 'gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts']);
 });
 
 // ---------------------------------------------------------------------------
