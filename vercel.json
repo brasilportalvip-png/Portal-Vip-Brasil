@@ -93,7 +93,7 @@
       "dest": "/api/index.ts"
     },
     {
-      "src": "^/(?:dashboard|projetos|froc-ia|autopilot|criar-conteudo|criar-imagem|criar-video|criar-artigo|seo|campanhas|calendario|redes-sociais|conteudos|analytics|perfil|configuracoes|suporte|admin)/?$",
+      "src": "^/(?:dashboard|projetos|froc-ia|autopilot|criar-conteudo|criar-imagem|criar-video|criar-artigo|seo|campanhas|calendario|redes-sociais|conteudos|analytics|perfil|configuracoes|suporte|agentes|admin)/?$",
       "dest": "/api/index.ts"
     },
     {

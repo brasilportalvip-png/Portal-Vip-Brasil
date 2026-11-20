@@ -303,6 +303,11 @@ export function App() {
           if (!isApiAbortError(err)) {
             console.error('Falha de inicialização:', err);
             resetSessionState();
+            // Sessão recusada pela API (expirada ou conta sem permissão): encerra o login
+            // do Firebase para não ficar preso em uma sessão "meio logada" a cada recarga.
+            if (err instanceof ApiRequestError && (err.status === 401 || err.status === 403)) {
+              await signOut(auth).catch(() => undefined);
+            }
           }
         }
       } else {
@@ -347,10 +352,35 @@ export function App() {
       ? 'dashboard'
       : currentTab;
 
+  // Campanhas e agendamentos alimentam o Painel, Analytics, Campanhas e Calendário:
+  // carregados assim que a sessão é confirmada (antes ficavam vazios até uma ação manual).
+  const userId = user?.id || null;
+  useEffect(() => {
+    if (!userId) return;
+    void refreshCampaigns();
+    void refreshSchedule();
+  }, [userId, refreshCampaigns, refreshSchedule]);
+
   useEffect(() => {
     if (guardedTab !== 'conteudos' || !user) return;
     void refreshContents();
   }, [guardedTab, refreshContents, user]);
+
+  // Ao abrir uma tela, os dados dela são atualizados (o Calendário também precisa da lista
+  // de conteúdos para o seletor de agendamento).
+  useEffect(() => {
+    if (!user) return;
+    if (guardedTab === 'calendario') void refreshContents();
+    if (guardedTab === 'calendario' || guardedTab === 'analytics') void refreshSchedule();
+    if (guardedTab === 'campanhas' || guardedTab === 'analytics') void refreshCampaigns();
+  }, [guardedTab, refreshContents, refreshSchedule, refreshCampaigns, user]);
+
+  // Link direto para uma área privada sem sessão: abre o login e volta para a mesma tela.
+  useEffect(() => {
+    if (loading || user || !isPrivateTab(currentTab)) return;
+    pendingTabRef.current = currentTab;
+    setAuthOpen(true);
+  }, [loading, user, currentTab]);
 
   const needsTermsConsent = Boolean(
     user && (
@@ -401,6 +431,19 @@ export function App() {
       <TermsConsentModal isOpen={needsTermsConsent} onConsentSuccess={authSuccess} onLogout={logout} />
     </div>
   );
+
+  // Enquanto o Firebase restaura a sessão, uma rota privada mostra carregamento
+  // (antes piscava a tela inicial e depois trocava para a página pedida).
+  if (loading && isPrivateTab(currentTab)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#070B14] text-slate-300" role="status" aria-live="polite">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-500/30 border-t-cyan-400" />
+          <span className="text-xs font-semibold tracking-wide">Carregando o painel…</span>
+        </div>
+      </div>
+    );
+  }
 
   // Tela inicial = conversa com o Froc (o blog continua em /blog)
   if (guardedTab === 'home') {
