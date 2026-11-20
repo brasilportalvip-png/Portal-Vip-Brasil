@@ -89,6 +89,12 @@ function tokenHasAdminClaim(token: DecodedIdToken): boolean {
 }
 
 function isConfiguredPortalAdmin(token: DecodedIdToken): boolean {
+  // O e-mail só vale como prova de identidade quando o Firebase confirmou a posse
+  // (email_verified). Sem isso, qualquer conta criada com o endereço do proprietário
+  // ainda não verificado receberia papel de administrador. O proprietário que já tem
+  // custom claims continua com acesso; um e-mail não verificado se confirma pelo
+  // fluxo "Esqueci minha senha" (o Firebase marca o e-mail como verificado).
+  if (token.email_verified !== true) return false;
   const email = normalizeEmail(token.email);
   return Boolean(email && config.privateAdminEmails.includes(email));
 }

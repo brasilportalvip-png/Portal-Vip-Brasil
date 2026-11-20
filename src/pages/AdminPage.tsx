@@ -205,7 +205,21 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
     setLoading(true);
     setFeedback('');
     try {
-      await Promise.all([loadOverview(), loadTickets(), loadBlog(), loadProjects(), loadSchedulerDiagnostics()]);
+      // Cada bloco carrega de forma independente: uma falha não esvazia o painel inteiro.
+      const sections: Array<[string, () => Promise<void>]> = [
+        ['visão geral', loadOverview],
+        ['chamados', loadTickets],
+        ['blog', loadBlog],
+        ['projetos', loadProjects],
+        ['diagnóstico do agendador', loadSchedulerDiagnostics]
+      ];
+      const results = await Promise.allSettled(sections.map(([, load]) => load()));
+      const failed = results
+        .map((result, index) => result.status === 'rejected'
+          ? `${sections[index][0]}: ${(result.reason as any)?.message || 'falha desconhecida'}`
+          : null)
+        .filter(Boolean);
+      if (failed.length) setFeedback(`Não foi possível carregar — ${failed.join(' · ')}`);
     } catch (err: any) {
       setFeedback(err.message || 'Falha ao carregar administração.');
     } finally {
@@ -253,6 +267,7 @@ export const AdminPage:React.FC<AdminPageProps>=({onProjectsChanged})=>{
     catch (err: any) { setFeedback(err.message || 'Falha ao publicar artigo.'); }
   };
   const archive = async (post: BlogPost) => {
+    if (!window.confirm(`Arquivar o artigo “${post.title}”? Ele sai do blog público e do sitemap.`)) return;
     try { await apiRequest(`/api/admin/blog/${post.id}`, { method: 'PATCH', body: { status: 'archived' } }); await loadBlog(); }
     catch (err: any) { setFeedback(err.message || 'Falha ao arquivar artigo.'); }
   };

@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { getAdminAuth, getAdminStorage } from '../providers/firebaseAdmin.js';
 import { config } from '../config/index.js';
@@ -62,6 +63,15 @@ import { redoTodayMissingPublications } from './redoToday.js';
 import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { inventoryAllArticlesFailClosed, recoverArticleBatch } from './articleRecoveryEngine.js';
 import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap, querySearchAnalytics } from './googleSearchConsole.js';
+
+
+/** Comparação de segredos em tempo constante (evita ataque de temporização). */
+function constantTimeEquals(actual: string, expected: string): boolean {
+  const a = Buffer.from(String(actual || ''), 'utf8');
+  const b = Buffer.from(String(expected || ''), 'utf8');
+  if (!a.length || !b.length || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
 
 const router = Router();
 
@@ -357,7 +367,7 @@ router.post('/auth/bootstrap-admin', requireAuth, asyncRoute(async (req: Authent
   if (!config.adminBootstrap.enabled || !config.adminBootstrap.key) {
     return res.status(403).json({ error: 'Recurso de bootstrap de administrador desabilitado.' });
   }
-  if (safeString(req.body?.secretKey, 500) !== config.adminBootstrap.key) {
+  if (!constantTimeEquals(safeString(req.body?.secretKey, 500), config.adminBootstrap.key)) {
     return res.status(403).json({ error: 'Chave de bootstrap inválida.' });
   }
   await getAdminAuth().setCustomUserClaims(req.user!.id, { role: 'admin', frocRole: 'admin' });
@@ -1883,16 +1893,12 @@ router.delete('/admin/blog/:id', requireAdmin, asyncRoute(async (req: Authentica
 
 // Scheduler.
 router.get('/cron/health', asyncRoute(async (req, res) => {
-  const auth = String(req.headers.authorization || '');
-  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
-  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
   res.json(await getSchedulerHealth());
 }));
 
 router.get('/cron/process', asyncRoute(async (req, res) => {
-  const auth = String(req.headers.authorization || '');
-  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
-  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
 
   const userAgent = String(req.headers['user-agent'] || '');
   const trigger = /vercel-cron\/1\.0/i.test(userAgent)
@@ -1902,9 +1908,7 @@ router.get('/cron/process', asyncRoute(async (req, res) => {
 }));
 
 router.post('/cron/process', asyncRoute(async (req, res) => {
-  const auth = String(req.headers.authorization || '');
-  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
-  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
 
   const userAgent = String(req.headers['user-agent'] || '');
   const trigger = /vercel-cron\/1\.0/i.test(userAgent)
@@ -1915,16 +1919,12 @@ router.post('/cron/process', asyncRoute(async (req, res) => {
 
 // Compatibilidade com integrações antigas: ambas as rotas usam o mesmo coordenador e o mesmo lock.
 router.get('/cron/social', asyncRoute(async (req, res) => {
-  const auth = String(req.headers.authorization || '');
-  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
-  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
   res.json(await processSchedulerTick());
 }));
 
 router.post('/cron/social', asyncRoute(async (req, res) => {
-  const auth = String(req.headers.authorization || '');
-  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
-  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
+  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
   res.json(await processSchedulerTick());
 }));
 

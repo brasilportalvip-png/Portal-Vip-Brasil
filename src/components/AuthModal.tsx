@@ -21,7 +21,11 @@ export const AuthModal: React.FC<Props> = ({ isOpen, onClose, onSuccess }) => {
 
   const friendlyError = (err:any) => {
     const code = String(err?.code || '').toLowerCase();
-    if (code.includes('invalid-credential')) return 'E-mail ou senha inválidos.';
+    if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) return 'E-mail ou senha inválidos.';
+    if (code.includes('invalid-email')) return 'E-mail inválido. Confira o endereço digitado.';
+    if (code.includes('user-disabled')) return 'Esta conta foi desativada. Fale com o suporte.';
+    if (code.includes('network-request-failed')) return 'Sem conexão com a internet. Verifique a rede e tente novamente.';
+    if (code.includes('missing-password')) return 'Informe a senha.';
     if (code.includes('too-many-requests')) return 'Muitas tentativas. Aguarde e tente novamente.';
     if (String(err?.message || '').includes('Acesso administrativo')) return 'Acesso restrito ao administrador do Portal Vip Brasil.';
     return err?.message || 'Não foi possível concluir a autenticação.';

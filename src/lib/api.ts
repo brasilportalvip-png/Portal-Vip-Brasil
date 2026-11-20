@@ -161,7 +161,12 @@ async function parseResponse(response: Response): Promise<any> {
   const text = await readResponseText(response);
   if (!text) return {};
   const contentType = response.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('json')) return { message: text };
+  if (!contentType.toLowerCase().includes('json')) {
+    // Páginas HTML de erro da plataforma (502/504 da Vercel, por exemplo) não viram mensagem
+    // para o usuário: o chamador usa o texto amigável padrão para o status HTTP.
+    if (/^\s*</.test(text) || contentType.toLowerCase().includes('html')) return {};
+    return { message: text.slice(0, 500) };
+  }
 
   try {
     return JSON.parse(text);
@@ -313,7 +318,7 @@ export async function apiRequest<T = any>(
     return data as T;
   } catch (error: any) {
     if (timedOut) {
-      throw new Error('A operação demorou mais que o limite permitido (240s). O processamento de mídia ou publicação pode ter continuado no servidor.');
+      throw new Error(`A operação demorou mais que o limite permitido (${Math.round(timeoutMs / 1000)}s). O processamento de mídia ou publicação pode ter continuado no servidor.`);
     }
     if (controller.signal.aborted || error?.name === 'AbortError') throw createAbortError();
     throw error;
