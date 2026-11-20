@@ -26,7 +26,7 @@ export interface AntiFallResult {
 const ANTI_FALL_MODELS = [
   { model: 'gemini-3.8-flash', tier: '3.6' as const, fallbackAlias: 'gemini-3.1-flash-lite' },
   { model: 'gemini-3.1-flash-lite', tier: '3.5' as const, fallbackAlias: 'gemini-3.1-pro-preview' },
-  { model: 'gemini-3.1-pro-preview', tier: '3.7' as const, fallbackAlias: 'gemini-3.1-pro' }
+  { model: 'gemini-3.1-pro-preview', tier: '3.7' as const, fallbackAlias: 'gemini-3.6-flash' }
 ];
 
 export async function executeAiWith2SecAntiFall(data: {

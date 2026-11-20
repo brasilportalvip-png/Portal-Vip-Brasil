@@ -26,6 +26,7 @@ export interface ScheduledProviderOptions {
 }
 
 export interface ScheduledContentLike {
+  id?: string;
   title?: string;
   headline?: string;
   body?: string;
@@ -327,6 +328,23 @@ export function validateScheduledContentForProvider(
     return `${normalized} exige texto, imagem ou vídeo para publicação.`;
   }
   return null;
+}
+
+/**
+ * As redes (Meta, LinkedIn, TikTok) buscam a mídia por URL pública.
+ * - imagem salva como data: URI (quando o Storage falhou) vira o endpoint público /api/content/:id/image;
+ * - caminho relativo (/api/..., /icons/...) vira URL absoluta do Portal.
+ */
+export function publicMediaUrl(value: unknown, contentId: string | undefined, field: 'imageUrl' | 'videoUrl'): string | undefined {
+  const raw = String(value || '').trim();
+  if (!raw) return undefined;
+  const base = config.appUrl.replace(/\/$/, '');
+  if (raw.startsWith('data:')) {
+    if (field !== 'imageUrl' || !contentId) return undefined;
+    return `${base}/api/content/${encodeURIComponent(contentId)}/image?field=imageUrl`;
+  }
+  if (raw.startsWith('/') && !raw.startsWith('//')) return `${base}${raw}`;
+  return raw;
 }
 
 function buildText(content: ScheduledContentLike): string {
@@ -682,8 +700,8 @@ export async function publishScheduledContent(data: {
 
   const text = buildText(data.content);
   const title = String(data.content.title || data.content.headline || 'Portal Vip Brasil').trim();
-  const imageUrl = String(data.content.imageUrl || '').trim() || undefined;
-  const videoUrl = String(data.content.videoUrl || '').trim() || undefined;
+  const imageUrl = publicMediaUrl(data.content.imageUrl, data.content.id, 'imageUrl');
+  const videoUrl = publicMediaUrl(data.content.videoUrl, undefined, 'videoUrl');
 
   switch (data.provider) {
     case 'facebook':

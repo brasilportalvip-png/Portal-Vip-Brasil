@@ -1984,7 +1984,7 @@ router.post('/alma/vision', requireAuth, asyncRoute(async (req: AuthenticatedReq
   const ai = textAiClient();
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.7-flash',
+    model: config.geminiModels.text,
     contents: {
       parts: [
         {
@@ -2284,6 +2284,18 @@ export async function buildSitemapXml(): Promise<string> {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&apos;');
 
+  // O protocolo de sitemap de imagens exige URL absoluta; capas e logos podem estar como caminho relativo.
+  const absoluteSitemapUrl = (value?: string): string => {
+    const raw = String(value || '').trim();
+    if (!raw || raw.startsWith('data:')) return '';
+    try {
+      const url = new URL(raw, `${base}/`);
+      return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : '';
+    } catch {
+      return '';
+    }
+  };
+
   const safeLastmod = (value?: string) => {
     if (!value) return '';
     const date = new Date(value);
@@ -2294,8 +2306,9 @@ export async function buildSitemapXml(): Promise<string> {
     .filter((item, index, list) => list.findIndex((candidate) => candidate.loc === item.loc) === index)
     .map((item) => {
       const lastmod = safeLastmod(item.lastmod);
-      const imgBlock = item.image?.url
-        ? `\n    <image:image>\n      <image:loc>${escapeXml(item.image.url)}</image:loc>${item.image.title ? `\n      <image:title>${escapeXml(item.image.title)}</image:title>` : ''}\n    </image:image>`
+      const imageUrl = absoluteSitemapUrl(item.image?.url);
+      const imgBlock = imageUrl && item.image
+        ? `\n    <image:image>\n      <image:loc>${escapeXml(imageUrl)}</image:loc>${item.image.title ? `\n      <image:title>${escapeXml(item.image.title)}</image:title>` : ''}\n    </image:image>`
         : '';
       return `  <url>
     <loc>${escapeXml(item.loc)}</loc>${lastmod ? `\n    <lastmod>${escapeXml(lastmod)}</lastmod>` : ''}${item.changefreq ? `\n    <changefreq>${item.changefreq}</changefreq>` : ''}${item.priority ? `\n    <priority>${item.priority}</priority>` : ''}${imgBlock}

@@ -7,7 +7,18 @@ import { GoogleGenAI } from '@google/genai';
  *    (a chave Gemini nunca sai do servidor).
  */
 const MAX_SPEECH_CHARACTERS = 1800;
-const DEFAULT_TTS_MODEL = 'gemini-3.1-flash-tts-preview';
+// O gemini-3.1-flash-tts-preview foi desligado pelo Google em 17/11/2026.
+// Substitutos oficiais: gemini-3.8-flash-tts (principal) e gemini-3.8-flash-lite-tts (reserva).
+const DEFAULT_TTS_MODEL = 'gemini-3.8-flash-tts';
+const FALLBACK_TTS_MODELS = ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'];
+const RETIRED_TTS_MODELS = new Set(['gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts']);
+
+/** Ordem de tentativa da voz: modelo configurado (se ainda existir) e depois os substitutos oficiais. */
+export function frocTtsModelCandidates(configured?: string): string[] {
+  const chosen = String(configured || '').trim();
+  const first = chosen && !RETIRED_TTS_MODELS.has(chosen) ? [chosen] : [DEFAULT_TTS_MODEL];
+  return [...new Set([...first, ...FALLBACK_TTS_MODELS])];
+}
 const DEFAULT_VOICE = 'Charon';
 export const FROC_SPEECH_SAMPLE_RATE = 24000;
 export const FROC_LIVE_MODEL = 'gemini-3.5-transcribe-live';
@@ -52,47 +63,58 @@ export function stripWavHeader(buf: Buffer): Buffer {
  */
 export async function* synthesizeFrocSpeechStream(apiKey: string, text: string): AsyncGenerator<Buffer> {
   const ai: any = new GoogleGenAI({ apiKey });
-  const model = process.env.GEMINI_TTS_MODEL?.trim() || DEFAULT_TTS_MODEL;
   const voice = process.env.GEMINI_TTS_VOICE?.trim() || DEFAULT_VOICE;
   const prompt = buildFrocSpeechPrompt(text);
-  let received = false;
-  let first = true;
-  try {
-    const stream: any = await ai.interactions.create({
-      model,
-      input: prompt,
-      response_format: { type: 'audio' },
-      generation_config: { speech_config: [{ voice, language: 'pt-BR' }] },
-      stream: true,
-    });
-    for await (const event of stream) {
-      if (event?.event_type !== 'step.delta') continue;
-      const delta = event.delta;
-      if (delta?.type !== 'audio' || typeof delta.data !== 'string' || !delta.data) continue;
-      let audio: Buffer = Buffer.from(delta.data, 'base64');
-      if (first) { audio = stripWavHeader(audio); first = false; }
-      if (!audio.length) continue;
-      received = true;
-      yield audio;
-    }
-  } catch (err: any) {
-    if (received) throw err;
-    console.warn('[Froc] tts streaming indisponível, usando geração normal:', String(err?.message || err).slice(0, 160));
-  }
-  if (received) return;
+  let lastError: unknown = null;
 
-  // Reserva = modo tradicional do Froc.IA: interactions.create sem streaming, output_audio.
-  const interaction: any = await ai.interactions.create({
-    model,
-    input: prompt,
-    response_format: { type: 'audio' },
-    generation_config: { speech_config: [{ voice, language: 'pt-BR' }] },
-  });
-  const audio = interaction?.output_audio;
-  if (!audio?.data) throw new Error('froc_tts_empty_audio');
-  const pcm = stripWavHeader(Buffer.from(audio.data, 'base64'));
-  // Entrega em pedaços para o navegador começar a tocar logo.
-  for (let i = 0; i < pcm.length; i += 9600) yield pcm.subarray(i, Math.min(pcm.length, i + 9600));
+  for (const model of frocTtsModelCandidates(process.env.GEMINI_TTS_MODEL)) {
+    let received = false;
+    let first = true;
+    try {
+      const stream: any = await ai.interactions.create({
+        model,
+        input: prompt,
+        response_format: { type: 'audio' },
+        generation_config: { speech_config: [{ voice, language: 'pt-BR' }] },
+        stream: true,
+      });
+      for await (const event of stream) {
+        if (event?.event_type !== 'step.delta') continue;
+        const delta = event.delta;
+        if (delta?.type !== 'audio' || typeof delta.data !== 'string' || !delta.data) continue;
+        let audio: Buffer = Buffer.from(delta.data, 'base64');
+        if (first) { audio = stripWavHeader(audio); first = false; }
+        if (!audio.length) continue;
+        received = true;
+        yield audio;
+      }
+    } catch (err: any) {
+      if (received) throw err;
+      lastError = err;
+      console.warn(`[Froc] tts streaming indisponível (${model}), usando geração normal:`, String(err?.message || err).slice(0, 160));
+    }
+    if (received) return;
+
+    // Reserva = modo tradicional do Froc.IA: interactions.create sem streaming, output_audio.
+    try {
+      const interaction: any = await ai.interactions.create({
+        model,
+        input: prompt,
+        response_format: { type: 'audio' },
+        generation_config: { speech_config: [{ voice, language: 'pt-BR' }] },
+      });
+      const audio = interaction?.output_audio;
+      if (!audio?.data) throw new Error('froc_tts_empty_audio');
+      const pcm = stripWavHeader(Buffer.from(audio.data, 'base64'));
+      // Entrega em pedaços para o navegador começar a tocar logo.
+      for (let i = 0; i < pcm.length; i += 9600) yield pcm.subarray(i, Math.min(pcm.length, i + 9600));
+      return;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[Froc] tts indisponível no modelo ${model}; tentando o próximo:`, String(err?.message || err).slice(0, 160));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('froc_tts_empty_audio');
 }
 
 /** Token de uso único (30 min) para o navegador transcrever a fala em tempo real. */

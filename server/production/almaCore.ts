@@ -147,7 +147,7 @@ Classifique o risco:
 Determine sempre a sequência ordenada de agentes e ações para cumprir a meta do usuário.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.7-flash',
+    model: config.geminiModels.text,
     contents: `Analise a seguinte intenção do usuário: "${prompt}"\nContexto adicional: ${JSON.stringify(contextData || {})}`,
     config: {
       systemInstruction,
@@ -300,7 +300,7 @@ Contexto do Usuário: ${JSON.stringify(extraContext || {})}
 Execute cada etapa dos agentes em sequência, sintetize o plano de ação, elabore as entregas técnicas de cada agente e apresente uma resposta executiva impecável com postura de Regente Digital.`;
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3.7-flash',
+    model: config.geminiModels.text,
     contents: orchestrationPrompt,
     config: {
       systemInstruction: 'Você é o ALMA X — O Regente Digital. Seja perspicaz, sofisticado, preciso e orientado a resultados reais.',

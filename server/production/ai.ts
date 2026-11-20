@@ -14,6 +14,10 @@ import { assertAutomationAllowed } from './automationGate.js';
 import { preflightReserveBudget, reconcileBudgetReservation } from './financialGuardian.js';
 import { applyImageBranding, applyVideoBranding, fallbackOverlayCopy, resolveProjectBrand, sanitizeOverlayCopy, type VideoOverlayCopy } from './videoBranding.js';
 
+/** Modelos de imagem já desligados pelo Google e o substituto oficial (Nano Banana 2.1). */
+const CURRENT_IMAGE_MODEL = 'gemini-nano-banana-2.1';
+const RETIRED_IMAGE_MODELS = new Set(['gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview', 'gemini-3-pro-image-preview']);
+
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_FINALIZATION_LEASE_MS = 10 * 60 * 1000;
 const VIDEO_PROVIDER_START_TIMEOUT_MS = 15 * 60 * 1000;
@@ -939,7 +943,7 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
 - Texto: a imagem não pode ter palavras, letras, números, legendas, placas ou marcas d'água; títulos e legendas são adicionados depois pelo sistema.
 - REGRAS NEGATIVAS E ANTI-REPETIÇÃO: ${nicheGuidance.negativeDirectives}. Não inclua logotipos corporativos genéricos, marcas d'água ou banners com texto excessivo. A imagem deve ser visualmente deslumbrante, hiper-relevante ao nicho exato do projeto e única.`;
 
-  let model = config.geminiModels.image || 'gemini-3.1-flash-image';
+  let model = config.geminiModels.image || CURRENT_IMAGE_MODEL;
 
   try {
     let imageUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
@@ -949,8 +953,11 @@ DIRETRIZES OBRIGATÓRIAS DE NICHO E ESTILO:
 
     if (process.env.NODE_ENV !== 'test') {
       let response: any = null;
+      // Um modelo desligado pelo Google (ex.: GEMINI_MODEL_IMAGE antigo na Vercel) não pode
+      // derrubar a geração: o substituto oficial entra antes do modelo Lite.
       const candidateModels = [
-        model,
+        RETIRED_IMAGE_MODELS.has(model) ? CURRENT_IMAGE_MODEL : model,
+        CURRENT_IMAGE_MODEL,
         config.geminiModels.imageLite || 'gemini-3.1-flash-lite-image'
       ];
       const uniqueImageModels = Array.from(new Set(candidateModels.filter(Boolean)));
