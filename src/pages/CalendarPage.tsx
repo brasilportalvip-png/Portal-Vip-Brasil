@@ -3,21 +3,6 @@ import { AlertCircle, Calendar as CalendarIcon, CheckCircle2, ChevronLeft, Chevr
 import type { Company, ContentItem, ScheduledPost } from '../types';
 import { apiRequest } from '../lib/api';
 
-
-/** Data/hora local no formato aceito por <input type="datetime-local"> (sem converter para UTC). */
-function toLocalDateTimeInput(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-/** Chave AAAA-MM-DD no fuso do navegador, para o post aparecer no dia certo do calendário. */
-function localDateKey(iso: string): string {
-  const date = new Date(iso);
-  if (!Number.isFinite(date.getTime())) return String(iso || '').slice(0, 10);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
 interface Props {
   scheduledPosts: ScheduledPost[];
   contentItems: ContentItem[];
@@ -63,7 +48,7 @@ export const CalendarPage: React.FC<Props> = ({
         if (data.contentItemId) setContentId(data.contentItemId);
         if (Array.isArray(data.platforms) && data.platforms.length > 0) setPlatforms(data.platforms);
         const nextHour = new Date(Date.now() + 3600000);
-        setDateTime(toLocalDateTimeInput(nextHour));
+        setDateTime(nextHour.toISOString().slice(0, 16));
         setModal(true);
         sessionStorage.removeItem('froc_schedule_prefill');
       }
@@ -78,7 +63,7 @@ export const CalendarPage: React.FC<Props> = ({
   );
 
   const monthKey = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}`;
-  const monthPosts = posts.filter((p) => localDateKey(p.scheduledFor).startsWith(monthKey));
+  const monthPosts = posts.filter((p) => p.scheduledFor.startsWith(monthKey));
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const first = new Date(month.getFullYear(), month.getMonth(), 1).getDay();
 
@@ -91,7 +76,7 @@ export const CalendarPage: React.FC<Props> = ({
     setActionableTab(null);
     if (!dateTime) {
       const nextHour = new Date(Date.now() + 3600000);
-      setDateTime(toLocalDateTimeInput(nextHour));
+      setDateTime(nextHour.toISOString().slice(0, 16));
     }
     setModal(true);
   };
@@ -100,7 +85,7 @@ export const CalendarPage: React.FC<Props> = ({
     e.preventDefault();
     if (!selectedCompany?.id) {
       setError('Selecione uma empresa no topo antes de agendar.');
-      setActionableTab('projetos');
+      setActionableTab('empresa');
       return;
     }
     if (!contentId) {
@@ -109,11 +94,6 @@ export const CalendarPage: React.FC<Props> = ({
     }
     if (!platforms.length) {
       setError('Selecione ao menos uma plataforma de destino.');
-      return;
-    }
-    const scheduledDate = new Date(dateTime);
-    if (!dateTime || !Number.isFinite(scheduledDate.getTime())) {
-      setError('Informe a data e o horário da publicação.');
       return;
     }
     setLoading(true);
@@ -126,7 +106,7 @@ export const CalendarPage: React.FC<Props> = ({
           companyId: selectedCompany.id,
           contentItemId: contentId,
           platforms,
-          scheduledFor: scheduledDate.toISOString(),
+          scheduledFor: new Date(dateTime).toISOString(),
           isPlanning: scheduleMode === 'planning'
         }
       });
@@ -137,7 +117,9 @@ export const CalendarPage: React.FC<Props> = ({
     } catch (err: any) {
       const msg = err.message || 'Falha ao agendar publicação.';
       setError(msg);
-      if (msg.includes('conectada') || msg.includes('Redes Sociais') || msg.includes('expirou')) {
+      if (msg.includes('plano') || msg.includes('upgrade') || msg.includes('PRO')) {
+        setActionableTab('planos');
+      } else if (msg.includes('conectada') || msg.includes('Redes Sociais') || msg.includes('expirou')) {
         setActionableTab('redes-sociais');
       }
     } finally {
@@ -285,7 +267,7 @@ export const CalendarPage: React.FC<Props> = ({
             {Array.from({length: days}).map((_, i) => {
               const day = i + 1;
               const prefix = `${monthKey}-${String(day).padStart(2, '0')}`;
-              const dayPosts = monthPosts.filter((p) => localDateKey(p.scheduledFor) === prefix);
+              const dayPosts = monthPosts.filter((p) => p.scheduledFor.startsWith(prefix));
               const expanded = Boolean(expandedDays[prefix]);
               const visiblePosts = expanded ? dayPosts : dayPosts.slice(0, 3);
               return (
@@ -489,7 +471,7 @@ export const CalendarPage: React.FC<Props> = ({
                     className="inline-flex items-center gap-1.5 rounded-lg bg-rose-500/20 border border-rose-500/40 px-3 py-1 text-xs font-bold text-white hover:bg-rose-500/30"
                   >
                     <ExternalLink size={12} />
-                    {actionableTab === 'redes-sociais' ? 'Ir para Redes Sociais' : 'Ir para Projetos'}
+                    {actionableTab === 'planos' ? 'Ver Planos & Assinaturas' : actionableTab === 'redes-sociais' ? 'Ir para Redes Sociais' : 'Ir para Minha Empresa'}
                   </button>
                 )}
               </div>

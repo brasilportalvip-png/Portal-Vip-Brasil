@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { getAdminAuth, getAdminStorage } from '../providers/firebaseAdmin.js';
 import { config } from '../config/index.js';
@@ -63,15 +62,6 @@ import { redoTodayMissingPublications } from './redoToday.js';
 import { sanitizeSecretText } from './aiErrorDiagnostic.js';
 import { inventoryAllArticlesFailClosed, recoverArticleBatch } from './articleRecoveryEngine.js';
 import { getGoogleSearchConsoleStatus, listSearchConsoleSitemaps, submitSearchConsoleSitemap, querySearchAnalytics } from './googleSearchConsole.js';
-
-
-/** Comparação de segredos em tempo constante (evita ataque de temporização). */
-function constantTimeEquals(actual: string, expected: string): boolean {
-  const a = Buffer.from(String(actual || ''), 'utf8');
-  const b = Buffer.from(String(expected || ''), 'utf8');
-  if (!a.length || !b.length || a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
-}
 
 const router = Router();
 
@@ -367,7 +357,7 @@ router.post('/auth/bootstrap-admin', requireAuth, asyncRoute(async (req: Authent
   if (!config.adminBootstrap.enabled || !config.adminBootstrap.key) {
     return res.status(403).json({ error: 'Recurso de bootstrap de administrador desabilitado.' });
   }
-  if (!constantTimeEquals(safeString(req.body?.secretKey, 500), config.adminBootstrap.key)) {
+  if (safeString(req.body?.secretKey, 500) !== config.adminBootstrap.key) {
     return res.status(403).json({ error: 'Chave de bootstrap inválida.' });
   }
   await getAdminAuth().setCustomUserClaims(req.user!.id, { role: 'admin', frocRole: 'admin' });
@@ -1893,12 +1883,16 @@ router.delete('/admin/blog/:id', requireAdmin, asyncRoute(async (req: Authentica
 
 // Scheduler.
 router.get('/cron/health', asyncRoute(async (req, res) => {
-  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
   res.json(await getSchedulerHealth());
 }));
 
 router.get('/cron/process', asyncRoute(async (req, res) => {
-  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
 
   const userAgent = String(req.headers['user-agent'] || '');
   const trigger = /vercel-cron\/1\.0/i.test(userAgent)
@@ -1908,7 +1902,9 @@ router.get('/cron/process', asyncRoute(async (req, res) => {
 }));
 
 router.post('/cron/process', asyncRoute(async (req, res) => {
-  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
 
   const userAgent = String(req.headers['user-agent'] || '');
   const trigger = /vercel-cron\/1\.0/i.test(userAgent)
@@ -1919,12 +1915,16 @@ router.post('/cron/process', asyncRoute(async (req, res) => {
 
 // Compatibilidade com integrações antigas: ambas as rotas usam o mesmo coordenador e o mesmo lock.
 router.get('/cron/social', asyncRoute(async (req, res) => {
-  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
   res.json(await processSchedulerTick());
 }));
 
 router.post('/cron/social', asyncRoute(async (req, res) => {
-  if (!verifyCronAuthorization(req.headers.authorization)) return res.status(401).json({ error: 'Cron não autorizado.' });
+  const auth = String(req.headers.authorization || '');
+  const isAuthorized = Boolean(config.cronSecret && auth === `Bearer ${config.cronSecret}`);
+  if (!isAuthorized) return res.status(401).json({ error: 'Cron não autorizado.' });
   res.json(await processSchedulerTick());
 }));
 
@@ -1984,7 +1984,7 @@ router.post('/alma/vision', requireAuth, asyncRoute(async (req: AuthenticatedReq
   const ai = textAiClient();
 
   const response = await ai.models.generateContent({
-    model: config.geminiModels.text,
+    model: 'gemini-3.7-flash',
     contents: {
       parts: [
         {
@@ -2284,18 +2284,6 @@ export async function buildSitemapXml(): Promise<string> {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&apos;');
 
-  // O protocolo de sitemap de imagens exige URL absoluta; capas e logos podem estar como caminho relativo.
-  const absoluteSitemapUrl = (value?: string): string => {
-    const raw = String(value || '').trim();
-    if (!raw || raw.startsWith('data:')) return '';
-    try {
-      const url = new URL(raw, `${base}/`);
-      return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : '';
-    } catch {
-      return '';
-    }
-  };
-
   const safeLastmod = (value?: string) => {
     if (!value) return '';
     const date = new Date(value);
@@ -2306,9 +2294,8 @@ export async function buildSitemapXml(): Promise<string> {
     .filter((item, index, list) => list.findIndex((candidate) => candidate.loc === item.loc) === index)
     .map((item) => {
       const lastmod = safeLastmod(item.lastmod);
-      const imageUrl = absoluteSitemapUrl(item.image?.url);
-      const imgBlock = imageUrl && item.image
-        ? `\n    <image:image>\n      <image:loc>${escapeXml(imageUrl)}</image:loc>${item.image.title ? `\n      <image:title>${escapeXml(item.image.title)}</image:title>` : ''}\n    </image:image>`
+      const imgBlock = item.image?.url
+        ? `\n    <image:image>\n      <image:loc>${escapeXml(item.image.url)}</image:loc>${item.image.title ? `\n      <image:title>${escapeXml(item.image.title)}</image:title>` : ''}\n    </image:image>`
         : '';
       return `  <url>
     <loc>${escapeXml(item.loc)}</loc>${lastmod ? `\n    <lastmod>${escapeXml(lastmod)}</lastmod>` : ''}${item.changefreq ? `\n    <changefreq>${item.changefreq}</changefreq>` : ''}${item.priority ? `\n    <priority>${item.priority}</priority>` : ''}${imgBlock}
