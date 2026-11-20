@@ -79,38 +79,14 @@ test('Rodada 2: painel conta publicações do mês no fuso local', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Proteção das contas compartilhadas: limite diário e adiamento
+// Limite diário por rede: REMOVIDO a pedido do proprietário (publicação igual à de antes)
 // ---------------------------------------------------------------------------
 
-test('Rodada 2: respostas de limite/spam da rede são reconhecidas (e erros de tamanho não)', async () => {
-  const { isProviderLimitResult } = await import('../server/production/scheduledPublisherR8.js');
-  assert.equal(isProviderLimitResult({ success: false, error: 'Throttle limit for calls to this resource is reached', externalState: 'confirmed_failed' }), true);
-  assert.equal(isProviderLimitResult({ success: false, error: 'spam_risk_too_many_posts', externalState: 'confirmed_failed' }), true);
-  assert.equal(isProviderLimitResult({ success: false, error: 'uploadLimitExceeded', externalState: 'confirmed_failed' }), true);
-  assert.equal(isProviderLimitResult({ success: false, statusCode: 429, error: 'x', externalState: 'confirmed_failed' }), true);
-  assert.equal(isProviderLimitResult({ success: false, error: 'O vídeo excede o limite de 4 MB', externalState: 'confirmed_failed' }), false);
-  assert.equal(isProviderLimitResult({ success: false, error: 'rate limit', externalState: 'unknown' }), false);
-  assert.equal(isProviderLimitResult({ success: true, externalId: '1' }), false);
-});
-
-test('Rodada 2: adiamento vai para o dia seguinte entre 11h e 18h de Brasília', async () => {
-  const { nextDaySpreadSlot, brDateKey } = await import('../server/production/scheduledPublisherR8.js');
-  const now = Date.parse('2026-11-20T13:00:00Z'); // 10h em Brasília
-  for (const id of ['a', 'sched_123', 'sched_zzz', 'p-99']) {
-    const slot = Date.parse(nextDaySpreadSlot(id, now));
-    assert.equal(brDateKey(slot), '2026-11-21');
-    const brHour = new Date(slot - 3 * 3600_000).getUTCHours();
-    assert.ok(brHour >= 11 && brHour <= 17, `hora ${brHour}`);
-  }
-  // Determinístico por post: o mesmo id sempre cai no mesmo horário.
-  assert.equal(nextDaySpreadSlot('sched_123', now), nextDaySpreadSlot('sched_123', now));
-});
-
-test('Rodada 2: publicador aplica teto diário por rede antes de chamar a API', () => {
+test('Rodada 2: publicador voltou a ser exatamente o de antes (sem teto diário nem adiamento)', () => {
   const code = read('server/production/scheduledPublisherR8.ts');
-  assert.ok(code.includes('DAILY_PROVIDER_CAPS[provider]'));
-  assert.ok(code.includes('await incrementProviderDaily(db, provider)'));
-  assert.ok(code.includes("status: 'scheduled',\n          scheduledFor: nextSlot"));
+  assert.ok(!code.includes('DAILY_PROVIDER_CAPS'));
+  assert.ok(!code.includes('nextDaySpreadSlot'));
+  assert.ok(!code.includes('providerDeferCount'));
 });
 
 test('Rodada 2: Froc explica limite, spam e falhas antigas do X sem mandar recarregar', async () => {

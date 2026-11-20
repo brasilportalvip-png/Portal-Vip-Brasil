@@ -10,65 +10,6 @@ function automaticPlatforms(values: unknown): string[] {
 }
 import { publishScheduledContent } from './socialMediaPublisher.js';
 
-
-/**
- * Limite diário por rede. Todos os projetos usam a MESMA conta em cada rede, então 10+ projetos
- * postando no mesmo dia faziam o LinkedIn bloquear por limite de compartilhamento e o TikTok
- * marcar risco de spam. Acima do limite (ou quando a rede responde "limite/spam"), a rede é
- * adiada para o dia seguinte em horário espalhado; as redes já confirmadas nunca são reenviadas.
- */
-export const DAILY_PROVIDER_CAPS: Partial<Record<SocialProvider, number>> = {
-  linkedin: Number(process.env.SOCIAL_DAILY_CAP_LINKEDIN || 4),
-  tiktok: Number(process.env.SOCIAL_DAILY_CAP_TIKTOK || 3),
-  youtube: Number(process.env.SOCIAL_DAILY_CAP_YOUTUBE || 5)
-};
-const MAX_PROVIDER_DEFERRALS = 1;
-const PROVIDER_LIMIT_PATTERN = /rate.?limit|too many|throttl|quota|exceed|limite|spam|429|daily.{0,20}limit|share.{0,20}limit|upload.{0,20}limit|uploadlimit/i;
-
-export function isProviderLimitResult(result: any): boolean {
-  if (!result || result.success) return false;
-  if (result.externalState === 'unknown') return false;
-  if (Number(result.statusCode) === 429) return true;
-  const message = String(result.error || '');
-  // Limite de TAMANHO/FORMATO de arquivo não é limite de frequência: adiar não resolveria.
-  if (/\b\d+\s?(?:mb|gb|kb)\b|tamanho|file size|formato|format|dura[cç][aã]o|duration|resolu/i.test(message)) return false;
-  return PROVIDER_LIMIT_PATTERN.test(message);
-}
-
-/** Data AAAA-MM-DD no horário de Brasília (sem horário de verão desde 2019). */
-export function brDateKey(ms = Date.now()): string {
-  return new Date(ms - 3 * 3600_000).toISOString().slice(0, 10);
-}
-
-/** Próximo dia, entre 11h e 17h59 de Brasília, espalhado pelo id do post para não congestionar a rede. */
-export function nextDaySpreadSlot(postId: string, nowMs = Date.now()): string {
-  const tomorrow = brDateKey(nowMs + 86_400_000);
-  let hash = 0;
-  for (const ch of String(postId || '')) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
-  const minutes = 11 * 60 + (hash % (7 * 60));
-  const hh = String(Math.floor(minutes / 60)).padStart(2, '0');
-  const mm = String(minutes % 60).padStart(2, '0');
-  return new Date(`${tomorrow}T${hh}:${mm}:00-03:00`).toISOString();
-}
-
-async function providerDailyCount(db: any, provider: SocialProvider): Promise<number> {
-  try {
-    const snap = await db.collection(COLLECTIONS.systemSettings).doc(`social_daily_usage_${brDateKey()}`).get();
-    return snap.exists ? Number((snap.data() as any)?.[provider] || 0) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-async function incrementProviderDaily(db: any, provider: SocialProvider): Promise<void> {
-  const ref = db.collection(COLLECTIONS.systemSettings).doc(`social_daily_usage_${brDateKey()}`);
-  await db.runTransaction(async (tx: any) => {
-    const snap = await tx.get(ref);
-    const current = snap.exists ? Number((snap.data() as any)?.[provider] || 0) : 0;
-    tx.set(ref, { [provider]: current + 1, updatedAt: nowIso() }, { merge: true });
-  }).catch(() => undefined);
-}
-
 function isConfirmedPublishedResult(result: any): boolean {
   return Boolean(
     result?.success &&
@@ -256,8 +197,6 @@ export async function processScheduledPostsR8(options?: {
 
       const existingResults = Array.isArray(post.publicationResults) ? post.publicationResults : [];
       const publicationResults: any[] = [];
-      const deferredProviders: Array<{ platform: string; reason: string }> = [];
-      const deferCount = Number(post.providerDeferCount || 0);
 
       for (const platform of platforms) {
         if (deadlineReached()) break;
@@ -292,25 +231,6 @@ export async function processScheduledPostsR8(options?: {
           break;
         }
 
-        const cap = DAILY_PROVIDER_CAPS[provider];
-        if (cap && cap > 0 && (await providerDailyCount(db, provider)) >= cap) {
-          if (deferCount < MAX_PROVIDER_DEFERRALS) {
-            deferredProviders.push({ platform, reason: `limite diário do Portal para ${platform} (${cap}/dia) atingido` });
-          } else {
-            // Já foi adiado uma vez: não insiste (evita bloqueio da conta e post velho saindo dias depois).
-            publicationResults.push({
-              platform,
-              provider,
-              success: false,
-              externalId: null,
-              externalState: 'confirmed_failed',
-              retrySafe: false,
-              error: `Não publicado em ${platform}: limite diário de ${cap} publicações por conta atingido (protege a conta contra bloqueio por excesso).`
-            });
-          }
-          continue;
-        }
-
         const result = await publishScheduledContent({
           userId: post.userId,
           companyId: post.companyId,
@@ -321,12 +241,6 @@ export async function processScheduledPostsR8(options?: {
             ? String(content.cta)
             : String(scheduledProject.websiteUrl || '') || undefined
         });
-
-        if (isProviderLimitResult(result) && deferCount < MAX_PROVIDER_DEFERRALS) {
-          deferredProviders.push({ platform, reason: `${platform} recusou por limite da rede: ${String(result.error || '').slice(0, 160)}` });
-          continue;
-        }
-        if (result.success && result.externalId) await incrementProviderDaily(db, provider);
 
         publicationResults.push({
           platform,
@@ -348,24 +262,6 @@ export async function processScheduledPostsR8(options?: {
           processingHeartbeatAt: nowIso(),
           updatedAt: nowIso()
         });
-      }
-
-      // Redes adiadas por limite: o agendamento volta para a fila amanhã, só com as redes pendentes
-      // (as confirmadas ficam gravadas em publicationResults e não são reenviadas).
-      const hasUnknownNow = publicationResults.some((item) => item.externalState === 'unknown');
-      if (deferredProviders.length && !hasUnknownNow && !deadlineReached()) {
-        const nextSlot = nextDaySpreadSlot(post.id);
-        await doc.ref.update({
-          status: 'scheduled',
-          scheduledFor: nextSlot,
-          publicationResults,
-          processingAt: null,
-          providerDeferCount: deferCount + 1,
-          errorMessage: `Adiado para amanhã: ${deferredProviders.map((item) => item.reason).join(' | ')}`.slice(0, 1000),
-          updatedAt: nowIso()
-        });
-        options?.onFinalized?.('deferred');
-        continue;
       }
 
       const allRequestedHaveResult = platforms.every((platform: string) => {

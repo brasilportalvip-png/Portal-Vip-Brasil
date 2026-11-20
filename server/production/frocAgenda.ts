@@ -85,8 +85,8 @@ export function failureHint(reason: string, redes: string[] = []): string {
   if (/token|expir|session|oauth|code 190|invalid.*access|reconect/.test(r)) return 'reconectar a conta em Redes Sociais';
   if (/permiss|#10\b|#200\b|pages_|instagram_content_publish|not authorized|nao autoriz|não autoriz/.test(r)) return 'reconectar aceitando todas as permissões pedidas';
   if (/nenhuma conta|not connected|sem conex|nao conectad|não conectad|no connection|conta .*desconect/.test(r)) return 'conectar a conta dessa rede no projeto';
-  if (/spam/.test(r)) return 'a rede bloqueou por excesso de envios parecidos na mesma conta. O Portal agora limita as publicações por dia em cada rede e adia o excedente para o dia seguinte; não reenvie as falhas antigas em massa';
-  if (/share|compartilh|throttl|daily|di[aá]ri/.test(r) && /limit/.test(r)) return 'limite diário de publicações da conta atingido. O Portal agora respeita um teto por dia em cada rede e adia o excedente; não reenvie as falhas antigas em massa';
+  if (/spam/.test(r)) return 'a rede bloqueou por excesso de envios parecidos na mesma conta: tentar mais tarde e não reenviar as falhas antigas em massa';
+  if (/share|compartilh|throttl|daily|di[aá]ri/.test(r) && /limit/.test(r)) return 'limite diário de publicações da conta atingido: volta a funcionar no dia seguinte; não reenviar as falhas antigas em massa';
   if (/upload.{0,20}limit|uploadlimit|exceeded the number of videos/.test(r)) return 'limite diário de envios de vídeo do YouTube atingido: volta a funcionar sozinho no dia seguinte';
   if (/media|mídia|imagem|image|video|vídeo|aspect|format|resolu|duration|duração/.test(r)) return 'formato de mídia não aceito pela rede (tamanho, proporção ou tipo)';
   if (/rate|limit|too many|429|quota/.test(r)) return 'limite da rede: tentar mais tarde';
