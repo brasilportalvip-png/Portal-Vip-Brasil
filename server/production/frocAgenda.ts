@@ -80,11 +80,14 @@ export function failureHint(reason: string, redes: string[] = []): string {
   const r = reason.toLowerCase();
   const isX = redes.some((rede) => /^(x|twitter)$/i.test(String(rede)));
   // Na rede X, "credits depleted" é a API do X (cobra por post). Facebook, Instagram e LinkedIn não usam crédito.
-  if (!/prepayment|ai studio/.test(r) && (isX && /credit|depleted|usage ?cap|402\b/.test(r) || /creditsdepleted|x api|twitter/.test(r))) return 'é a rede X (Twitter): os créditos pagos da API do X acabaram. Facebook, Instagram e LinkedIn não usam crédito e não são afetados. Para voltar a postar no X é preciso recarregar no developer.x.com; se não quiser pagar, ignore — as outras redes seguem normais';
+  if (!/prepayment|ai studio/.test(r) && (isX && /credit|depleted|usage ?cap|402\b/.test(r) || /creditsdepleted|x api|twitter/.test(r))) return 'é a rede X (Twitter), que foi retirada do Portal: são falhas de posts antigos e não se repetem. Facebook, Instagram e LinkedIn não usam crédito e não são afetados. Nada a fazer';
   if (/prepayment|credits? (are )?depleted|billing|402\b|saldo/.test(r)) return 'acabou o saldo pré-pago da API do Gemini (Google AI Studio): recarregar em aistudio.google.com, em Billing do projeto da chave usada no Portal';
   if (/token|expir|session|oauth|code 190|invalid.*access|reconect/.test(r)) return 'reconectar a conta em Redes Sociais';
   if (/permiss|#10\b|#200\b|pages_|instagram_content_publish|not authorized|nao autoriz|não autoriz/.test(r)) return 'reconectar aceitando todas as permissões pedidas';
   if (/nenhuma conta|not connected|sem conex|nao conectad|não conectad|no connection|conta .*desconect/.test(r)) return 'conectar a conta dessa rede no projeto';
+  if (/spam/.test(r)) return 'a rede bloqueou por excesso de envios parecidos na mesma conta. O Portal agora limita as publicações por dia em cada rede e adia o excedente para o dia seguinte; não reenvie as falhas antigas em massa';
+  if (/share|compartilh|throttl|daily|di[aá]ri/.test(r) && /limit/.test(r)) return 'limite diário de publicações da conta atingido. O Portal agora respeita um teto por dia em cada rede e adia o excedente; não reenvie as falhas antigas em massa';
+  if (/upload.{0,20}limit|uploadlimit|exceeded the number of videos/.test(r)) return 'limite diário de envios de vídeo do YouTube atingido: volta a funcionar sozinho no dia seguinte';
   if (/media|mídia|imagem|image|video|vídeo|aspect|format|resolu|duration|duração/.test(r)) return 'formato de mídia não aceito pela rede (tamanho, proporção ou tipo)';
   if (/rate|limit|too many|429|quota/.test(r)) return 'limite da rede: tentar mais tarde';
   if (/timeout|timed out|econn|network|fetch failed|503|502|500/.test(r)) return 'falha temporária da rede: pode tentar de novo';
