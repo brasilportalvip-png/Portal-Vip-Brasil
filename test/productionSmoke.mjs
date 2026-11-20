@@ -113,10 +113,7 @@ assert.ok(Array.isArray(article.faq), 'Contrato público do Blog não retornou f
 assert.ok(article.coverImageAlt, 'Contrato público do Blog não retornou coverImageAlt.');
 assert.ok(article.relatedProjectSlug, 'Contrato público do Blog não retornou relatedProjectSlug.');
 assert.equal(article.schemaJsonLd?.['@type'], 'Article', 'Contrato público do Blog não retornou Schema Article.');
-// X/Twitter foi removido do produto (o contrato público não tem mais socialRepurpose.twitter).
-assert.equal(article.socialRepurpose?.twitter, undefined, 'Contrato público do Blog não deve mais expor pacote do X/Twitter.');
-assert.equal(typeof article.socialRepurpose?.instagram?.caption, 'string', 'Contrato público do Blog não retornou pacote social do Instagram.');
-assert.ok(Array.isArray(article.socialRepurpose?.kwai?.hashtags), 'Contrato público do Blog não retornou pacote social do Kwai.');
+assert.ok(Array.isArray(article.socialRepurpose?.twitter?.thread), 'Contrato público do Blog não retornou pacote social do X.');
 
 const articlePath = `/blog/${encodeURIComponent(article.slug)}`;
 const articlePage = await request(articlePath);

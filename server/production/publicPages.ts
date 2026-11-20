@@ -123,32 +123,6 @@ function homeSeoBody(articles: any[], projects: any[]): string {
     '</main>';
 }
 
-function vitrineIndexSeoBody(projects: any[]): string {
-  const items = projects.slice(0, 60).map((project: any) =>
-    '<li><h2><a href="/vitrine/' + esc(encodeURIComponent(String(project.slug || ''))) + '">' + esc(project.name) + '</a></h2>' +
-    (project.tagline ? '<p><strong>' + esc(String(project.tagline).slice(0, 160)) + '</strong></p>' : '') +
-    '<p>' + esc(String(project.description || '').slice(0, 300)) + '</p></li>').join('');
-  return '<main data-portal-seo-prerender="vitrine"><h1>Vitrine oficial de sites e aplicativos — Portal Vip Brasil</h1>' +
-    '<p>Projetos oficiais do Portal Vip Brasil: aplicativos Android na Google Play, sites e ferramentas ativas.</p>' +
-    (items ? '<ul>' + items + '</ul>' : '') +
-    '<p><a href="/">Início</a> · <a href="/blog">Blog</a></p></main>';
-}
-
-function projectSeoBody(project: any): string {
-  const highlights = Array.isArray(project?.highlights) ? project.highlights.slice(0, 8) : [];
-  const links: string[] = [];
-  const website = seoHref(project?.websiteUrl);
-  if (website !== '#') links.push('<li><a href="' + esc(website) + '" rel="noopener">Acessar o site oficial</a></li>');
-  const play = seoHref(project?.playStoreUrl);
-  if (play !== '#') links.push('<li><a href="' + esc(play) + '" rel="noopener">Baixar na Google Play</a></li>');
-  return '<main data-portal-seo-prerender="project"><article><h1>' + esc(project?.name || '') + '</h1>' +
-    (project?.tagline ? '<p><strong>' + esc(project.tagline) + '</strong></p>' : '') +
-    seoParagraphs(project?.description) +
-    (highlights.length ? '<h2>Destaques</h2><ul>' + highlights.map((item: any) => '<li>' + esc(item) + '</li>').join('') + '</ul>' : '') +
-    (links.length ? '<h2>Links oficiais</h2><ul>' + links.join('') + '</ul>' : '') +
-    '<p><a href="/vitrine">Voltar para a Vitrine</a> · <a href="/blog">Ler artigos</a></p></article></main>';
-}
-
 function breadcrumb(base: string, items: Array<{ name: string; path: string }>): any {
   return {
     '@type': 'BreadcrumbList',
@@ -271,44 +245,26 @@ async function metaFor(pathname: string): Promise<PublicMeta> {
   }
 
   if (pathname === '/vitrine') {
-    const projects = await listAllPortalProjectsFromDb().catch(() => [] as any[]);
-    const active = projects.filter((project: any) => project.active !== false && project.slug);
     return {
       ...fallback,
       title: 'Vitrine Oficial de Sites & Aplicativos — Portal Vip Brasil',
-      description: 'Conheça a vitrine dinâmica de sites, aplicativos e projetos digitais ativos do Portal Vip Brasil.',
-      bodyHtml: vitrineIndexSeoBody(active),
-      schema: {
-        '@context': 'https://schema.org',
-        '@graph': [
-          ...fallback.schema['@graph'],
-          breadcrumb(base, [{ name: 'Início', path: '/' }, { name: 'Vitrine', path: '/vitrine' }]),
-          {
-            '@type': 'ItemList',
-            name: 'Vitrine oficial do Portal Vip Brasil',
-            itemListElement: active.slice(0, 60).map((project: any, index: number) => ({
-              '@type': 'ListItem', position: index + 1, name: project.name, url: base + '/vitrine/' + encodeURIComponent(project.slug)
-            }))
-          }
-        ]
-      }
+      description: 'Conheça a vitrine dinâmica de sites, aplicativos e projetos digitais ativos do Portal Vip Brasil.'
     };
   }
 
   const vitrineMatch = pathname.match(/^\/vitrine\/([^/]+)$/);
   if (vitrineMatch) {
     const slug = decodeURIComponent(vitrineMatch[1]);
-    const project = await getPortalProjectFromDb(slug).catch(() => null as any);
+    const project = await getPortalProjectFromDb(slug);
     if (project && project.active !== false) {
       const canonical = `${base}/vitrine/${encodeURIComponent(project.slug)}`;
       return {
         title: `${project.name} — Vitrine Portal Vip Brasil`,
         description: description(project.description, `${project.name} no Portal Vip Brasil.`),
         canonical,
-        image: absolute(project.bannerUrl || project.logoUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl),
+        image: project.bannerUrl || project.logoUrl || PORTAL_VIP_OFFICIAL_ASSETS.bannerUrl,
         type: 'website',
         status: 200,
-        bodyHtml: projectSeoBody(project),
         schema: project.hasApp ? {
           '@context': 'https://schema.org',
           '@type': 'SoftwareApplication',
@@ -421,7 +377,7 @@ export function renderPrivateAppPage(pathname: string): { html: string; status: 
 <title>${esc(title)}</title>
 <meta name="description" content="Área administrativa do Portal Vip Brasil." />
 <link rel="manifest" href="/manifest.webmanifest" />
-<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="apple-touch-icon" href="${PORTAL_VIP_OFFICIAL_ASSETS.logoUrl}" />
 <link rel="stylesheet" href="/assets/app.css" />
 </head><body class="bg-[#0B0F19] text-slate-100 antialiased" data-portal-path="${esc(pathname)}"><div id="root"></div><noscript>O Portal Vip Brasil precisa de JavaScript habilitado.</noscript><script type="module" src="/assets/app.js"></script></body></html>`;

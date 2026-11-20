@@ -94,19 +94,13 @@ export const DashboardPage: React.FC<Props> = ({
       .catch(() => setSystemHealth(null));
   }, [user, selectedCompany?.id]);
 
-  // Mês corrente no fuso do aparelho (o UTC virava o mês às 21h do último dia no Brasil).
-  const localMonthKey = (value: string | Date) => {
-    const date = value instanceof Date ? value : new Date(value);
-    if (!Number.isFinite(date.getTime())) return String(value || '').slice(0, 7);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-  };
-  const month = localMonthKey(new Date());
+  const month = new Date().toISOString().slice(0, 7);
   const companyPosts = scheduledPosts.filter((p) => !selectedCompany || p.companyId === selectedCompany.id);
   const companyCampaigns = campaigns.filter((c) => !selectedCompany || c.companyId === selectedCompany.id);
 
   const active = companyCampaigns.filter((c) => c.status === 'active').length;
   const queued = companyPosts.filter((p) => p.status === 'scheduled' || p.status === 'publishing').length;
-  const publishedMonth = companyPosts.filter((p) => p.status === 'published' && localMonthKey(String(p.publishedAt || p.scheduledFor)) === month).length;
+  const publishedMonth = companyPosts.filter((p) => p.status === 'published' && String(p.publishedAt || p.scheduledFor).startsWith(month)).length;
 
   const attention = companyPosts.filter((p) => p.status === 'failed' || p.status === 'requires_review').length;
   const schedulerRuntime = systemHealth?.automation?.execution;

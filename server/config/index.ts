@@ -65,8 +65,7 @@ export const config = {
     text: env('GEMINI_MODEL_TEXT', 'gemini-3.8-flash'),
     pro: env('GEMINI_MODEL_PRO', 'gemini-3.1-pro-preview'),
     fallback: env('GEMINI_MODEL_FALLBACK', 'gemini-3.1-flash-lite'),
-    // O Google desligou o gemini-3.1-flash-image em 29/10/2026. Substituto oficial: Nano Banana 2.1.
-    image: env('GEMINI_MODEL_IMAGE', 'gemini-nano-banana-2.1'),
+    image: env('GEMINI_MODEL_IMAGE', 'gemini-3.1-flash-image'),
     imageLite: env('GEMINI_MODEL_IMAGE_LITE', 'gemini-3.1-flash-lite-image'),
     veoLite: env('GEMINI_MODEL_VEO_LITE', 'veo-3.1-lite-generate-preview'),
     veoFast: env('GEMINI_MODEL_VEO_FAST', 'veo-3.1-fast-generate-preview'),

@@ -160,8 +160,8 @@ export function createApp() {
       return callback(error);
     },
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-Signature', 'X-Idempotency-Key', 'X-Froc-Visitor'],
-    exposedHeaders: ['X-Request-Id', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'Retry-After', 'X-Froc-Audio-Sample-Rate'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-Signature', 'X-Idempotency-Key'],
+    exposedHeaders: ['X-Request-Id', 'RateLimit-Limit', 'RateLimit-Remaining', 'RateLimit-Reset', 'Retry-After'],
     maxAge: 86_400
   }));
 
@@ -308,7 +308,6 @@ export function createApp() {
     '/perfil',
     '/configuracoes',
     '/suporte',
-    '/agentes',
     '/admin'
   ];
   app.get(privateAppRoutes, (req, res, next) => {
