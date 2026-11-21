@@ -7,6 +7,7 @@ import { CANONICAL_BRAND_DOSSIERS } from './brandDossiers.js';
 import { COLLECTIONS, consumeRateLimit, firestore, newId, nowIso } from './store.js';
 import { checkVisitorBudget as checkBudget } from './frocGuard.js';
 import { buildOwnerAgenda } from './frocAgenda.js';
+import { cleanMemoryText, FROC_MEMORY_COLLECTION, FROC_MEMORY_MAX_ITEMS, memoryKey } from './frocMemory.js';
 import { signSpeech, verifySpeech } from './frocSeal.js';
 import { cleanSpeechText, createLiveTranscriptionToken, FROC_SPEECH_SAMPLE_RATE, synthesizeFrocSpeechStream } from './frocSpeech.js';
 import {
@@ -50,6 +51,16 @@ function speechSecret(): string {
   return config.encryptionKey || config.cronSecret || '';
 }
 export const FROC_NOTES_COLLECTION = 'froc_owner_notes';
+
+async function loadOwnerMemory(uid: string): Promise<string[]> {
+  try {
+    const snap = await firestore().collection(FROC_MEMORY_COLLECTION).doc(uid).get();
+    const facts = snap.exists ? (snap.data() as any)?.facts : [];
+    return Array.isArray(facts) ? facts.map((f: any) => cleanMemoryText(f?.text)).filter(Boolean).slice(-FROC_MEMORY_MAX_ITEMS) : [];
+  } catch {
+    return [];
+  }
+}
 
 function requestIp(req: Request): string {
   return String(req.ip || req.socket?.remoteAddress || 'unknown').trim().slice(0, 200) || 'unknown';
@@ -205,6 +216,7 @@ function cleanState(raw: any): FrocClientState {
     runningTools: Array.isArray(s.runningTools) ? s.runningTools.slice(0, 6).map((t: any) => str(t, 40)).filter(Boolean) as string[] : [],
     visitorName: cleanPersonName(s.visitorName) || null,
     device: s.device === 'mobile' ? 'mobile' : 'desktop',
+    screen: typeof s.screen === 'string' ? s.screen.replace(/[<>]/g, ' ').replace(/\r/g, '').trim().slice(0, 4000) || null : null,
   };
 }
 
@@ -263,8 +275,8 @@ router.post('/froc/owner/chat', requireAdmin, safe(async (req: AuthenticatedRequ
     if (saved) ownerName = saved.split(' ')[0];
   } catch { /* usa o nome da conta */ }
 
-  const projects = await loadFrocKnowledge();
-  const systemInstruction = buildFrocSystemPrompt({ mode: 'owner', nowMs: Date.now(), ownerName, projects });
+  const [projects, ownerMemory] = await Promise.all([loadFrocKnowledge(), loadOwnerMemory(uid)]);
+  const systemInstruction = buildFrocSystemPrompt({ mode: 'owner', nowMs: Date.now(), ownerName, projects, ownerMemory });
   const parsed = await streamFroc(res, 'owner', systemInstruction, cleanState(req.body?.state), turns, req.body?.image);
   const nameAction: any = parsed?.actions.find((a) => a.name === 'remember_name');
   if (nameAction?.value) {
@@ -279,6 +291,43 @@ router.post('/froc/owner/note', requireAdmin, safe(async (req: AuthenticatedRequ
   const id = newId('froc_note');
   await firestore().collection(FROC_NOTES_COLLECTION).doc(id).set({ id, text, ownerId: req.user!.id, status: 'aberto', createdAt: nowIso() });
   res.status(201).json({ success: true, id });
+}));
+
+// Memória longa: o dono pede "lembra que..." e o Froc guarda; "esquece..." apaga.
+router.get('/froc/owner/memory', requireAdmin, safe(async (req: AuthenticatedRequest, res: Response) => {
+  res.json({ facts: await loadOwnerMemory(req.user!.id) });
+}));
+
+router.post('/froc/owner/memory', requireAdmin, safe(async (req: AuthenticatedRequest, res: Response) => {
+  const text = cleanMemoryText(req.body?.text);
+  if (text.length < 3) return res.status(400).json({ error: 'Nada para guardar.' });
+  const ref = firestore().collection(FROC_MEMORY_COLLECTION).doc(req.user!.id);
+  let total = 0;
+  await firestore().runTransaction(async (tx: any) => {
+    const snap = await tx.get(ref);
+    const facts: any[] = snap.exists && Array.isArray((snap.data() as any)?.facts) ? (snap.data() as any).facts : [];
+    const kept = facts.filter((f) => memoryKey(cleanMemoryText(f?.text)) !== memoryKey(text));
+    kept.push({ text, createdAt: nowIso() });
+    const trimmed = kept.slice(-FROC_MEMORY_MAX_ITEMS);
+    total = trimmed.length;
+    tx.set(ref, { facts: trimmed, updatedAt: nowIso() }, { merge: true });
+  });
+  res.status(201).json({ success: true, total });
+}));
+
+router.post('/froc/owner/memory/forget', requireAdmin, safe(async (req: AuthenticatedRequest, res: Response) => {
+  const text = memoryKey(cleanMemoryText(req.body?.text));
+  if (text.length < 3) return res.status(400).json({ error: 'Diga o que esquecer.' });
+  const ref = firestore().collection(FROC_MEMORY_COLLECTION).doc(req.user!.id);
+  let removed = 0;
+  await firestore().runTransaction(async (tx: any) => {
+    const snap = await tx.get(ref);
+    const facts: any[] = snap.exists && Array.isArray((snap.data() as any)?.facts) ? (snap.data() as any).facts : [];
+    const kept = facts.filter((f) => !memoryKey(cleanMemoryText(f?.text)).includes(text));
+    removed = facts.length - kept.length;
+    tx.set(ref, { facts: kept, updatedAt: nowIso() }, { merge: true });
+  });
+  res.json({ success: true, removed });
 }));
 
 router.get('/froc/owner/notes', requireAdmin, safe(async (_req: AuthenticatedRequest, res: Response) => {

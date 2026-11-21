@@ -1094,6 +1094,26 @@ router.post('/content/scheduled/:id/retry', requireAuth, asyncRoute(async (req: 
   });
 }));
 
+// Muda a data/hora de uma publicação que ainda está na fila (não mexe em publicadas, em envio ou com falha).
+router.post('/content/scheduled/:id/reschedule', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
+  const when = new Date(String(req.body?.scheduledFor || ''));
+  if (!req.body?.scheduledFor || Number.isNaN(when.getTime())) return res.status(400).json({ error: 'Data/hora inválida.' });
+  if (when.getTime() > Date.now() + 366 * 86_400_000) return res.status(400).json({ error: 'Data muito distante (máximo 1 ano).' });
+  const ref = firestore().collection(COLLECTIONS.scheduledPosts).doc(req.params.id);
+  let outcome: { status: number; body: any } = { status: 200, body: {} };
+  await firestore().runTransaction(async (tx: any) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists ? (snap.data() as any) : null;
+    if (!current || current.userId !== req.user!.id) { outcome = { status: 404, body: { error: 'Agendamento não encontrado.' } }; return; }
+    if (current.status === 'failed') { outcome = { status: 409, body: { error: 'Esta publicação falhou: use "tentar de novo" (retry), que já aceita nova data.' } }; return; }
+    if (current.status !== 'scheduled') { outcome = { status: 409, body: { error: `Só dá para mudar a data de publicações na fila (status atual: ${current.status}).` } }; return; }
+    const scheduledFor = when.toISOString();
+    tx.set(ref, { scheduledFor, updatedAt: nowIso() }, { merge: true });
+    outcome = { status: 200, body: { success: true, scheduledFor, message: 'Data da publicação atualizada.' } };
+  });
+  res.status(outcome.status).json(outcome.body);
+}));
+
 router.post('/content/scheduled/:id/cancel', requireAuth, asyncRoute(async (req: AuthenticatedRequest, res) => {
   const ref = firestore().collection(COLLECTIONS.scheduledPosts).doc(req.params.id);
   const snap = await ref.get();

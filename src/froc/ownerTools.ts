@@ -3,6 +3,7 @@
  * (o servidor exige admin em todos). Devolve um resumo curto para o Froc e anexos para a tela.
  */
 import { OWNER_TOOLS, type FrocAction } from '../../shared/froc/brain';
+import { RISKY_CLICK_RE, clickOnScreen, fillOnScreen, scrollScreen } from './screen';
 
 type Req = <T = any>(endpoint: string, options?: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: any; timeoutMs?: number }) => Promise<T>;
 
@@ -17,6 +18,8 @@ export interface OwnerToolResult {
   ok: boolean;
   summary: string;
   attachments?: FrocAttachment[];
+  /** Deu certo e não precisa o Froc comentar (ex.: rolar a tela). */
+  quiet?: boolean;
 }
 
 type OwnerAction = Extract<FrocAction, { name: 'owner_tool' }>;
@@ -35,7 +38,13 @@ export function describeOwnerAction(a: OwnerAction): string {
 }
 
 export function needsConfirmation(a: FrocAction): boolean {
-  return a.name === 'owner_tool' && !!OWNER_TOOLS[a.tool]?.confirm;
+  if (a.name !== 'owner_tool') return false;
+  // Clique em botão que muda dados (excluir, publicar, salvar, enviar...) só com confirmação do dono.
+  if (a.tool === 'screen_click') {
+    const label = String(a.args?.label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return RISKY_CLICK_RE.test(label);
+  }
+  return !!OWNER_TOOLS[a.tool]?.confirm;
 }
 
 function projectId(a: OwnerAction, fallback?: string | null): string {
@@ -266,6 +275,38 @@ export async function runOwnerTool(a: OwnerAction, req: Req, ctx: { selectedProj
     case 'redo_today': {
       const r: any = await req('/api/admin/redo-today', { method: 'POST', body: {} });
       return { ok: true, summary: `${cut(r?.message, 300)} Divulgações liberadas: ${(r?.dailyReleased || []).join(', ') || 'nenhuma'}. Artigos agendados: ${(r?.articlesScheduled || []).map((a: any) => `${a.project} (${(a.platforms || []).join('/')})`).join('; ') || 'nenhum'}.` };
+    }
+    case 'reschedule_scheduled': {
+      if (!s(arg.scheduledId) || !s(arg.scheduledFor)) return { ok: false, summary: 'Para reagendar preciso do agendamento (scheduledId) e da nova data/hora.' };
+      const r: any = await req(`/api/content/scheduled/${encodeURIComponent(s(arg.scheduledId))}/reschedule`, { method: 'POST', body: { scheduledFor: s(arg.scheduledFor) } });
+      return { ok: true, summary: `Agendamento ${s(arg.scheduledId)} mudou para ${r?.scheduledFor || s(arg.scheduledFor)}. ${cut(r?.message || '', 160)}` };
+    }
+    case 'publish_scheduled_now': {
+      if (!s(arg.scheduledId)) return { ok: false, summary: 'Qual agendamento publicar agora? (scheduledId)' };
+      await req(`/api/content/scheduled/${encodeURIComponent(s(arg.scheduledId))}/reschedule`, { method: 'POST', body: { scheduledFor: new Date().toISOString() } });
+      const r: any = await req('/api/admin/scheduler/run-now', { method: 'POST', timeoutMs: slow, body: {} });
+      return { ok: true, summary: `Agendamento ${s(arg.scheduledId)} antecipado para agora e publicador rodou: ${cut(JSON.stringify(r), 700)}` };
+    }
+    case 'screen_scroll': {
+      const r = scrollScreen(s(arg.to) || 'baixo');
+      return { ...r, quiet: r.ok };
+    }
+    case 'screen_click':
+      return clickOnScreen(s(arg.label));
+    case 'screen_fill': {
+      if (!s(arg.field)) return { ok: false, summary: 'Qual campo preencher? (field)' };
+      const r = fillOnScreen(s(arg.field), s(arg.value));
+      return { ...r, quiet: r.ok };
+    }
+    case 'remember_fact': {
+      if (!s(arg.text)) return { ok: false, summary: 'O que devo guardar na memória?' };
+      const r: any = await req('/api/froc/owner/memory', { method: 'POST', body: { text: s(arg.text) } });
+      return { ok: true, summary: `Guardado na memória longa (${r?.total ?? '?'} itens): ${cut(arg.text, 160)}` };
+    }
+    case 'forget_fact': {
+      if (!s(arg.text)) return { ok: false, summary: 'O que devo esquecer?' };
+      const r: any = await req('/api/froc/owner/memory/forget', { method: 'POST', body: { text: s(arg.text) } });
+      return { ok: (r?.removed || 0) > 0, summary: r?.removed ? `Esqueci ${r.removed} item(ns) da memória.` : 'Não achei esse item na memória.' };
     }
     case 'run_scheduler_now': {
       const r: any = await req('/api/admin/scheduler/run-now', { method: 'POST', timeoutMs: slow, body: {} });
