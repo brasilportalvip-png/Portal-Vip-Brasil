@@ -10,6 +10,7 @@ import { speakFrocBrowser, speakFrocNeural, type SpeakHandle, type SpeechAuth } 
 import { takeSentences } from '../../froc/text';
 import { deleteChat, listChats, newChatId, saveChat, type SavedChat } from '../../froc/history';
 import { describeOwnerAction, needsConfirmation, runOwnerTool, type FrocAttachment } from '../../froc/ownerTools';
+import { captureScreenSummary } from '../../froc/screen';
 import { USER_PORTFOLIO_PROJECTS } from '../../data/portalProjects';
 import { apiRequest } from '../../lib/api';
 
@@ -148,7 +149,9 @@ export function FrocHome(props: Props) {
     runningTools: running,
     visitorName: visitorNameRef.current,
     device: typeof window !== 'undefined' && window.innerWidth < 768 ? 'mobile' : 'desktop',
-  }), [running]);
+    // O que está na tela agora (só para o dono; visitante não envia nada da página).
+    screen: mode === 'owner' ? captureScreenSummary() : null,
+  }), [running, mode]);
 
   // ---------------- Voz ----------------
   const stopSpeaking = useCallback(() => {
@@ -212,6 +215,7 @@ export function FrocHome(props: Props) {
     try {
       const r = await runOwnerTool(a, (endpoint, options) => apiRequest(endpoint, options as any), { selectedProjectId: props.selectedProjectId });
       if (r.attachments?.length) addFrocNote('', { attachments: r.attachments });
+      if (r.ok && r.quiet) return; // ex.: rolar a tela: não precisa de comentário
       if (depth < 3) void sendRef.current(`[RESULTADOS DAS FERRAMENTAS]\n${label}: ${r.ok ? 'OK' : 'NÃO FEITO'} — ${r.summary}`, { hidden: true, depth: depth + 1 });
     } catch (e: any) {
       const msg = String(e?.message || e).slice(0, 240);
@@ -248,6 +252,12 @@ export function FrocHome(props: Props) {
         case 'owner_tool':
           if (!isOwner) break;
           if (needsConfirmation(a)) { setPending(a); break; }
+          if (a.tool.startsWith('screen_')) {
+            // Ações na tela rodam uma de cada vez, com uma pausa para a página reagir (ex.: preencher e depois clicar).
+            await executeOwner(a, depth);
+            await new Promise((r) => setTimeout(r, 350));
+            break;
+          }
           void executeOwner(a, depth);
           break;
       }

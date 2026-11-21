@@ -121,6 +121,15 @@ export const OWNER_TOOLS: Record<string, OwnerToolSpec> = {
   retry_scheduled: { label: 'Tentar de novo uma publicação que falhou', args: ['scheduledId'], confirm: true },
   redo_today: { label: 'Refazer as publicações de HOJE que não saíram (divulgação diária sem rede e artigos sem divulgação), sem duplicar', args: [], confirm: true },
   run_scheduler_now: { label: 'Rodar o publicador agora (solta o que estiver na hora ou atrasado)', args: [], confirm: true, slow: true },
+  reschedule_scheduled: { label: 'Mudar a data/hora de uma publicação agendada (scheduledFor em ISO com fuso -03:00)', args: ['scheduledId', 'scheduledFor'], confirm: true },
+  publish_scheduled_now: { label: 'Publicar AGORA uma publicação agendada (antecipa para agora e roda o publicador)', args: ['scheduledId'], confirm: true, slow: true },
+  // Na tela aberta (o site faz no navegador do dono)
+  screen_scroll: { label: 'Rolar a tela aberta: to = baixo, cima, topo, fim ou o texto de um título/seção da página', args: ['to'], confirm: false },
+  screen_click: { label: 'Clicar num botão, aba ou link da tela aberta pelo texto dele (label). Botões que mudam dados (excluir, publicar, agendar, salvar, enviar, criar...) pedem confirmação antes', args: ['label'], confirm: false },
+  screen_fill: { label: 'Preencher um campo da tela aberta (field = nome do campo como aparece na tela; value = valor). Só preenche, não envia', args: ['field', 'value'], confirm: false },
+  // Memória longa (fica salva de um dia para o outro)
+  remember_fact: { label: 'Guardar na memória longa algo que o dono quer que você lembre sempre (preferência, decisão, informação fixa)', args: ['text'], confirm: false },
+  forget_fact: { label: 'Apagar da memória longa o item que o dono pediu para esquecer (text = o item ou parte dele)', args: ['text'], confirm: false },
 };
 
 export type FrocAction =
@@ -300,6 +309,8 @@ export interface FrocClientState {
   runningTools?: string[];
   visitorName?: string | null;
   device?: 'mobile' | 'desktop';
+  /** Resumo do que está visível no site agora (somente modo dono). */
+  screen?: string | null;
 }
 
 export function describeState(st: FrocClientState, mode: FrocMode): string {
@@ -310,6 +321,7 @@ export function describeState(st: FrocClientState, mode: FrocMode): string {
     mode === 'owner' ? `Aguardando confirmação do dono: ${st.pendingConfirm || 'nada'}` : null,
     mode === 'owner' ? `Tarefas rodando agora: ${(st.runningTools || []).join(', ') || 'nenhuma'}` : null,
     `Aparelho: ${st.device === 'mobile' ? 'celular' : 'computador'}`,
+    mode === 'owner' && st.screen ? `\n[O QUE ESTÁ NA TELA AGORA]\n${st.screen}` : null,
   ].filter(Boolean).join('\n');
 }
 
@@ -368,6 +380,8 @@ export interface FrocPromptInput {
   projects: FrocProjectKnowledge[];
   /** Mensagens que o visitante ainda tem hoje (proteção de gasto). */
   visitorTurnsLeft?: number;
+  /** Memória longa do dono (o que ele pediu para o Froc lembrar sempre). */
+  ownerMemory?: string[];
 }
 
 /** Proteção de gasto com visitantes (o dono/admin não tem limite). */
@@ -448,13 +462,16 @@ REGRAS DAS FERRAMENTAS
 - Quando aparecer [O APLICATIVO JÁ FEZ AGORA: ...] ou [RESULTADOS DAS FERRAMENTAS], a ação já aconteceu: NÃO repita; comente o resultado em poucas palavras (número, título, link já aparece na tela) e sugira o próximo passo.
 - Nunca diga que fez algo que não fez e nunca invente números: use só o que voltou das ferramentas.
 - Perguntas sobre o dia ("o que sai hoje?", "o que está programado?", "o que atrasou?", "e amanhã?"): use agenda (day "hoje", "amanhã" ou a data). Ela já filtra por data no horário de Brasília e diz o que está atrasado e o que a automação vai fazer. Não diga que não consegue filtrar por data.
+- Quando vier [O QUE ESTÁ NA TELA AGORA], é o que o dono está vendo neste momento (títulos, avisos, campos, botões; ▶ = visível agora). Use para responder com precisão sobre a tela ("o que é esse erro?", "o que tem aqui?", "qual o valor desse campo?"). Não invente o que não estiver ali; se precisar de mais, consulte a ferramenta certa.
+- NA TELA: screen_scroll rola, screen_click clica em botão/aba/link pelo texto, screen_fill preenche campo. Use os nomes exatamente como aparecem em [O QUE ESTÁ NA TELA AGORA]. Para várias ações em sequência (ex.: preencher 2 campos e clicar em Salvar), mande todas no mesmo bloco, na ordem. screen_fill nunca envia; para enviar, clique no botão. Só diga "cliquei"/"preenchi" depois do resultado.
+- MEMÓRIA LONGA: quando o dono disser "lembra que...", "sempre...", "nunca...", "eu prefiro..." ou der uma informação fixa importante, use remember_fact com uma frase curta e clara. "Esquece ..." → forget_fact. O que já está guardado vem em [MEMÓRIA LONGA]: siga sempre.
 - Você tem acesso ao portal inteiro pelas ferramentas: projetos (project_details), conteúdos, agenda, campanhas, vídeos, blog, automação, custos, redes sociais, suporte e saúde do sistema. Antes de dizer que não sabe algo, consulte a ferramenta certa.
 - Se a agenda mostrar publicações atrasadas ou falhas, diga quantas, o MOTIVO principal e o que fazer (vem pronto em "Motivos ... →"). Ex.: "o Instagram do Exu falhou 9 vezes porque o token expirou; é só reconectar em Redes Sociais".
 - Falhas antigas (mais de 2 dias) NÃO devem ser reenviadas: o post já perdeu a data e sairia fora de hora. Nunca ofereça reenviar tudo. Primeiro resolva a causa (reconectar conta, permissão, formato) e só então ofereça retry_scheduled para as falhas recentes, uma a uma.
 - run_scheduler_now só solta o que está na hora ou atrasado e ainda pendente; ele NÃO reenvia o que falhou.
 - Ele pode dizer "pare", "encerra", "fecha", "nova conversa", "apagar conversa": o site faz na hora.
 
-${vitrine}
+${input.ownerMemory?.length ? `[MEMÓRIA LONGA — o que o dono pediu para você lembrar sempre]\n${input.ownerMemory.map((f) => `- ${f}`).join('\n')}\n\n` : ''}${vitrine}
 
 ${VOICE}
 
